@@ -1,0 +1,314 @@
+package com.ciyato.launcher
+
+import android.os.Bundle
+import android.content.Intent
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.SystemBarStyle
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.ciyato.launcher.data.AppCategory
+import com.ciyato.launcher.data.CrashReporter
+import com.ciyato.launcher.data.LocationHelper
+import com.ciyato.launcher.ui.screens.*
+import com.ciyato.launcher.ui.theme.CiyatoBg
+import com.ciyato.launcher.ui.theme.CiyatoTheme
+import com.ciyato.launcher.viewmodel.LauncherViewModel
+import kotlinx.coroutines.launch
+
+/**
+ * LauncherHomeActivity — the REAL home screen.
+ *
+ * Uses sealed-class navigation for zero-latency screen transitions.
+ * Suggestions wired here: 75 (Focus), 139 (Permission Audit), 144 (Crash Reporter), 145 (Screenshot block).
+ */
+class LauncherHomeActivity : ComponentActivity() {
+
+    private val viewModel: LauncherViewModel by viewModels()
+    private var shortcutRequest by mutableStateOf(LauncherShortcutRequest(sequence = 0L, action = null))
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        shortcutRequest = LauncherShortcutRequest(sequence = 1L, action = intent?.action)
+
+        // Crash reporter install (Suggestion 144)
+        CrashReporter.install(this)
+        lifecycleScope.launch {
+            viewModel.crashReporting.collect { enabled ->
+                CrashReporter.setLoggingEnabled(enabled)
+            }
+        }
+
+        enableEdgeToEdge(
+            statusBarStyle     = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
+                    addCategory(android.content.Intent.CATEGORY_HOME)
+                }
+                val resolveInfo = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+                val isDefault = resolveInfo?.activityInfo?.packageName == packageName
+                if (isDefault) {
+                    // Standard launcher: back does nothing on home screen
+                } else {
+                    finish()
+                }
+            }
+        })
+
+        setContent {
+            val font by viewModel.font.collectAsState()
+            // Ciyato V2 is intentionally a consistent black launcher surface.
+            // Do not expose a partial light/dynamic theme over hard-coded dark UI.
+            CiyatoTheme(darkMode = "dark", font = font, dynamicColor = false) {
+                LauncherRoot(
+                    viewModel = viewModel,
+                    activity = this@LauncherHomeActivity,
+                    shortcutRequest = shortcutRequest,
+                )
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.refreshApps()
+    }
+
+    override fun onPause() {
+        // Recents, launching another activity, and leaving Home always end a
+        // temporary edit/drag/selection state before the launcher loses focus.
+        viewModel.cancelLauncherEditing()
+        super.onPause()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val action = intent.action
+        // Pressing Android Home reuses this singleTask activity. App shortcuts
+        // are explicit Ciyato routes, so they replace Home rather than being
+        // discarded by the edit-cancellation event.
+        if (!isCiyatoShortcutAction(action)) viewModel.cancelLauncherEditing()
+        shortcutRequest = LauncherShortcutRequest(
+            sequence = shortcutRequest.sequence + 1L,
+            action = action,
+        )
+    }
+
+}
+
+private data class LauncherShortcutRequest(
+    val sequence: Long,
+    val action: String?,
+)
+
+private fun isCiyatoShortcutAction(action: String?): Boolean = action in setOf(
+    "com.ciyato.launcher.ACTION_FOCUS",
+    "com.ciyato.launcher.ACTION_PERMISSION_AUDIT",
+    "com.ciyato.launcher.ACTION_DRAWER",
+)
+
+// ── Navigation sealed class ────────────────────────────────────────────────────
+
+private sealed class LauncherDest {
+    object Home               : LauncherDest()
+    object Drawer             : LauncherDest()
+    object Settings           : LauncherDest()
+    object Search             : LauncherDest()
+    object ThemeStudio        : LauncherDest()
+    object WallpaperStudio    : LauncherDest()
+    object HiddenApps         : LauncherDest()
+    object RemovedApps        : LauncherDest()
+    data class CategoryDetail(val category: AppCategory) : LauncherDest()
+    object WeatherDetail      : LauncherDest()
+    object Agenda             : LauncherDest()
+    object FocusSession       : LauncherDest()   // Suggestion 75
+    object PermissionAudit    : LauncherDest()   // Suggestion 139
+}
+
+// ── Root composable ───────────────────────────────────────────────────────────
+
+@Composable
+private fun LauncherRoot(
+    viewModel: LauncherViewModel,
+    activity: LauncherHomeActivity,
+    shortcutRequest: LauncherShortcutRequest,
+) {
+    val context = LocalContext.current
+    var dest by remember { mutableStateOf<LauncherDest>(LauncherDest.Home) }
+    val useSystemWallpaper by viewModel.useSystemWallpaper.collectAsState()
+
+    LaunchedEffect(shortcutRequest.sequence) {
+        dest = when (shortcutRequest.action) {
+            "com.ciyato.launcher.ACTION_FOCUS" -> LauncherDest.FocusSession
+            "com.ciyato.launcher.ACTION_PERMISSION_AUDIT" -> LauncherDest.PermissionAudit
+            "com.ciyato.launcher.ACTION_DRAWER" -> LauncherDest.Drawer
+            else -> dest
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.exitLauncherEditing.collect {
+            dest = LauncherDest.Home
+        }
+    }
+
+    androidx.activity.compose.BackHandler(enabled = dest != LauncherDest.Home) {
+        dest = when (dest) {
+            is LauncherDest.PermissionAudit,
+            is LauncherDest.HiddenApps,
+            is LauncherDest.RemovedApps -> LauncherDest.Settings
+            else -> LauncherDest.Home
+        }
+    }
+
+    // Auto-fetch weather on startup if already permitted
+    LaunchedEffect(Unit) {
+        if (LocationHelper.hasPermission(context)) {
+            viewModel.fetchWeather(context)
+        }
+        // Apply screenshot block setting (Suggestion 145)
+        viewModel.applyScreenshotFlag(activity.window)
+    }
+
+    // Re-apply screenshot flag whenever the setting changes
+    val screenshotBlocked by viewModel.screenshotBlocked.collectAsState()
+    LaunchedEffect(screenshotBlocked) {
+        viewModel.applyScreenshotFlag(activity.window)
+    }
+
+    when (val d = dest) {
+
+        is LauncherDest.Home -> HomeScreen(
+            viewModel       = viewModel,
+            onOpenDrawer    = { dest = LauncherDest.Drawer },
+            onOpenSearch    = { dest = LauncherDest.Search },
+            onOpenSystemWallpaper = {
+                dest = LauncherDest.WallpaperStudio
+            },
+            onOpenOrganizerSettings = {
+                context.startActivity(
+                    Intent(context, MainActivity::class.java).apply {
+                        putExtra(MainActivity.EXTRA_START_DESTINATION, "settings")
+                    }
+                )
+            },
+            onCategoryTap   = { category -> dest = LauncherDest.CategoryDetail(category) },
+            onWeatherTap    = {
+                // The phone's own weather app is the primary target; Ciyato's
+                // forecast screen only covers phones without one, or setup.
+                val hasWeather = viewModel.weatherState.value is com.ciyato.launcher.data.WeatherRepository.WeatherState.Success
+                val opened = hasWeather && com.ciyato.launcher.data.WeatherRepository.launchSystemWeatherApp(context)
+                if (!opened) dest = LauncherDest.WeatherDetail
+            },
+            onAgendaTap     = { dest = LauncherDest.Agenda },
+        )
+
+        is LauncherDest.Drawer -> AppDrawerScreen(
+            viewModel       = viewModel,
+            onBack          = { dest = LauncherDest.Home },
+        )
+
+        is LauncherDest.Settings -> SettingsScreen(
+            viewModel                  = viewModel,
+            onBack                     = { dest = LauncherDest.Home },
+            onNavigateToFiles          = {
+                context.startActivity(
+                    Intent(context, MainActivity::class.java).apply {
+                        putExtra(MainActivity.EXTRA_START_DESTINATION, "files")
+                    },
+                )
+            },
+            onNavigateToPhotos         = {
+                context.startActivity(
+                    Intent(context, MainActivity::class.java).apply {
+                        putExtra(MainActivity.EXTRA_START_DESTINATION, "photos")
+                    },
+                )
+            },
+            onNavigateToAgenda         = {
+                context.startActivity(
+                    Intent(context, MainActivity::class.java).apply {
+                        putExtra(MainActivity.EXTRA_START_DESTINATION, "agenda")
+                    },
+                )
+            },
+            onNavigateToPermissionAudit= { dest = LauncherDest.PermissionAudit },
+            onNavigateToFocus          = { dest = LauncherDest.FocusSession },
+            onNavigateToTheme          = { dest = LauncherDest.ThemeStudio },
+            onNavigateToWallpaper      = { dest = LauncherDest.WallpaperStudio },
+            onNavigateToHiddenApps     = { dest = LauncherDest.HiddenApps },
+            onNavigateToRemovedApps    = { dest = LauncherDest.RemovedApps },
+        )
+
+        is LauncherDest.Search -> SearchScreen(
+            viewModel = viewModel,
+            onBack = {
+                viewModel.setSearch("")
+                dest = LauncherDest.Home
+            },
+            onCategoryFilter = { category -> dest = LauncherDest.CategoryDetail(category) },
+        )
+
+        is LauncherDest.ThemeStudio -> ThemeStudioScreen(
+            viewModel = viewModel,
+            onBack = { dest = LauncherDest.Home },
+            onOpenWallpaper = { dest = LauncherDest.WallpaperStudio },
+        )
+
+        is LauncherDest.WallpaperStudio -> WallpaperPickerScreen(
+            viewModel = viewModel,
+            onBack = { dest = LauncherDest.Home },
+        )
+
+        is LauncherDest.HiddenApps -> AppVisibilityScreen(
+            mode = AppVisibilityMode.Hidden,
+            viewModel = viewModel,
+            onBack = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.RemovedApps -> AppVisibilityScreen(
+            mode = AppVisibilityMode.Removed,
+            viewModel = viewModel,
+            onBack = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.CategoryDetail -> CategoryDetailScreen(
+            category  = d.category,
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Home },
+        )
+
+        is LauncherDest.WeatherDetail -> WeatherDetailScreen(
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Home },
+        )
+
+        is LauncherDest.Agenda -> CalendarAgendaScreen(
+            viewModel = viewModel,
+            onBack = { dest = LauncherDest.Home },
+        )
+
+        is LauncherDest.FocusSession -> FocusSessionScreen(  // Suggestion 75
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Home },
+        )
+
+        is LauncherDest.PermissionAudit -> PermissionAuditScreen( // Suggestion 139
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Home },
+        )
+
+    }
+}

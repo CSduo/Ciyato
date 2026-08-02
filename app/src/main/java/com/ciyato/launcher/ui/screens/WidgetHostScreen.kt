@@ -1,0 +1,232 @@
+package com.ciyato.launcher.ui.screens
+
+import android.appwidget.AppWidgetHost
+import android.appwidget.AppWidgetHostView
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
+import android.content.Context
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.ciyato.launcher.ui.theme.*
+
+/**
+ * WidgetHostScreen — Suggestion #15
+ * Allows users to pick and place Android app widgets on the Ciyato home screen
+ * using AppWidgetHost + AppWidgetManager APIs.
+ */
+
+private const val WIDGET_HOST_ID = 1001
+
+data class PlacedWidget(
+    val appWidgetId: Int,
+    val label: String,
+    val providerInfo: AppWidgetProviderInfo,
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WidgetHostScreen(
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    val widgetManager = remember { AppWidgetManager.getInstance(context) }
+    val widgetHost = remember { AppWidgetHost(context, WIDGET_HOST_ID).also { it.startListening() } }
+
+    var placedWidgets by remember { mutableStateOf<List<PlacedWidget>>(emptyList()) }
+    var availableProviders by remember { mutableStateOf<List<AppWidgetProviderInfo>>(emptyList()) }
+    var showPickerDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        availableProviders = widgetManager.installedProviders
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { widgetHost.stopListening() }
+    }
+
+    val bindWidgetLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val appWidgetId = result.data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
+        if (appWidgetId != -1) {
+            val info = widgetManager.getAppWidgetInfo(appWidgetId)
+            if (info != null) {
+                placedWidgets = placedWidgets + PlacedWidget(
+                    appWidgetId = appWidgetId,
+                    label = info.loadLabel(context.packageManager),
+                    providerInfo = info,
+                )
+            }
+        }
+    }
+
+    fun pickWidget(provider: AppWidgetProviderInfo) {
+        val appWidgetId = widgetHost.allocateAppWidgetId()
+        val granted = widgetManager.bindAppWidgetIdIfAllowed(appWidgetId, provider.provider)
+        if (!granted) {
+            val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND).apply {
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider)
+            }
+            bindWidgetLauncher.launch(intent)
+        } else {
+            placedWidgets = placedWidgets + PlacedWidget(
+                appWidgetId = appWidgetId,
+                label = provider.loadLabel(context.packageManager),
+                providerInfo = provider,
+            )
+        }
+        showPickerDialog = false
+    }
+
+    Scaffold(
+        containerColor = CiyatoBg,
+        topBar = {
+            TopAppBar(
+                title = { Text("Widgets", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = CiyatoWhite)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showPickerDialog = true }) {
+                        Icon(Icons.Default.Add, null, tint = CiyatoGold)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
+            )
+        }
+    ) { padding ->
+        if (placedWidgets.isEmpty()) {
+            Box(
+                Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(Icons.Default.Widgets, null, tint = CiyatoMuted, modifier = Modifier.size(56.dp))
+                    Text("No widgets placed", color = CiyatoWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Tap + to pick a widget from installed apps", color = CiyatoMuted, fontSize = 13.sp)
+                    Button(
+                        onClick = { showPickerDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold),
+                    ) {
+                        Icon(Icons.Default.Add, null, tint = Color.Black)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Add Widget", color = Color.Black, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        } else {
+            LazyColumn(
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.padding(padding),
+            ) {
+                items(placedWidgets, key = { it.appWidgetId }) { widget ->
+                    WidgetCard(
+                        context = context,
+                        widget = widget,
+                        host = widgetHost,
+                        onRemove = { placedWidgets = placedWidgets.filter { it.appWidgetId != widget.appWidgetId }
+                            widgetHost.deleteAppWidgetId(widget.appWidgetId) },
+                    )
+                }
+            }
+        }
+    }
+
+    if (showPickerDialog) {
+        AlertDialog(
+            onDismissRequest = { showPickerDialog = false },
+            containerColor = CiyatoBgEl,
+            title = { Text("Choose Widget", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
+            text = {
+                LazyColumn(modifier = Modifier.height(300.dp)) {
+                    items(availableProviders, key = { it.provider.className + "_" + it.provider.packageName }) { provider ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { pickWidget(provider) }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.Widgets, null, tint = CiyatoGold, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text(provider.loadLabel(context.packageManager), color = CiyatoWhite, fontSize = 14.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPickerDialog = false }) {
+                    Text("Cancel", color = CiyatoGold)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun WidgetCard(
+    context: Context,
+    widget: PlacedWidget,
+    host: AppWidgetHost,
+    onRemove: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    widget.label,
+                    color = CiyatoWhite,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onRemove) {
+                    Text("Remove", color = Color(0xFFFF6B6B), fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            AndroidView(
+                factory = {
+                    host.createView(context, widget.appWidgetId, widget.providerInfo) as AppWidgetHostView
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .background(CiyatoBg, RoundedCornerShape(12.dp)),
+            )
+        }
+    }
+}

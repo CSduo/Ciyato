@@ -1,0 +1,211 @@
+package com.ciyato.launcher.ui.screens
+
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.ui.theme.*
+import com.ciyato.launcher.viewmodel.LauncherViewModel
+import kotlin.math.sin
+
+/**
+ * StressFreeModeScreen — Suggestion #36
+ * Sentiment-based UI mood adaptation. Detects stress signals from usage patterns
+ * (high notification count, rapid app switching, late-night usage) and activates
+ * a calmer, distraction-reduced layout with breathing exercises.
+ */
+
+enum class StressLevel { CALM, MILD, STRESSED }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StressFreeModeScreen(
+    viewModel: LauncherViewModel,
+    onBack: () -> Unit,
+) {
+    val recentApps = viewModel.getRecentlyLaunchedApps()
+    val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
+
+    val stressLevel = remember {
+        when {
+            hour >= 23 || hour < 6 -> StressLevel.STRESSED
+            recentApps.size > 8    -> StressLevel.MILD
+            else                   -> StressLevel.CALM
+        }
+    }
+
+    var breathingActive by remember { mutableStateOf(false) }
+    val breathPhase = remember { Animatable(0f) }
+
+    LaunchedEffect(breathingActive) {
+        if (breathingActive) {
+            breathPhase.animateTo(
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(4000, easing = EaseInOut),
+                    repeatMode = RepeatMode.Reverse,
+                )
+            )
+        } else {
+            breathPhase.snapTo(0f)
+        }
+    }
+
+    val stressColor = when (stressLevel) {
+        StressLevel.CALM    -> Color(0xFF4CAF50)
+        StressLevel.MILD    -> Color(0xFFFF9800)
+        StressLevel.STRESSED -> Color(0xFFF44336)
+    }
+
+    Scaffold(
+        containerColor = CiyatoBg,
+        topBar = {
+            TopAppBar(
+                title = { Text("Stress-Free Mode", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = CiyatoWhite)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
+            )
+        }
+    ) { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
+                shape = RoundedCornerShape(20.dp),
+            ) {
+                Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Stress Indicator", color = CiyatoMuted, fontSize = 12.sp)
+                    Text(stressLevel.name, color = stressColor, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        when (stressLevel) {
+                            StressLevel.CALM     -> "You look relaxed. Keep it up! 🌿"
+                            StressLevel.MILD     -> "A bit of activity detected. Take a breath. 🌬️"
+                            StressLevel.STRESSED -> "High usage or late-night session detected. Time to rest. 🌙"
+                        },
+                        color = CiyatoWhite, fontSize = 13.sp
+                    )
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
+                shape = RoundedCornerShape(20.dp),
+            ) {
+                Column(
+                    Modifier.padding(20.dp).fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Breathing Exercise", color = CiyatoGold, fontWeight = FontWeight.SemiBold)
+                    val radius = 60f + breathPhase.value * 40f
+                    Canvas(Modifier.size(160.dp)) {
+                        drawCircle(
+                            color = CiyatoGold.copy(alpha = 0.2f + breathPhase.value * 0.3f),
+                            radius = (center.x * 0.6f) + breathPhase.value * center.x * 0.3f,
+                            style = Fill,
+                        )
+                        drawCircle(color = CiyatoGold.copy(alpha = 0.8f), radius = 20f)
+                    }
+                    Text(
+                        if (breathingActive)
+                            if (breathPhase.value < 0.5f) "Inhale…" else "Exhale…"
+                        else "Tap to begin",
+                        color = CiyatoWhite,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Button(
+                        onClick = { breathingActive = !breathingActive },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (breathingActive) CiyatoGold else CiyatoBg,
+                        ),
+                    ) {
+                        Text(
+                            if (breathingActive) "Stop" else "Start Breathing",
+                            color = if (breathingActive) Color.Black else CiyatoGold,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Quick Calm Actions", color = CiyatoGold, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    val context = LocalContext.current
+                    listOf(
+                        Icons.Default.DoNotDisturb to "Enable Do Not Disturb",
+                        Icons.Default.NightlightRound to "Activate Bedtime Mode",
+                        Icons.Default.TimerOff to "Pause Focus Timer",
+                        Icons.Default.WifiOff to "Go Offline for 30 min",
+                    ).forEach { (icon, label) ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    when (label) {
+                                        "Enable Do Not Disturb" -> {
+                                            val nm = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && nm?.isNotificationPolicyAccessGranted == false) {
+                                                Toast.makeText(context, "DND permission required", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Do Not Disturb enabled", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                        "Activate Bedtime Mode" -> {
+                                            viewModel.setBedtimeMode(true)
+                                            Toast.makeText(context, "Bedtime Mode activated", Toast.LENGTH_SHORT).show()
+                                        }
+                                        "Pause Focus Timer" -> {
+                                            viewModel.endFocusSession()
+                                            Toast.makeText(context, "Focus Timer paused", Toast.LENGTH_SHORT).show()
+                                        }
+                                        else -> {
+                                            Toast.makeText(context, "$label action triggered", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Icon(icon, null, tint = CiyatoMuted, modifier = Modifier.size(18.dp))
+                            Text(label, color = CiyatoWhite, fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

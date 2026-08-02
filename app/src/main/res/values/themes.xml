@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Ciyato base theme.
+        windowBackground is transparent so Jetpack Compose draws the full-screen
+        dark surface (CiyatoBg = #0B0F12) from Kotlin without a white flash.
+        NoActionBar: we use TopAppBar from Compose, not the system action bar.
+    -->
+    <style name="Theme.Ciyato" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

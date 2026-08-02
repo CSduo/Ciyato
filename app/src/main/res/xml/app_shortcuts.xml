@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android App Shortcuts — Suggestion #85.
+    Long-pressing the Ciyato home launcher icon reveals these shortcuts.
+    Each shortcut deeplinks into a specific feature without navigating
+    through the full home screen.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Focus Mode shortcut -->
+    <shortcut
+        android:shortcutId="focus_session"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_focus_short"
+        android:shortcutLongLabel="@string/shortcut_focus_long"
+        android:shortcutDisabledMessage="@string/shortcut_focus_disabled">
+        <intent
+            android:action="com.ciyato.launcher.ACTION_FOCUS"
+            android:targetPackage="com.ciyato.launcher"
+            android:targetClass="com.ciyato.launcher.LauncherHomeActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <!-- Permission Audit shortcut -->
+    <shortcut
+        android:shortcutId="permission_audit"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_perms_short"
+        android:shortcutLongLabel="@string/shortcut_perms_long"
+        android:shortcutDisabledMessage="@string/shortcut_perms_disabled">
+        <intent
+            android:action="com.ciyato.launcher.ACTION_PERMISSION_AUDIT"
+            android:targetPackage="com.ciyato.launcher"
+            android:targetClass="com.ciyato.launcher.LauncherHomeActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <!-- App Drawer shortcut -->
+    <shortcut
+        android:shortcutId="app_drawer"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_drawer_short"
+        android:shortcutLongLabel="@string/shortcut_drawer_long"
+        android:shortcutDisabledMessage="@string/shortcut_drawer_disabled">
+        <intent
+            android:action="com.ciyato.launcher.ACTION_DRAWER"
+            android:targetPackage="com.ciyato.launcher"
+            android:targetClass="com.ciyato.launcher.LauncherHomeActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+</shortcuts>
