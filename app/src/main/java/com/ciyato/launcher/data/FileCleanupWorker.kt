@@ -43,20 +43,34 @@ class FileCleanupWorker(
 
             discovery.files.forEachIndexed { index, file ->
                 currentCoroutineContext().ensureActive()
-                if (file.uri.toString() !in hashes) {
+                val key = file.uri.toString()
+                if (key !in hashes) {
                     if (hashedBytes + file.sizeBytes > MAX_TOTAL_HASH_BYTES) {
                         skippedForBudget = true
                     } else {
-                        val hash = sha256(applicationContext, file.uri) { bytesRead ->
-                            hashedBytes += bytesRead
+                        // One file that vanished or turned unreadable must not abort the
+                        // whole analysis — it simply stops being a duplicate candidate.
+                        val hash = try {
+                            sha256(applicationContext, file.uri) { bytesRead -> hashedBytes += bytesRead }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            null
                         }
-                        hashes[file.uri.toString()] = hash
-                        FileCleanupResultStore.saveCheckpoint(applicationContext, rootRaw, hashes)
+                        if (hash != null) {
+                            hashes[key] = hash
+                            // Checkpointing after every single file meant rewriting a growing
+                            // JSON blob synchronously N times; batching keeps restart safety
+                            // without the quadratic disk cost.
+                            if (hashes.size % CHECKPOINT_EVERY == 0) {
+                                FileCleanupResultStore.saveCheckpoint(applicationContext, rootRaw, hashes)
+                            }
+                        }
                     }
                 }
                 setProgress(
                     Data.Builder()
-                        .putInt(PROGRESS_HASHED, hashes.size)
+                        .putInt(PROGRESS_HASHED, index + 1)
                         .putInt(PROGRESS_TOTAL, discovery.files.size)
                         .build(),
                 )
@@ -68,7 +82,7 @@ class FileCleanupWorker(
             val groups = verified
                 .groupBy { it.hash }
                 .values
-                .filter { group -> group.size > 1 && group.all { it.file.sizeBytes == group.first().file.sizeBytes } }
+                .filter { group -> group.size > 1 }
                 .map { group ->
                     DuplicateCleanupGroup(
                         bytesPerFile = group.first().file.sizeBytes,
@@ -106,7 +120,10 @@ class FileCleanupWorker(
         } catch (security: SecurityException) {
             Result.failure(errorData("Android revoked access to the selected folder."))
         } catch (_: Exception) {
-            Result.retry()
+            // Retrying forever would leave the Files screen spinning on "Verifying…" for a
+            // permanent failure, so give up after one retry and surface the reason.
+            if (runAttemptCount < 1) Result.retry()
+            else Result.failure(errorData("Duplicate analysis could not finish. No files were changed."))
         }
     }
 
@@ -146,12 +163,14 @@ class FileCleanupWorker(
                 }
             }
         }
+        // Largest candidates first: the hashing budget should be spent where duplicates
+        // actually reclaim space, not on hundreds of tiny same-size files.
         val sameSizeOnly = files
             .groupBy(CleanupDocument::sizeBytes)
             .values
             .filter { it.size > 1 }
             .flatten()
-            .sortedWith(compareBy<CleanupDocument> { it.sizeBytes }.thenBy { it.uri.toString() })
+            .sortedWith(compareByDescending<CleanupDocument> { it.sizeBytes }.thenBy { it.uri.toString() })
         val selected = sameSizeOnly.take(MAX_HASH_CANDIDATES)
         return CandidateDiscovery(
             files = selected,
@@ -184,6 +203,7 @@ class FileCleanupWorker(
         private const val MAX_BYTES_PER_FILE = 256L * 1024L * 1024L
         private const val MAX_TOTAL_HASH_BYTES = 512L * 1024L * 1024L
         private const val HASH_BUFFER_BYTES = 64 * 1024
+        private const val CHECKPOINT_EVERY = 16
 
         fun enqueue(context: Context, treeUri: Uri) =
             OneTimeWorkRequestBuilder<FileCleanupWorker>()
@@ -283,7 +303,15 @@ object FileCleanupResultStore {
     fun loadCheckpoint(context: Context, rootUri: String): Map<String, String> = runCatching {
         val json = JSONObject(prefs(context).getString(CHECKPOINT_PREFIX + rootUri, "{}") ?: "{}")
         val hashes = json.optJSONObject("hashes") ?: return emptyMap()
-        buildMap { hashes.keys().forEach { key -> put(key, hashes.optString(key)) } }
+        // A malformed entry would come back as a blank hash, and every file carrying it
+        // would then group together as "duplicates" — files the user could then delete.
+        // Only well-formed SHA-256 hex survives.
+        buildMap {
+            hashes.keys().forEach { key ->
+                val hash = hashes.optString(key)
+                if (hash.length == 64) put(key, hash)
+            }
+        }
     }.getOrDefault(emptyMap())
 
     fun saveCheckpoint(context: Context, rootUri: String, hashes: Map<String, String>) {

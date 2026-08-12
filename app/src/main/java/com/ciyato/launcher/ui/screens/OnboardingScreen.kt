@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.ui.components.CiyatoButton
 import com.ciyato.launcher.ui.components.CiyatoStepIndicator
+import com.ciyato.launcher.ui.components.directionResetPointerInput
 import com.ciyato.launcher.ui.theme.CiyatoBg
 import com.ciyato.launcher.ui.theme.CiyatoBgEl
 import com.ciyato.launcher.ui.theme.CiyatoBgEl2
@@ -216,6 +217,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
                 state = pagerState,
                 modifier = Modifier
                     .weight(1f)
+                    .directionResetPointerInput(directionalConnection)
                     .nestedScroll(directionalConnection),
                 pageSpacing = 16.dp,
             ) { pageIndex ->

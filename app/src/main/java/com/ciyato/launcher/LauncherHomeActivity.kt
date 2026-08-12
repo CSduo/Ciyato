@@ -2,7 +2,6 @@ package com.ciyato.launcher
 
 import android.os.Bundle
 import android.content.Intent
-import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -14,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.FragmentActivity
 import com.ciyato.launcher.data.AppCategory
 import com.ciyato.launcher.data.CrashReporter
 import com.ciyato.launcher.data.LocationHelper
@@ -29,7 +29,11 @@ import kotlinx.coroutines.launch
  * Uses sealed-class navigation for zero-latency screen transitions.
  * Suggestions wired here: 75 (Focus), 139 (Permission Audit), 144 (Crash Reporter), 145 (Screenshot block).
  */
-class LauncherHomeActivity : ComponentActivity() {
+// FragmentActivity (a ComponentActivity subclass), not plain ComponentActivity:
+// androidx BiometricPrompt requires a FragmentActivity host. As a bare
+// ComponentActivity, every `context as? FragmentActivity` in the app resolved to
+// null, which silently disabled App Lock and made both vault screens fail OPEN.
+class LauncherHomeActivity : FragmentActivity() {
 
     private val viewModel: LauncherViewModel by viewModels()
     private var shortcutRequest by mutableStateOf(LauncherShortcutRequest(sequence = 0L, action = null))

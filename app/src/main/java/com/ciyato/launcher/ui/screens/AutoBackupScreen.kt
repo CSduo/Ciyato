@@ -86,6 +86,7 @@ fun AutoBackupScreen(
                 val projection = arrayOf(
                     MediaStore.Images.Media._ID,
                     MediaStore.Images.Media.DISPLAY_NAME,
+                    MediaStore.Images.Media.MIME_TYPE,
                 )
                 val cursor = context.contentResolver.query(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -104,13 +105,15 @@ fun AutoBackupScreen(
                 cursor.use {
                     val idCol = it.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
                     val nameCol = it.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+                    val mimeCol = it.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
                     while (it.moveToNext()) {
                         val id = it.getLong(idCol)
                         val name = it.getString(nameCol) ?: "photo_$id.jpg"
+                        val mime = it.getString(mimeCol) ?: "image/jpeg"
                         val uri = android.content.ContentUris.withAppendedId(
                             MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
                         try {
-                            val destFile = backupFolder.createFile("image/jpeg", name)
+                            val destFile = backupFolder.createFile(mime, name)
                             if (destFile != null) {
                                 context.contentResolver.openInputStream(uri)?.use { inStream ->
                                     context.contentResolver.openOutputStream(destFile.uri)?.use { outStream ->

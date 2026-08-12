@@ -5,7 +5,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,7 +52,6 @@ fun WorkspaceGrid(
     cellApps: Map<Int, InstalledApp>,
     isEditMode: Boolean,
     onAppTap: (InstalledApp) -> Unit,
-    onAppLongPress: (cell: Int, app: InstalledApp) -> Unit,
     modifier: Modifier = Modifier,
     onCellBounds: (cell: Int, bounds: Rect) -> Unit = { _, _ -> },
     hiddenPackage: String? = null,
@@ -123,7 +122,6 @@ fun WorkspaceGrid(
                                         fontSize = fontSize,
                                         lineHeight = lineHeight,
                                         onTap = onAppTap,
-                                        onLongPress = onAppLongPress,
                                         tileGesture = tileGesture,
                                         isExpanded = app.packageName in expandedPackages,
                                     )
@@ -149,10 +147,15 @@ private fun WorkspaceAppTile(
     fontSize: TextUnit,
     lineHeight: TextUnit,
     onTap: (InstalledApp) -> Unit,
-    onLongPress: (cell: Int, app: InstalledApp) -> Unit,
     tileGesture: (Modifier, cell: Int, app: InstalledApp) -> Modifier,
     isExpanded: Boolean = false,
 ) {
+    // Long-press belongs to [tileGesture]'s drag detector alone. Stacking a
+    // combinedClickable(onLongClick = ...) here too put two long-press detectors
+    // on the same tile: both fired at ~500ms and raced, so the context menu
+    // regularly hijacked a drag the moment it began — the app felt un-draggable.
+    // Tap launches; long-press lifts into a drag; releasing without moving is
+    // handled by the drag's own commit path, which opens the menu instead.
     val gestured = tileGesture(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 2.dp), cell, app)
     if (isExpanded) {
         Column(
@@ -162,10 +165,7 @@ private fun WorkspaceAppTile(
                 .clip(RoundedCornerShape(16.dp))
                 .background(com.ciyato.launcher.ui.theme.CiyatoBgEl)
                 .border(1.dp, CiyatoGold.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                .combinedClickable(
-                    onClick = { onTap(app) },
-                    onLongClick = { onLongPress(cell, app) },
-                )
+                .clickable { onTap(app) }
                 .padding(10.dp),
         ) {
             RealAppIcon(
@@ -193,10 +193,7 @@ private fun WorkspaceAppTile(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(3.dp),
-            modifier = gestured.combinedClickable(
-                onClick = { onTap(app) },
-                onLongClick = { onLongPress(cell, app) },
-            ),
+            modifier = gestured.clickable { onTap(app) },
         ) {
             RealAppIcon(
                 drawable = app.icon,

@@ -4,7 +4,6 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -20,18 +19,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.data.MediaLibraryRepository
 import com.ciyato.launcher.ui.theme.*
 
 /**
- * BulkDeleteBar — Suggestion #66
- * Action bar shown when items are selected in Files / Screenshots / Photos.
- * Includes item count, select-all, and delete with undo support.
+ * Action bar shown while items are selected in a multi-select file grid.
+ * [selectedBytes] is the summed on-disk size of the selection, so the count is backed by a
+ * real number rather than an estimate.
  */
-
 @Composable
 fun BulkDeleteBar(
     selectedCount: Int,
     totalCount: Int,
+    selectedBytes: Long,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onDelete: () -> Unit,
@@ -64,13 +64,11 @@ fun BulkDeleteBar(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
                 )
-                if (selectedCount < totalCount) {
-                    Text(
-                        "of $totalCount items",
-                        color = CiyatoMuted,
-                        fontSize = 12.sp,
-                    )
-                }
+                Text(
+                    "of $totalCount · ${MediaLibraryRepository.formatBytes(selectedBytes)}",
+                    color = CiyatoMuted,
+                    fontSize = 12.sp,
+                )
             }
 
             if (selectedCount < totalCount) {
@@ -84,7 +82,7 @@ fun BulkDeleteBar(
 
             Button(
                 onClick = onDelete,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                colors = ButtonDefaults.buttonColors(containerColor = CiyatoRed),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(10.dp),
             ) {
@@ -96,22 +94,18 @@ fun BulkDeleteBar(
     }
 }
 
-@Composable
-fun rememberBulkDeleteState(itemKeys: List<String>): BulkDeleteState {
-    return remember { BulkDeleteState(itemKeys) }
-}
-
 class BulkDeleteState(private val allKeys: List<String>) {
     private val _selected = mutableStateListOf<String>()
-    val selected: Set<String> get() = _selected.toSet()
     val selectedCount get() = _selected.size
-    val isAllSelected get() = _selected.size == allKeys.size
 
     fun toggle(key: String) {
         if (key in _selected) _selected.remove(key) else _selected.add(key)
     }
 
-    fun selectAll() { _selected.addAll(allKeys) }
+    fun selectAll() {
+        _selected.clear()
+        _selected.addAll(allKeys)
+    }
     fun clearAll() { _selected.clear() }
     fun isSelected(key: String) = key in _selected
 }

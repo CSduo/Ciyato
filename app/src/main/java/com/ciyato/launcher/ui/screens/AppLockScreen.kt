@@ -1,6 +1,7 @@
 package com.ciyato.launcher.ui.screens
 
 import android.content.Context
+import android.content.ContextWrapper
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
@@ -132,7 +133,21 @@ fun AppLockGate(
     }
 }
 
-private fun triggerBiometric(
+/**
+ * Compose's LocalContext is frequently a ContextWrapper around the Activity
+ * rather than the Activity itself, so a bare `context as? FragmentActivity`
+ * cast is unreliable. Unwrap the base-context chain to find the real host.
+ */
+fun Context.findFragmentActivity(): FragmentActivity? {
+    var current: Context? = this
+    while (current is ContextWrapper) {
+        if (current is FragmentActivity) return current
+        current = current.baseContext
+    }
+    return null
+}
+
+fun triggerBiometric(
     context: Context,
     appLabel: String,
     onSuccess: () -> Unit,
@@ -140,7 +155,12 @@ private fun triggerBiometric(
     onError: (String) -> Unit,
 ) {
     val executor = ContextCompat.getMainExecutor(context)
-    val activity = context as? FragmentActivity ?: return
+    // Never fail silently: a swallowed return here looks identical to "the user
+    // ignored the prompt", which previously made app-lock a no-op with no clue why.
+    val activity = context.findFragmentActivity() ?: run {
+        onError("Secure prompt unavailable on this screen.")
+        return
+    }
 
     val callback = object : BiometricPrompt.AuthenticationCallback() {
         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {

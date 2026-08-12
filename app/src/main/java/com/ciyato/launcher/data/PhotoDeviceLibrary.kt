@@ -1,7 +1,9 @@
 package com.ciyato.launcher.data
 
+import android.content.ClipData
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
@@ -115,6 +117,46 @@ object PhotoDeviceLibrary {
             .sortedByDescending { it.takenAtMs }
             .groupBy { format.format(java.util.Date(it.takenAtMs)) }
             .map { it.key to it.value }
+    }
+
+    /**
+     * Hands [uri] to the phone's own apps: [Intent.ACTION_VIEW] to open it,
+     * [Intent.ACTION_EDIT] to edit it in the gallery/editor already installed,
+     * [Intent.ACTION_SEND] to share it. Always routed through a chooser so the
+     * person picks the app, and returns false when nothing on the device can
+     * handle it so the caller can say so instead of failing silently.
+     */
+    fun launchPhotoAction(
+        context: Context,
+        uri: Uri,
+        action: String,
+        mimeType: String? = null,
+    ): Boolean {
+        val mime = mimeType?.takeIf { it.contains('/') } ?: "image/*"
+        // Built without apply{}: inside an Intent receiver, `type`/`action` would
+        // resolve to the Intent's own members instead of the locals here.
+        val target = Intent(action)
+        if (action == Intent.ACTION_SEND) {
+            target.setType(mime)
+            target.putExtra(Intent.EXTRA_STREAM, uri)
+            target.clipData = ClipData.newUri(context.contentResolver, "photo", uri)
+        } else {
+            target.setDataAndType(uri, mime)
+        }
+        target.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        // Editors write the result back through the same URI.
+        if (action == Intent.ACTION_EDIT) target.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        if (target.resolveActivity(context.packageManager) == null) return false
+        val label = when (action) {
+            Intent.ACTION_EDIT -> "Edit photo with"
+            Intent.ACTION_SEND -> "Share photo"
+            else -> "Open photo with"
+        }
+        return runCatching {
+            context.startActivity(
+                Intent.createChooser(target, label).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }.isSuccess
     }
 
     private fun normalizedBucket(bucket: String, name: String): String = when {

@@ -1,6 +1,7 @@
 package com.ciyato.launcher.ui.screens
 
 import android.app.Activity
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -35,13 +36,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderCopy
 import androidx.compose.material.icons.filled.ImageNotSupported
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.RemoveCircleOutline
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -67,6 +71,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +81,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ciyato.launcher.data.AuthorizedMedia
 import com.ciyato.launcher.data.PhotoCollection
+import com.ciyato.launcher.data.PhotoDeviceLibrary
 import com.ciyato.launcher.data.PhotoLibraryStore
 import com.ciyato.launcher.data.PhotoMediaRepository
 import com.ciyato.launcher.ui.theme.CiyatoBg
@@ -265,6 +271,15 @@ fun PhotosScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(message, color = CiyatoSec, fontSize = 12.sp, lineHeight = 17.sp)
             }
+            // Sits above the media list: the list fills the remaining height, so
+            // anything placed after it would be measured at zero and never seen.
+            if (unavailableUris.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                RevokedMediaNotice(
+                    count = unavailableUris.size,
+                    onRemove = { viewModel.removePhotoUris(unavailableUris) },
+                )
+            }
             Spacer(Modifier.height(12.dp))
 
             when {
@@ -299,14 +314,6 @@ fun PhotosScreen(
                     onMediaLongClick = { item -> toggleSelection(selectedUris, item.uri.toString()) },
                 )
             }
-
-            if (unavailableUris.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                RevokedMediaNotice(
-                    count = unavailableUris.size,
-                    onRemove = { viewModel.removePhotoUris(unavailableUris) },
-                )
-            }
         }
     }
 
@@ -314,6 +321,17 @@ fun PhotosScreen(
         MediaDetailsDialog(
             item = item,
             onDismiss = { detailsFor = null },
+            onHandOff = { action ->
+                val handled = PhotoDeviceLibrary.launchPhotoAction(context, item.uri, action, item.mimeType)
+                detailsFor = null
+                if (!handled) {
+                    statusMessage = when (action) {
+                        Intent.ACTION_EDIT -> "No installed app can edit this item."
+                        Intent.ACTION_SEND -> "No installed app can share this item."
+                        else -> "No installed app can open this item."
+                    }
+                }
+            },
             onRemove = {
                 viewModel.removePhotoUris(setOf(item.uri.toString()))
                 detailsFor = null
@@ -459,7 +477,7 @@ private fun PhotoSelectionToolbar(
             Icon(Icons.Default.DeleteOutline, contentDescription = "Request Android deletion", tint = CiyatoSec)
         }
         IconButton(onClick = onClear) {
-            Icon(Icons.Default.Info, contentDescription = "Clear selection", tint = CiyatoSec)
+            Icon(Icons.Default.Close, contentDescription = "Clear selection", tint = CiyatoSec)
         }
     }
 }
@@ -703,6 +721,7 @@ private fun RevokedMediaNotice(count: Int, onRemove: () -> Unit) {
 private fun MediaDetailsDialog(
     item: AuthorizedMedia,
     onDismiss: () -> Unit,
+    onHandOff: (String) -> Unit,
     onRemove: () -> Unit,
     onRequestSourceDeletion: () -> Unit,
 ) {
@@ -718,6 +737,11 @@ private fun MediaDetailsDialog(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(8.dp)),
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        MediaHandOffButton(Icons.Default.OpenInNew, "Open") { onHandOff(Intent.ACTION_VIEW) }
+                        MediaHandOffButton(Icons.Default.Edit, "Edit") { onHandOff(Intent.ACTION_EDIT) }
+                        MediaHandOffButton(Icons.Default.Share, "Share") { onHandOff(Intent.ACTION_SEND) }
+                    }
                 }
                 Text(item.mimeType ?: "Selected media", color = CiyatoMuted, fontSize = 12.sp)
                 Text("Removing from Ciyato does not change the original file.", color = CiyatoSec, fontSize = 12.sp)
@@ -733,6 +757,16 @@ private fun MediaDetailsDialog(
             }
         },
     )
+}
+
+/** Hands the item to the phone's own gallery / editor / share sheet. */
+@Composable
+private fun MediaHandOffButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 10.dp)) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(5.dp))
+        Text(label, fontSize = 13.sp)
+    }
 }
 
 @Composable

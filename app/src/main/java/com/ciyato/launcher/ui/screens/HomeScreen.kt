@@ -284,6 +284,7 @@ fun HomeScreen(
     }
 
     val categoryOrderVal by viewModel.categoryOrder.collectAsState()
+    val homeSectionOrderVal by viewModel.homeSectionOrder.collectAsState()
     val categoryTilesSizesVal by viewModel.categoryTilesSizes.collectAsState()
     val expandedAppsVal by viewModel.expandedApps.collectAsState()
     val expandedAppsSet = remember(expandedAppsVal) {
@@ -499,7 +500,7 @@ fun HomeScreen(
     // isEditMode is in the keys because the body branches on it (empty custom
     // collections are shown only in edit mode); without it, entering edit mode
     // wouldn't reveal them.
-    val displayCategories = remember(apps, timeAwareLayout, focusSession, customCatsList, hiddenHomeCategories, isEditMode) {
+    val displayCategories = remember(apps, timeAwareLayout, focusSession, customCatsList, hiddenHomeCategories, isEditMode, workspaceLayoutV2) {
         val timeCats = if (timeAwareLayout) {
             viewModel.timeAwareCategories().filter { it in APPROVED_HOME_CATEGORIES }
         } else {
@@ -508,15 +509,22 @@ fun HomeScreen(
         val bedtimeHide = viewModel.isBedtimeNow()
         val allVisible = (timeCats + APPROVED_HOME_CATEGORIES).distinct()
 
+        // A category explicitly placed into a workspace (via "+ Category" or a
+        // starter template) belongs there, not on Home too — otherwise every
+        // workspace folder is duplicated onto the Home screen.
+        val assignedToWorkspace = viewModel.workspaceOverview().flatMap { it.categoryKeys }.toSet()
+
         val standard = allVisible.filter { cat ->
             val hasApps = viewModel.byCategory(cat).isNotEmpty()
             val notBlocked = !FocusSessionManager.isBlocked(cat)
             val notBedtime = !bedtimeHide || cat !in listOf(AppCategory.SOCIAL, AppCategory.ENTERTAINMENT, AppCategory.GAMES)
-            hasApps && notBlocked && notBedtime && cat.name !in hiddenHomeCategories.split(",")
+            hasApps && notBlocked && notBedtime &&
+                cat.name !in hiddenHomeCategories.split(",") &&
+                cat.name !in assignedToWorkspace
         }.map { it.name }
 
         val custom = customCatsList.filter { name ->
-            isEditMode || viewModel.byCustomCategory(name).isNotEmpty()
+            name !in assignedToWorkspace && (isEditMode || viewModel.byCustomCategory(name).isNotEmpty())
         }
 
         (standard + custom)
@@ -535,6 +543,100 @@ fun HomeScreen(
 
     // ── Recently launched ─────────────────────────────────────────────────────
     val recentApps = remember(apps) { viewModel.getRecentlyLaunchedApps() }
+
+    // ── Movable Home sections (greeting, search, weather, recent, categories) ──
+    // Every top-level Home section can be long-pressed and dragged to any
+    // position among the others; order persists the same way category order
+    // does. Sections currently hidden by their own toggle are simply absent —
+    // re-enabling one re-inserts it at its last remembered slot (or the end).
+    val visibleHomeSections = remember(
+        showHomeGreeting, showHomeSearch, showHomeWeather, showHomeAgenda,
+        showRecentLaunched, recentApps, privacyMode, showSmartCategories, homeSectionOrderVal,
+    ) {
+        val present = buildList {
+            if (showHomeGreeting) add("greeting")
+            if (showHomeSearch) add("search")
+            if (showHomeWeather || showHomeAgenda) add("weather")
+            if (showRecentLaunched && recentApps.isNotEmpty() && !privacyMode) add("recent")
+            if (showSmartCategories) add("categories")
+        }
+        val order = homeSectionOrderVal.split(",").map(String::trim).filter(String::isNotEmpty)
+        if (order.isEmpty()) {
+            present
+        } else {
+            val sorted = present.filter { it in order }.sortedBy { order.indexOf(it) }
+            val remaining = present.filter { it !in order }
+            sorted + remaining
+        }
+    }
+    var draggingHomeSection by remember { mutableStateOf<String?>(null) }
+    var homeSectionDragOffsetY by remember { mutableFloatStateOf(0f) }
+    val homeSectionMoveThresholdPx = with(LocalDensity.current) { 56.dp.toPx() }
+
+    @Composable
+    fun DraggableHomeSection(sectionKey: String, content: @Composable () -> Unit) {
+        val latestSections by rememberUpdatedState(visibleHomeSections)
+        val isDragging = draggingHomeSection == sectionKey
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    if (isDragging) {
+                        translationY = homeSectionDragOffsetY
+                        alpha = 0.92f
+                        scaleX = 1.02f
+                        scaleY = 1.02f
+                    }
+                }
+                .editableOutline(isEditMode, RoundedCornerShape(16.dp))
+                .then(
+                    if (isEditMode) {
+                        Modifier.pointerInput(sectionKey) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    draggingHomeSection = sectionKey
+                                    homeSectionDragOffsetY = 0f
+                                },
+                                onDragCancel = {
+                                    draggingHomeSection = null
+                                    homeSectionDragOffsetY = 0f
+                                },
+                                onDragEnd = {
+                                    draggingHomeSection = null
+                                    homeSectionDragOffsetY = 0f
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    homeSectionDragOffsetY += dragAmount.y
+                                    val shift = when {
+                                        homeSectionDragOffsetY > homeSectionMoveThresholdPx -> 1
+                                        homeSectionDragOffsetY < -homeSectionMoveThresholdPx -> -1
+                                        else -> 0
+                                    }
+                                    if (shift != 0) {
+                                        val list = latestSections
+                                        val from = list.indexOf(sectionKey)
+                                        val to = (from + shift).coerceIn(0, list.lastIndex)
+                                        if (from != to) {
+                                            val updated = list.toMutableList()
+                                            updated.removeAt(from)
+                                            updated.add(to, sectionKey)
+                                            viewModel.setHomeSectionOrder(updated.joinToString(","))
+                                        }
+                                        homeSectionDragOffsetY = 0f
+                                    }
+                                },
+                            )
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
+            content()
+        }
+    }
 
     // ── Duplicate apps ────────────────────────────────────────────────────────
     // ── Toast / snackbar ──────────────────────────────────────────────────────
@@ -629,6 +731,24 @@ fun HomeScreen(
         // Layout edits save atomically without floating snackbar banners
     }
 
+    /**
+     * Hiding a Home section used to be a one-tap dead end: the card vanished and
+     * the only way back was knowing to open the edit-mode control sheet. Every
+     * removal now offers an immediate Undo so it's reversible and discoverable.
+     */
+    fun hideHomeSection(label: String, hide: () -> Unit, restore: () -> Unit) {
+        hide()
+        workspaceScope.launch {
+            val action = snackbarHostState.showSnackbar(
+                message = "$label hidden",
+                actionLabel = "Undo",
+                withDismissAction = true,
+                duration = SnackbarDuration.Short,
+            )
+            if (action == SnackbarResult.ActionPerformed) restore()
+        }
+    }
+
     fun performLayoutChange(message: String, change: () -> Unit) {
         val snapshot = currentLayoutSnapshot()
         change()
@@ -651,8 +771,11 @@ fun HomeScreen(
     fun commitGridDrop(sourcePage: Int) {
         val pkg = dragController.activePackage ?: run { endDrag(); return }
         if (!dragController.movedFar(dragMoveThresholdPx)) {
+            // Long-pressed and released without moving: that's a request for the
+            // app's menu, not a move. (The tile's own long-press detector was
+            // removed — it raced this one and kept stealing drags.)
             dragController.reset(); edgeFlipDir = 0
-            enterLayoutEditing(showControls = false)
+            interactionState = LauncherInteractionState.ItemSelected(pkg)
             return
         }
         val currentPage = pagerState.currentPage
@@ -680,8 +803,9 @@ fun HomeScreen(
     fun commitDockDrop() {
         val pkg = dragController.activePackage ?: run { endDrag(); return }
         if (!dragController.movedFar(dragMoveThresholdPx)) {
+            // Same rule as the grid: a still long-press opens the app's menu.
             dragController.reset(); edgeFlipDir = 0
-            enterLayoutEditing(showControls = false)
+            interactionState = LauncherInteractionState.ItemSelected(pkg)
             return
         }
         val currentPage = pagerState.currentPage
@@ -795,6 +919,7 @@ fun HomeScreen(
                 beyondBoundsPageCount = 2,
                 modifier = Modifier
                     .fillMaxSize()
+                    .directionResetPointerInput(homeDirectionalConnection)
                     .nestedScroll(homeDirectionalConnection)
             ) { page ->
                 // Include the live swipe fraction so transitions animate smoothly
@@ -849,8 +974,25 @@ fun HomeScreen(
                                 ),
                         ) {
 
-                            // 1. Clock + Greeting
-                            if (showHomeGreeting) item {
+                            if (!homeTipDismissed && !isEditMode) {
+                                item {
+                                    CiyatoTipBanner(
+                                        text = "Swipe up for Apps. Long-press empty space to enter Edit mode and arrange your layout. Long-press any section to drag it to a new spot.",
+                                        onDismiss = viewModel::dismissHomeTip,
+                                        actionLabel = "Got it",
+                                        onAction = viewModel::dismissHomeTip,
+                                        accentColor = activeAccent
+                                    )
+                                }
+                            }
+
+                            // Every top-level Home section (greeting, search, weather, recent,
+                            // categories) renders here in the user's chosen order — see
+                            // DraggableHomeSection for the long-press-drag-to-reorder gesture.
+                            visibleHomeSections.forEach { sectionKey ->
+                            when (sectionKey) {
+                            "greeting" -> item(key = "home_section_greeting") {
+                                DraggableHomeSection(sectionKey) {
                                 Box(modifier = Modifier.fillMaxWidth()) {
                                 Row(modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -879,13 +1021,18 @@ fun HomeScreen(
                                 }
                                 if (isEditMode) HomeSectionRemoveButton(
                                     modifier = Modifier.align(Alignment.TopEnd),
-                                    onClick = { viewModel.setShowHomeGreeting(false) },
+                                    onClick = {
+                                        hideHomeSection("Greeting",
+                                            hide = { viewModel.setShowHomeGreeting(false) },
+                                            restore = { viewModel.setShowHomeGreeting(true) })
+                                    },
                                 )
+                                }
                                 }
                             }
 
-                            // 2. Search bar
-                            if (showHomeSearch) item {
+                            "search" -> item(key = "home_section_search") {
+                                DraggableHomeSection(sectionKey) {
                                 Box(modifier = Modifier.fillMaxWidth()) {
                                     HomeSearchBar(
                                         isDense = denseLayout,
@@ -894,25 +1041,18 @@ fun HomeScreen(
                                     )
                                     if (isEditMode) HomeSectionRemoveButton(
                                         modifier = Modifier.align(Alignment.TopEnd),
-                                        onClick = { viewModel.setShowHomeSearch(false) },
+                                        onClick = {
+                                            hideHomeSection("Search",
+                                                hide = { viewModel.setShowHomeSearch(false) },
+                                                restore = { viewModel.setShowHomeSearch(true) })
+                                        },
                                     )
+                                }
                                 }
                             }
 
-                            if (!homeTipDismissed && !isEditMode) {
-                                item {
-                                    CiyatoTipBanner(
-                                        text = "Swipe up for Apps. Long-press empty space to enter Edit mode and arrange your layout.",
-                                        onDismiss = viewModel::dismissHomeTip,
-                                        actionLabel = "Got it",
-                                        onAction = viewModel::dismissHomeTip,
-                                        accentColor = activeAccent
-                                    )
-                                }
-                            }
-
-                            // 4. Weather + Agenda row
-                            if (showHomeWeather || showHomeAgenda) item {
+                            "weather" -> item(key = "home_section_weather") {
+                                DraggableHomeSection(sectionKey) {
                                 WeatherAgendaRow(
                                     isDense      = denseLayout,
                                     weatherState = if (privacyMode) null else weatherState,
@@ -926,65 +1066,72 @@ fun HomeScreen(
                                         onWeatherTap()
                                     },
                                     onAgendaTap  = onAgendaTap,
-                                    onRemoveWeather = { viewModel.setShowHomeWeather(false) },
-                                    onRemoveAgenda = { viewModel.setShowHomeAgenda(false) },
+                                    onRemoveWeather = {
+                                        hideHomeSection("Weather",
+                                            hide = { viewModel.setShowHomeWeather(false) },
+                                            restore = { viewModel.setShowHomeWeather(true) })
+                                    },
+                                    onRemoveAgenda = {
+                                        hideHomeSection("Agenda",
+                                            hide = { viewModel.setShowHomeAgenda(false) },
+                                            restore = { viewModel.setShowHomeAgenda(true) })
+                                    },
                                     modifier     = Modifier.fillMaxWidth(),
                                 )
-                            }
-
-                            // 5. Recently launched
-                            if (showRecentLaunched && recentApps.isNotEmpty() && !privacyMode) {
-                                item {
-                                    Box(modifier = Modifier.fillMaxWidth()) {
-                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    "Recent",
-                                                    color = CiyatoWhite,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    fontSize = if (denseLayout) 14.sp else 16.sp,
-                                                )
-                                            }
-                                            LazyRow(
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                            ) {
-                                                items(recentApps.take(8), key = { it.packageName }) { app ->
-                                                    AppIconTile(app = app, iconSize = if (denseLayout) 44.dp else 50.dp,
-                                                        onClick = {
-                                                            if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                            viewModel.launchApp(app)
-                                                        },
-                                                        onLongClick = {
-                                                            if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                            interactionState = LauncherInteractionState.ItemSelected(app.packageName)
-                                                        },
-                                                        modifier = Modifier.width(if (denseLayout) 56.dp else 62.dp))
-                                                }
-                                            }
-                                        }
-                                        if (isEditMode) {
-                                            Text(
-                                                 "Categories",
-                                                 color = CiyatoWhite, fontWeight = FontWeight.SemiBold,
-                                                 fontSize = if (denseLayout) 17.sp else 20.sp,
-                                             )
-                                            HomeSectionRemoveButton(
-                                                modifier = Modifier.align(Alignment.TopEnd),
-                                                onClick = { viewModel.setShowRecentlyLaunched(false) },
-                                            )
-                                        }
-                                    }
                                 }
                             }
 
-                            // 6. Smart categories header
-                            if (showSmartCategories) {
-                                item {
+                            "recent" -> item(key = "home_section_recent") {
+                                DraggableHomeSection(sectionKey) {
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                "Recent",
+                                                color = CiyatoWhite,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = if (denseLayout) 14.sp else 16.sp,
+                                            )
+                                        }
+                                        LazyRow(
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            items(recentApps.take(8), key = { it.packageName }) { app ->
+                                                AppIconTile(app = app, iconSize = if (denseLayout) 44.dp else 50.dp,
+                                                    onClick = {
+                                                        if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        viewModel.launchApp(app)
+                                                    },
+                                                    onLongClick = {
+                                                        if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        interactionState = LauncherInteractionState.ItemSelected(app.packageName)
+                                                    },
+                                                    modifier = Modifier.width(if (denseLayout) 56.dp else 62.dp))
+                                            }
+                                        }
+                                    }
+                                    if (isEditMode) {
+                                        HomeSectionRemoveButton(
+                                            modifier = Modifier.align(Alignment.TopEnd),
+                                            onClick = {
+                                                hideHomeSection("Recent",
+                                                    hide = { viewModel.setShowRecentlyLaunched(false) },
+                                                    restore = { viewModel.setShowRecentlyLaunched(true) })
+                                            },
+                                        )
+                                    }
+                                }
+                                }
+                            }
+
+                            "categories" -> item(key = "home_section_categories") {
+                                DraggableHomeSection(sectionKey) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
                                     Row(modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically) {
@@ -1017,13 +1164,20 @@ fun HomeScreen(
                                                 ) {
                                                     Text("+ Category", color = CiyatoSec, fontSize = 13.sp)
                                                 }
+                                                TextButton(
+                                                    onClick = {
+                                                        hideHomeSection("Categories",
+                                                            hide = { viewModel.setSmartCategories(false) },
+                                                            restore = { viewModel.setSmartCategories(true) })
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                ) {
+                                                    Text("Hide", color = CiyatoMuted, fontSize = 13.sp)
+                                                }
                                             }
                                         }
                                     }
-                                }
-
-                                // 7. Category grid
-                                item {
+                                    Spacer(Modifier.height(12.dp))
                                     if (isLoading) {
                                         SkeletonCategoryGrid(columns = columns, rows = 2, cardHeight = cardHeight)
                                     } else if (orderedCategories.isEmpty()) {
@@ -1034,10 +1188,11 @@ fun HomeScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                             verticalArrangement = Arrangement.spacedBy(12.dp),
                                         ) {
+                                            val latestOrderedCategories by rememberUpdatedState(orderedCategories)
                                             orderedCategories.chunked(columns).forEach { rowCats ->
                                                 Row(modifier = Modifier.fillMaxWidth(),
                                                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                                    rowCats.forEach { catKey ->
+                                                    rowCats.forEach { catKey -> key(catKey) {
                                                         // Resolve if standard enum or custom category
                                                         val standardCat = runCatching { AppCategory.valueOf(catKey) }.getOrNull()
                                                         val displayName = if (standardCat != null) {
@@ -1072,7 +1227,7 @@ fun HomeScreen(
                                                                         scaleY = 1.03f
                                                                     }
                                                                 }
-                                                                .pointerInput(catKey, isEditMode, orderedCategories, columns, categoryCardWidth) {
+                                                                .pointerInput(catKey, isEditMode, columns, categoryCardWidth) {
                                                                     if (isEditMode) {
                                                                         detectDragGesturesAfterLongPress(
                                                                             onDragStart = {
@@ -1104,10 +1259,10 @@ fun HomeScreen(
                                                                                     else -> 0
                                                                                 }
                                                                                 if (shift != 0) {
-                                                                                    val from = orderedCategories.indexOf(catKey)
-                                                                                    val to = (from + shift).coerceIn(0, orderedCategories.lastIndex)
+                                                                                    val from = latestOrderedCategories.indexOf(catKey)
+                                                                                    val to = (from + shift).coerceIn(0, latestOrderedCategories.lastIndex)
                                                                                     if (from != to) {
-                                                                                        val updated = orderedCategories.toMutableList()
+                                                                                        val updated = latestOrderedCategories.toMutableList()
                                                                                         updated.removeAt(from)
                                                                                         updated.add(to, catKey)
                                                                                         val undoSnapshot = currentLayoutSnapshot()
@@ -1151,25 +1306,11 @@ fun HomeScreen(
                                                             },
                                                             tileSize = tileSize,
                                                             isEditMode = isEditMode,
-                                                            onToggleSize = {
-                                                                val undoSnapshot = currentLayoutSnapshot()
-                                                                interactionState = LauncherInteractionState.Resizing(
-                                                                    categoryKey = catKey,
-                                                                    originalSize = tileSize,
-                                                                )
-                                                                val nextSize = when (tileSize) {
-                                                                    "small" -> "medium"
-                                                                    "medium" -> "large"
-                                                                    else -> "small"
-                                                                }
-                                                                viewModel.setCategoryTileSize(catKey, nextSize)
-                                                                offerLayoutUndo("Category size changed", undoSnapshot)
-                                                                interactionState = LauncherInteractionState.LayoutEditing(isControlSheetVisible = false)
-                                                            },
+                                                            onResize = { newSize -> viewModel.setCategoryTileSize(catKey, newSize) },
                                                             onAppTap = { tappedApp -> viewModel.launchApp(tappedApp) },
                                                             modifier = Modifier.fillMaxWidth(),
                                                         )
-                                                        }
+                                                        } }
                                                     }
                                                     repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
                                                 }
@@ -1177,6 +1318,9 @@ fun HomeScreen(
                                         }
                                     }
                                 }
+                                }
+                            }
+                            }
                             }
                             // 8. Main Home Screen Workspace Grid (Page 1 Apps)
                             item {
@@ -1190,10 +1334,6 @@ fun HomeScreen(
                                     expandedPackages = expandedAppsSet,
                                     isEditMode = isEditMode,
                                     onAppTap = { app -> viewModel.launchApp(app) },
-                                    onAppLongPress = { _, longApp ->
-                                        if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        interactionState = LauncherInteractionState.ItemSelected(longApp.packageName)
-                                    },
                                     hiddenPackage = dragController.activePackage,
                                     highlightCell = dragController.targetCell.takeIf {
                                         dragController.isActive && !dragController.overDock && pagerState.currentPage == 1
@@ -1355,8 +1495,9 @@ fun HomeScreen(
                                                             },
                                                             customIcon = if (standardCategory == null) viewModel.getCustomCategoryIcon(categoryKey) else "folder",
                                                             customPresentation = if (standardCategory == null) viewModel.getCustomCategoryPresentation(categoryKey) else CustomCategoryPresentation.CARD,
-                                                            tileSize = "medium",
+                                                            tileSize = viewModel.getCategoryTileSize(categoryKey),
                                                             isEditMode = isEditMode,
+                                                            onResize = { newSize -> viewModel.setCategoryTileSize(categoryKey, newSize) },
                                                             onAppTap = { tappedApp -> viewModel.launchApp(tappedApp) },
                                                             modifier = Modifier.fillMaxWidth(),
                                                         )
@@ -1399,10 +1540,6 @@ fun HomeScreen(
                                         cellApps = cellApps,
                                         isEditMode = isEditMode,
                                         onAppTap = { tapped -> viewModel.launchApp(tapped) },
-                                        onAppLongPress = { _, longApp ->
-                                            if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            interactionState = LauncherInteractionState.ItemSelected(longApp.packageName)
-                                        },
                                         hiddenPackage = dragController.activePackage,
                                         highlightCell = dragController.targetCell.takeIf {
                                             dragController.isActive && !dragController.overDock
@@ -1468,10 +1605,6 @@ fun HomeScreen(
                         onAppTap = {
                             if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             viewModel.launchApp(it)
-                        },
-                        onAppLongPress = { pressedApp ->
-                            if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            enterLayoutEditing(showControls = true)
                         },
                         onRemoveApp = { unpinApp ->
                             if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -3053,11 +3186,16 @@ private fun CiyatoVideoBackground(uri: String) {
         factory = { viewContext ->
             android.view.TextureView(viewContext).also { texture ->
                 texture.surfaceTextureListener = object : android.view.TextureView.SurfaceTextureListener {
-                    override fun onSurfaceTextureAvailable(
-                        surfaceTexture: android.graphics.SurfaceTexture,
-                        width: Int,
-                        height: Int,
-                    ) {
+                    // A MediaPlayer that hits MEDIA_ERROR_* moves into a permanently
+                    // broken Error state — start()/pause() become silent no-ops from
+                    // then on. Without a rebuild-and-retry here, one transient decode
+                    // hiccup (common under memory pressure) leaves the background
+                    // blank forever, which is exactly what "the video disappears
+                    // after a while" describes. Bounded so a genuinely corrupt file
+                    // gives up instead of retry-looping forever.
+                    var retriesLeft = 2
+
+                    fun startPlayback(surfaceTexture: android.graphics.SurfaceTexture, width: Int, height: Int) {
                         val player = android.media.MediaPlayer()
                         runCatching {
                             player.setSurface(android.view.Surface(surfaceTexture))
@@ -3081,10 +3219,27 @@ private fun CiyatoVideoBackground(uri: String) {
                                 }
                                 if (latestCanPlay) prepared.start()
                             }
-                            player.setOnErrorListener { _, _, _ -> true }
+                            player.setOnErrorListener { broken, _, _ ->
+                                runCatching { broken.release() }
+                                if (mediaPlayer === broken) mediaPlayer = null
+                                if (retriesLeft > 0 && texture.isAvailable) {
+                                    retriesLeft--
+                                    startPlayback(surfaceTexture, width, height)
+                                }
+                                true
+                            }
                             player.prepareAsync()
                             mediaPlayer = player
                         }.onFailure { player.release() }
+                    }
+
+                    override fun onSurfaceTextureAvailable(
+                        surfaceTexture: android.graphics.SurfaceTexture,
+                        width: Int,
+                        height: Int,
+                    ) {
+                        retriesLeft = 2
+                        startPlayback(surfaceTexture, width, height)
                     }
 
                     override fun onSurfaceTextureSizeChanged(

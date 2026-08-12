@@ -2,6 +2,7 @@ package com.ciyato.launcher.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
+import com.ciyato.launcher.data.MediaLibraryRepository
 import com.ciyato.launcher.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -76,6 +78,24 @@ fun FileCollectionDetailScreen(
     var isClearingCache by remember { mutableStateOf(false) }
     var accessMessage by remember { mutableStateOf<String?>(null) }
     val currentFolderName = folderStack.lastOrNull()?.name ?: collectionTitle
+
+    fun navigateUp() {
+        val previousStack = folderStack.dropLast(1)
+        if (previousStack.isEmpty()) {
+            onBack()
+            return
+        }
+        folderStack = previousStack
+        isLoading = true
+        scope.launch {
+            files = loadFilesFromDocument(previousStack.last(), collectionTitle)
+            isLoading = false
+        }
+    }
+
+    // System back has to walk up the folder stack. Without this it pops the whole Files
+    // destination, dropping the user on Home from three folders deep.
+    BackHandler { navigateUp() }
 
     LaunchedEffect(Unit) {
         cacheBytes = withContext(Dispatchers.IO) { directorySize(context.cacheDir) }
@@ -151,19 +171,7 @@ fun FileCollectionDetailScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (folderStack.size > 1) {
-                            val previousStack = folderStack.dropLast(1)
-                            folderStack = previousStack
-                            isLoading = true
-                            scope.launch {
-                                files = loadFilesFromDocument(previousStack.last(), collectionTitle)
-                                isLoading = false
-                            }
-                        } else {
-                            onBack()
-                        }
-                    }) {
+                    IconButton(onClick = { navigateUp() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = CiyatoSec)
                     }
                 },
@@ -299,7 +307,14 @@ fun FileCollectionDetailScreen(
                                             setDataAndType(file.uri, file.mimeType ?: "*/*")
                                             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                                         }
-                                        try { context.startActivity(intent) } catch (e: Exception) { }
+                                        // Swallowing this made the tap look like a dead control.
+                                        runCatching { context.startActivity(intent) }.onFailure {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "No app can open ${file.name}",
+                                                android.widget.Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
                                     }
                                 },
                                 onDelete = if (file.canDelete) ({ pendingDeletion = file }) else null,
@@ -448,7 +463,7 @@ private fun FileMaintenanceCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text("Ciyato cache", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Text(
-                    if (cacheBytes > 0L) "${formatFileSize(cacheBytes)} stored by Ciyato" else "No Ciyato cache to clean",
+                    if (cacheBytes > 0L) "${MediaLibraryRepository.formatBytes(cacheBytes)} stored by Ciyato" else "No Ciyato cache to clean",
                     color = CiyatoMuted,
                     fontSize = 11.sp,
                 )
@@ -500,7 +515,7 @@ private fun FileRow(
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(file.name, color = CiyatoWhite, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-            Text(if (file.isDirectory) "Folder" else formatFileSize(file.sizeBytes), color = CiyatoMuted, fontSize = 11.sp)
+            Text(if (file.isDirectory) "Folder" else MediaLibraryRepository.formatBytes(file.sizeBytes), color = CiyatoMuted, fontSize = 11.sp)
         }
         if (onDelete != null) {
             IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
@@ -526,28 +541,10 @@ private fun fileIcon(mimeType: String?): ImageVector {
     }
 }
 
-private fun formatFileSize(bytes: Long): String {
-    return when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        bytes < 1024 * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
-        else -> "${bytes / (1024 * 1024 * 1024)} GB"
-    }
-}
-
 private fun directorySize(directory: java.io.File): Long {
     return directory.listFiles()?.sumOf { file ->
         if (file.isDirectory) directorySize(file) else file.length()
     } ?: 0L
-}
-
-private suspend fun loadFilesFromUri(
-    context: android.content.Context,
-    treeUri: Uri,
-    collectionTitle: String,
-): List<CiyatoFile> {
-    val docUri = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
-    return loadFilesFromDocument(docUri, collectionTitle)
 }
 
 private suspend fun loadFilesFromDocument(

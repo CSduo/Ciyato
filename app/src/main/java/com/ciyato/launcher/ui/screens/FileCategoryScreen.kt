@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,8 +77,22 @@ fun FileCategoryScreen(
     }
     var files by remember { mutableStateOf<List<MediaLibraryRepository.LibraryFile>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var hasAllFilesAccess by remember { mutableStateOf(repo.hasAllFilesAccess()) }
 
-    LaunchedEffect(key) {
+    // Granting "All files access" happens in Android's settings, outside this activity. Without
+    // re-checking on resume the user came back to the same "needs access" wall they just cleared.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                hasAllFilesAccess = repo.hasAllFilesAccess()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(key, hasAllFilesAccess) {
         if (key != null) files = repo.filesForCategory(key)
         isLoading = false
     }
@@ -119,7 +134,7 @@ fun FileCategoryScreen(
             }
             files.isEmpty() -> {
                 val needsAllFiles = key in setOf(CategoryKey.DOCUMENTS, CategoryKey.DOWNLOADS, CategoryKey.APKS) &&
-                    android.os.Build.VERSION.SDK_INT >= 30 && !repo.hasAllFilesAccess()
+                    android.os.Build.VERSION.SDK_INT >= 30 && !hasAllFilesAccess
                 Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                     if (needsAllFiles) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {

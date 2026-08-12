@@ -3,6 +3,7 @@ package com.ciyato.launcher.data
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -81,31 +82,28 @@ class PhotoMediaRepository(private val context: Context) {
     }
 
     private fun queryMetadata(resolver: ContentResolver, uri: Uri): MediaMetadata {
-        return runCatching {
-            resolver.openFileDescriptor(uri, "r")?.use { }
-                ?: error("Selected media is no longer readable")
-            var displayName: String? = null
-            var lastModified = 0L
-            resolver.query(
-                uri,
-                arrayOf(OpenableColumns.DISPLAY_NAME, "last_modified"),
-                null,
-                null,
-                null,
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                        .takeIf { it >= 0 }
-                        ?.let { displayName = cursor.getString(it) }
-                    cursor.getColumnIndex("last_modified")
-                        .takeIf { it >= 0 }
-                        ?.let { lastModified = cursor.getLong(it) }
-                }
+        // Availability is decided purely by whether the URI still opens. Metadata
+        // is a bonus: providers reject projections they don't know ("last_modified"
+        // is a DocumentsProvider column, not a MediaStore one), and a rejected
+        // column must not make a perfectly readable photo look revoked.
+        val readable = runCatching {
+            resolver.openFileDescriptor(uri, "r")?.use { } ?: error("no descriptor")
+        }.isSuccess
+        if (!readable) return MediaMetadata(null, null, 0L, false)
+
+        var displayName: String? = null
+        runCatching {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) displayName = cursor.getString(0)
             }
-            MediaMetadata(displayName, resolver.getType(uri), lastModified, true)
-        }.getOrElse {
-            MediaMetadata(null, null, 0L, false)
         }
+        var lastModified = 0L
+        runCatching {
+            resolver.query(uri, arrayOf(MediaStore.MediaColumns.DATE_MODIFIED), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) lastModified = cursor.getLong(0) * 1000L
+            }
+        }
+        return MediaMetadata(displayName, resolver.getType(uri), lastModified, true)
     }
 
     private data class MediaMetadata(

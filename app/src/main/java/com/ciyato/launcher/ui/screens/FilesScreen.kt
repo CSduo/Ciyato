@@ -9,14 +9,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -41,7 +38,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -109,7 +105,6 @@ private data class AccessibleFile(
 private data class FileScopeScan(
     val rootName: String,
     val files: List<AccessibleFile>,
-    val inspectedCount: Int,
     val reachedLimit: Boolean,
 ) {
     val totalBytes: Long get() = files.sumOf(AccessibleFile::sizeBytes)
@@ -151,11 +146,20 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
             val info = withContext(Dispatchers.IO) {
                 WorkManager.getInstance(context).getWorkInfoById(workId).get()
             }
+            if (info == null) {
+                // WorkManager has no record of this id anymore (e.g. it was replaced or
+                // pruned mid-poll). Without this check, info.progress below throws an NPE.
+                cleanupError = "Duplicate analysis could not finish. No files were changed."
+                cleanupWorkId = null
+                break
+            }
             cleanupProgress = info.progress.getInt(FileCleanupWorker.PROGRESS_HASHED, 0) to
                 info.progress.getInt(FileCleanupWorker.PROGRESS_TOTAL, 0)
             when (info.state) {
                 WorkInfo.State.SUCCEEDED -> {
-                    cleanupResult = rootUri?.let { uri -> FileCleanupResultStore.loadResult(context, uri.toString()) }
+                    cleanupResult = withContext(Dispatchers.IO) {
+                        rootUri?.let { uri -> FileCleanupResultStore.loadResult(context, uri.toString()) }
+                    }
                     cleanupWorkId = null
                     break
                 }
@@ -752,10 +756,12 @@ private suspend fun deleteReviewedDuplicates(
     val deleted = mutableListOf<CleanupFileRef>()
     val failed = mutableListOf<CleanupFileRef>()
     files.distinctBy(CleanupFileRef::uri).forEach { file ->
+        // No canWrite() pre-check: for a child of a persisted SAF tree that check can report
+        // false on some providers even though DocumentsContract.deleteDocument succeeds, which
+        // would report perfectly deletable duplicates as failures. Attempt it and report the
+        // provider's real answer instead.
         val didDelete = runCatching {
-            DocumentFile.fromSingleUri(context, Uri.parse(file.uri))
-                ?.takeIf(DocumentFile::canWrite)
-                ?.delete() == true
+            DocumentFile.fromSingleUri(context, Uri.parse(file.uri))?.delete() == true
         }.getOrDefault(false)
         if (didDelete) deleted += file else failed += file
     }
@@ -829,7 +835,6 @@ private suspend fun scanAuthorisedFolder(context: Context, treeUri: Uri): FileSc
     FileScopeScan(
         rootName = root.name.orEmpty().ifBlank { "Selected folder" },
         files = files,
-        inspectedCount = inspected,
         reachedLimit = folders.isNotEmpty() || inspected >= FILE_SCAN_LIMIT,
     )
 }

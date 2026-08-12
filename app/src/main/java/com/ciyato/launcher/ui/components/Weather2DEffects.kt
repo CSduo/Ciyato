@@ -147,7 +147,7 @@ private fun AnimeRainEffect() {
     val progress by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing)),
         label = "rain_progress"
     )
 

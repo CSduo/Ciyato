@@ -1,5 +1,6 @@
 package com.ciyato.launcher.ui.screens
 
+import androidx.biometric.BiometricManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -15,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,7 +28,9 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 /**
  * GuestModeScreen — Suggestion #87
  * Restricted launcher profile that shows only approved apps.
- * Activated from settings; exits via a hold-pattern gesture or PIN.
+ * Exits only after the device owner authenticates (biometric or device
+ * PIN/pattern/password via BiometricPrompt — the same gate AppLockScreen
+ * uses), so a guest can't just tap through the dialog to leave.
  * No access to hidden apps, files, settings, or personal data.
  */
 
@@ -42,6 +46,7 @@ fun GuestModeScreen(
     viewModel: LauncherViewModel,
     onExitGuestMode: () -> Unit,
 ) {
+    val context = LocalContext.current
     val apps by viewModel.apps.collectAsState()
     val iconShape by viewModel.iconShape.collectAsState()
 
@@ -49,12 +54,18 @@ fun GuestModeScreen(
         apps.filter { it.category in GUEST_ALLOWED_CATEGORIES }.take(12)
     }
 
-    var exitHoldProgress by remember { mutableStateOf(0f) }
-    var exitPinInput by remember { mutableStateOf("") }
     var showExitDialog by remember { mutableStateOf(false) }
+    var exitFailMessage by remember { mutableStateOf<String?>(null) }
 
-    // Hold "Exit" button for 3 seconds to exit
-    val holdCoroutineScope = rememberCoroutineScope()
+    // Device has no biometric AND no PIN/pattern/password set up at all — there is
+    // nothing to authenticate against, so gating exit would trap the guest with no
+    // way out. Every other device authenticates before Guest Mode can be exited.
+    val canAuthenticate = remember {
+        BiometricManager.from(context).canAuthenticate(
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        ) == BiometricManager.BIOMETRIC_SUCCESS
+    }
 
     Scaffold(containerColor = CiyatoBg) { padding ->
         Column(
@@ -124,33 +135,51 @@ fun GuestModeScreen(
 
     if (showExitDialog) {
         AlertDialog(
-            onDismissRequest = { showExitDialog = false },
+            onDismissRequest = { showExitDialog = false; exitFailMessage = null },
             containerColor = CiyatoBgEl,
             title = { Text("Exit Guest Mode", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Enter owner PIN to exit guest mode", color = CiyatoMuted, fontSize = 13.sp)
-                    OutlinedTextField(
-                        value = exitPinInput,
-                        onValueChange = { if (it.length <= 6) exitPinInput = it },
-                        label = { Text("Owner PIN") },
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = CiyatoGold, cursorColor = CiyatoGold),
+                    Text(
+                        if (canAuthenticate) {
+                            "Confirm it's you to leave guest mode. Use your fingerprint, face, or device PIN."
+                        } else {
+                            "This device has no screen lock set up, so guest mode can't be secured. " +
+                                "Add a screen lock in Android Settings to protect this."
+                        },
+                        color = CiyatoMuted,
+                        fontSize = 13.sp,
                     )
+                    exitFailMessage?.let { message ->
+                        Text(message, color = Color(0xFFEF4444), fontSize = 13.sp)
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    // Production: verify against stored PIN hash
-                    showExitDialog = false
-                    exitPinInput = ""
-                    onExitGuestMode()
+                    exitFailMessage = null
+                    if (!canAuthenticate) {
+                        // Nothing to verify against — refusing here would lock the
+                        // guest in with no escape, so allow the exit.
+                        showExitDialog = false
+                        onExitGuestMode()
+                        return@TextButton
+                    }
+                    triggerBiometric(
+                        context = context,
+                        appLabel = "Guest Mode",
+                        onSuccess = {
+                            showExitDialog = false
+                            exitFailMessage = null
+                            onExitGuestMode()
+                        },
+                        onFailed = { exitFailMessage = "Not recognised. Try again." },
+                        onError = { message -> exitFailMessage = message },
+                    )
                 }) { Text("Exit", color = CiyatoGold) }
             },
             dismissButton = {
-                TextButton(onClick = { showExitDialog = false; exitPinInput = "" }) {
+                TextButton(onClick = { showExitDialog = false; exitFailMessage = null }) {
                     Text("Cancel", color = CiyatoMuted)
                 }
             },

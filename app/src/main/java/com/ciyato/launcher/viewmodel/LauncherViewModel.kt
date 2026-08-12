@@ -156,6 +156,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val wallpaperImageScale = settings.wallpaperImageScale.stateIn(viewModelScope, SharingStarted.Eagerly, 1f)
     val wallpaperImageOffset = settings.wallpaperImageOffset.stateIn(viewModelScope, SharingStarted.Eagerly, 0f)
     val categoryOrder      = settings.categoryOrder     .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val homeSectionOrder   = settings.homeSectionOrder  .stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val categoryTilesSizes = settings.categoryTilesSizes.stateIn(viewModelScope, SharingStarted.Eagerly, "{}")
     val customCategories   = settings.customCategories  .stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val customCategoryIcons = settings.customCategoryIcons.stateIn(viewModelScope, SharingStarted.Eagerly, "{}")
@@ -265,6 +266,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun setWallpaperImageScale(value: Float) = viewModelScope.launch { settings.setWallpaperImageScale(value) }
     fun setWallpaperImageOffset(value: Float) = viewModelScope.launch { settings.setWallpaperImageOffset(value) }
     fun setCategoryOrder(v: String)        = viewModelScope.launch { settings.setCategoryOrder(v) }
+    fun setHomeSectionOrder(v: String)     = viewModelScope.launch { settings.setHomeSectionOrder(v) }
     fun setCategoryTilesSizes(v: String)    = viewModelScope.launch { settings.setCategoryTilesSizes(v) }
     fun setWorkspaceLayout(v: String) = viewModelScope.launch {
         if (WorkspaceStore.parse(v) != null) settings.setWorkspaceLayoutV2(v)
@@ -657,6 +659,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** Atomic batch add — the whole selection persists in one transaction, each
      *  app dropped into the next free grid cell. */
     fun addAppsToPage(pageIndex: Int, packages: Collection<String>) = viewModelScope.launch {
+        unhidePackages(packages)
         updateLayout { layout ->
             val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
@@ -1003,6 +1006,30 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         repo.setHiddenPackages(hiddenCsv)
     }
 
+    /**
+     * Placing an app onto Home, a workspace, or the dock is an explicit
+     * "I want to see this" signal. [apps] (what the grid/dock resolve cells
+     * against) excludes hidden/removed packages, while the add-app picker
+     * lists from [allApps] (unfiltered) — so without this, adding a package
+     * that happened to be hidden/removed stores it correctly but the icon
+     * never resolves and silently "vanishes".
+     */
+    private suspend fun unhidePackages(packages: Collection<String>) {
+        if (packages.isEmpty()) return
+        val targets = packages.toSet()
+        val hidden = parsePackageCsv(settings.hiddenApps.first()).toMutableSet()
+        val removed = parsePackageCsv(settings.removedApps.first()).toMutableSet()
+        val changedHidden = hidden.removeAll(targets)
+        val changedRemoved = removed.removeAll(targets)
+        if (!changedHidden && !changedRemoved) return
+        val hiddenCsv = hidden.sorted().joinToString(",")
+        val removedCsv = removed.sorted().joinToString(",")
+        settings.setHiddenApps(hiddenCsv)
+        settings.setRemovedApps(removedCsv)
+        repo.setHiddenPackages(hiddenCsv)
+        repo.setRemovedPackages(removedCsv)
+    }
+
     fun removeAppFromDisplay(pkg: String) = viewModelScope.launch {
         val removed = parsePackageCsv(settings.removedApps.first()).toMutableSet().apply { add(pkg) }
         val hidden = parsePackageCsv(settings.hiddenApps.first()).toMutableSet().apply { remove(pkg) }
@@ -1071,6 +1098,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Inserts [pkg] at [index] in the dock (cap 5). Marks the dock as user-managed. */
     fun pinToDockAt(pkg: String, index: Int) = viewModelScope.launch {
+        unhidePackages(listOf(pkg))
         val current = settings.dockPackages.first()
             .split(",")
             .map(String::trim)

@@ -6,7 +6,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,7 +39,6 @@ import com.ciyato.launcher.ui.theme.*
 fun BottomDock(
     dockApps: List<InstalledApp>,
     onAppTap: (InstalledApp) -> Unit,
-    onAppLongPress: (InstalledApp) -> Unit = {},
     onRemoveApp: ((InstalledApp) -> Unit)? = null,
     modifier: Modifier = Modifier,
     isEditMode: Boolean = false,
@@ -122,11 +120,11 @@ fun BottomDock(
                             }
                     ) {
                         Box(
-                            modifier = gestured
-                                .combinedClickable(
-                                    onClick = { onAppTap(app) },
-                                    onLongClick = { onAppLongPress(app) }
-                                )
+                            // Long-press is owned solely by [tileGesture]'s drag
+                            // detector. A combinedClickable(onLongClick) here as
+                            // well meant two long-press detectors raced on every
+                            // dock icon, so drags were routinely hijacked.
+                            modifier = gestured.clickable { onAppTap(app) }
                         ) {
                             RealAppIcon(
                                 drawable = app.icon,

@@ -78,6 +78,7 @@ fun WallpaperPickerScreen(
     val wallpaperBlur by viewModel.wallpaperBlur.collectAsState()
     var selected by remember { mutableStateOf<String?>(null) }
     var imageStatus by remember { mutableStateOf<String?>(null) }
+    var pendingWallpaperChoice by remember { mutableStateOf<File?>(null) }
     val personalImagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
@@ -85,13 +86,11 @@ fun WallpaperPickerScreen(
             scope.launch {
                 imageStatus = "Preparing image..."
                 val localUri = importCiyatoImage(context, uri)
-                imageStatus = if (localUri != null) {
-                    viewModel.setCiyatoImageWallpaper(localUri.toString())
-                    viewModel.setCiyatoVideoWallpaper("")
-                    viewModel.setUseSystemWallpaper(false)
-                    "Personal image is now the Ciyato background. Adjust its framing below."
+                if (localUri != null) {
+                    imageStatus = null
+                    pendingWallpaperChoice = localUri.path?.let(::File)
                 } else {
-                    "Ciyato could not prepare that image."
+                    imageStatus = "Ciyato could not prepare that image."
                 }
             }
         }
@@ -338,6 +337,74 @@ fun WallpaperPickerScreen(
 
             Spacer(Modifier.height(32.dp))
         }
+    }
+
+    pendingWallpaperChoice?.let { file ->
+        AlertDialog(
+            onDismissRequest = { pendingWallpaperChoice = null },
+            containerColor = CiyatoBgEl,
+            title = { Text("Apply this image to", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        "Choose where the image should appear. Ciyato's own background always mirrors your Home screen choice.",
+                        color = CiyatoMuted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    TextButton(
+                        onClick = {
+                            viewModel.setCiyatoImageWallpaper(Uri.fromFile(file).toString())
+                            viewModel.setCiyatoVideoWallpaper("")
+                            viewModel.setUseSystemWallpaper(false)
+                            scope.launch(Dispatchers.IO) { applyImageToSystemWallpaper(context, file, WallpaperTarget.HOME) }
+                            imageStatus = "Applied to your Home screen."
+                            pendingWallpaperChoice = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Home screen", color = CiyatoWhite, modifier = Modifier.fillMaxWidth()) }
+                    TextButton(
+                        onClick = {
+                            scope.launch(Dispatchers.IO) { applyImageToSystemWallpaper(context, file, WallpaperTarget.LOCK) }
+                            imageStatus = "Applied to your Lock screen."
+                            pendingWallpaperChoice = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Lock screen", color = CiyatoWhite, modifier = Modifier.fillMaxWidth()) }
+                    TextButton(
+                        onClick = {
+                            viewModel.setCiyatoImageWallpaper(Uri.fromFile(file).toString())
+                            viewModel.setCiyatoVideoWallpaper("")
+                            viewModel.setUseSystemWallpaper(false)
+                            scope.launch(Dispatchers.IO) { applyImageToSystemWallpaper(context, file, WallpaperTarget.BOTH) }
+                            imageStatus = "Applied to both Home and Lock screen."
+                            pendingWallpaperChoice = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Both", color = CiyatoGold, modifier = Modifier.fillMaxWidth()) }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { pendingWallpaperChoice = null }) { Text("Cancel", color = CiyatoSec) }
+            },
+        )
+    }
+}
+
+private enum class WallpaperTarget { HOME, LOCK, BOTH }
+
+/** Pushes the image to the real Android wallpaper (visible system-wide, unlike
+ *  Ciyato's own in-app background) for the chosen surface(s). */
+private fun applyImageToSystemWallpaper(context: android.content.Context, file: File, target: WallpaperTarget) {
+    runCatching {
+        val wm = WallpaperManager.getInstance(context)
+        val flags = when (target) {
+            WallpaperTarget.HOME -> WallpaperManager.FLAG_SYSTEM
+            WallpaperTarget.LOCK -> WallpaperManager.FLAG_LOCK
+            WallpaperTarget.BOTH -> WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK
+        }
+        file.inputStream().use { input -> wm.setStream(input, null, true, flags) }
     }
 }
 

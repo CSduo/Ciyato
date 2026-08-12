@@ -27,6 +27,18 @@ import kotlin.math.abs
 class DirectionalNestedScrollConnection : NestedScrollConnection {
     private var isVerticalDirection: Boolean? = null
 
+    /**
+     * Must be called on every fresh touch-down (see [directionResetPointerInput]).
+     * [onPostFling] alone isn't enough — a deliberate drag that ends without
+     * enough velocity to fling never fires it, leaving the previous gesture's
+     * direction classification stale. The very next swipe then inherits that
+     * stale lock and can have its own motion silently eaten, which is exactly
+     * what makes page swipes feel like they "don't register" sometimes.
+     */
+    fun reset() {
+        isVerticalDirection = null
+    }
+
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
         val absX = abs(available.x)
         val absY = abs(available.y)
@@ -70,6 +82,20 @@ class DirectionalNestedScrollConnection : NestedScrollConnection {
 fun rememberDirectionalNestedScrollConnection(): DirectionalNestedScrollConnection {
     return remember { DirectionalNestedScrollConnection() }
 }
+
+/**
+ * Resets [connection]'s direction lock on every new touch-down, using
+ * [PointerEventPass.Initial] so it fires before the pager/column's own
+ * gesture detectors see the event — non-consuming, so it never blocks them.
+ * Pair with `.nestedScroll(connection)` on the same modifier chain.
+ */
+fun Modifier.directionResetPointerInput(connection: DirectionalNestedScrollConnection): Modifier =
+    this.pointerInput(connection) {
+        awaitEachGesture {
+            awaitFirstDown(pass = PointerEventPass.Initial)
+            connection.reset()
+        }
+    }
 
 /**
  * Directional Touch Lock Modifier

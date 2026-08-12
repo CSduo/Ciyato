@@ -1,8 +1,8 @@
 package com.ciyato.launcher
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -23,6 +23,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.fragment.app.FragmentActivity
 import androidx.navigation.navArgument
 import com.ciyato.launcher.data.AppCategory
 import com.ciyato.launcher.data.CrashReporter
@@ -50,7 +51,9 @@ import kotlinx.coroutines.launch
  *   weather_detail          →  Live weather (Open-Meteo)
  *   agenda                  →  Agenda / Today
  */
-class MainActivity : ComponentActivity() {
+// FragmentActivity, not plain ComponentActivity — see LauncherHomeActivity for why
+// (androidx BiometricPrompt requires a FragmentActivity host).
+class MainActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_START_DESTINATION = "start_destination"
@@ -114,6 +117,18 @@ class MainActivity : ComponentActivity() {
                     if (LocationHelper.hasPermission(context)) {
                         viewModel.fetchWeather(context)
                     }
+                }
+
+                // NavHost's own back handling auto-disables once there's nothing
+                // left to pop (e.g. at a bottom-nav root like Settings), letting
+                // this fallback fire. Without it, that back press falls through to
+                // the system default — finish() — which destroys every bit of
+                // Compose state (scroll position, in-progress edits, which screen
+                // you were on). Minimizing instead keeps the task alive, so
+                // reopening Ciyato (icon tap or Recents) resumes exactly where
+                // you left off instead of resetting to the first tab.
+                BackHandler {
+                    (context as? android.app.Activity)?.moveTaskToBack(true)
                 }
 
                 val currentBackStackEntry by navController.currentBackStackEntryAsState()

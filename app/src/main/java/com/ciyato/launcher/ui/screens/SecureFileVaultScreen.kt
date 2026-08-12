@@ -46,6 +46,7 @@ fun SecureFileVaultScreen(
 ) {
     val context = LocalContext.current
     var isUnlocked by remember { mutableStateOf(false) }
+    var authError by remember { mutableStateOf<String?>(null) }
     var vaultFiles by remember { mutableStateOf<List<String>>(emptyList()) }
 
     val vaultDir = remember {
@@ -67,7 +68,14 @@ fun SecureFileVaultScreen(
             loadVaultFiles()
             return
         }
-        val activity = context as? FragmentActivity ?: run { isUnlocked = true; loadVaultFiles(); return }
+        // Fail CLOSED. This previously did `isUnlocked = true; loadVaultFiles()`,
+        // and because the host was a bare ComponentActivity the cast always
+        // failed — so the "secure" vault silently opened itself, every time, with
+        // no authentication at all. A vault that can't verify you must stay shut.
+        val activity = context.findFragmentActivity() ?: run {
+            authError = "Secure prompt unavailable — vault stays locked."
+            return
+        }
         BiometricPrompt(activity, ContextCompat.getMainExecutor(context),
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -138,7 +146,10 @@ fun SecureFileVaultScreen(
                         Icon(Icons.Default.Lock, null, tint = CiyatoGold, modifier = Modifier.size(64.dp))
                         Text("Vault Locked", color = CiyatoWhite, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                         Text("Authenticate to access encrypted files", color = CiyatoMuted)
-                        Button(onClick = { authenticate() },
+                        authError?.let { message ->
+                            Text(message, color = Color(0xFFEF4444), fontSize = 13.sp)
+                        }
+                        Button(onClick = { authError = null; authenticate() },
                             colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold)) {
                             Text("Unlock", color = Color.Black, fontWeight = FontWeight.SemiBold)
                         }

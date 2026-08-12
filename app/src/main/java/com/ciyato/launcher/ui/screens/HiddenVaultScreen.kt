@@ -44,7 +44,7 @@ fun HiddenVaultScreen(
 ) {
     val context = LocalContext.current
     val hiddenAppsStr by viewModel.hiddenApps.collectAsState()
-    val allApps by viewModel.apps.collectAsState()
+    val allApps by viewModel.allApps.collectAsState()
 
     var isUnlocked by remember { mutableStateOf(false) }
     var isBiometricUnavailable by remember { mutableStateOf(false) }
@@ -65,8 +65,11 @@ fun HiddenVaultScreen(
             isUnlocked = true
             return
         }
-        val activity = context as? FragmentActivity ?: run {
-            isUnlocked = true
+        // Fail CLOSED — this used to set `isUnlocked = true`, and since the host
+        // was a bare ComponentActivity the cast always failed, so the hidden-apps
+        // vault revealed itself without any authentication at all.
+        val activity = context.findFragmentActivity() ?: run {
+            isBiometricUnavailable = true
             return
         }
         val prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(context),

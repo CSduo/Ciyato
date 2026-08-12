@@ -26,24 +26,29 @@ object VideoThumbnailHelper {
     /** Extract a single frame from a video URI as a Bitmap. */
     suspend fun extractThumbnail(context: Context, uri: Uri, timeUs: Long = 1_000_000L): Bitmap? =
         withContext(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
             try {
-                val retriever = MediaMetadataRetriever()
                 retriever.setDataSource(context, uri)
-                val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            } catch (_: Exception) {
+                null
+            } finally {
                 retriever.release()
-                frame
-            } catch (_: Exception) { null }
+            }
         }
 
     /** Get video duration in milliseconds. */
     fun getDurationMs(context: Context, uri: Uri): Long {
+        val retriever = MediaMetadataRetriever()
         return try {
-            val retriever = MediaMetadataRetriever()
             retriever.setDataSource(context, uri)
             val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            retriever.release()
             durationStr?.toLongOrNull() ?: 0L
-        } catch (_: Exception) { 0L }
+        } catch (_: Exception) {
+            0L
+        } finally {
+            retriever.release()
+        }
     }
 
     /** Format duration as "mm:ss". */
