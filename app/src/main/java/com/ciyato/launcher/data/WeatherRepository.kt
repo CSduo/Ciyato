@@ -1,10 +1,9 @@
 package com.ciyato.launcher.data
 
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
-import java.net.URL
 
 /**
  * WeatherRepository — live weather via Open-Meteo + Nominatim.
@@ -43,6 +42,10 @@ object WeatherRepository {
             val hourly       : List<HourlyEntry>,
             val daily        : List<DailyEntry>,
             val aqi          : AqiData?,
+            /** True when this is a cached snapshot served because a live fetch just failed. */
+            val isStale      : Boolean = false,
+            /** When [isStale], the time (epoch millis) this snapshot was actually fetched. */
+            val cachedAtMillis: Long? = null,
         ) : WeatherState()
     }
 
@@ -71,20 +74,27 @@ object WeatherRepository {
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    /** Fetch full weather bundle. Retries up to 3× with exponential backoff (118). */
+    /**
+     * Fetch full weather bundle. Each underlying HTTP call retries transient
+     * failures internally via [NetworkClient] (up to 3× with exponential
+     * backoff, suggestion 118) — this function itself makes exactly one pass
+     * over that already-retried result, so a non-transient failure (e.g. a
+     * malformed response) doesn't get retried 3 more times for nothing.
+     */
     suspend fun fetchWeather(lat: Double, lon: Double): WeatherState =
         withContext(Dispatchers.IO) {
-            retryWithBackoff(maxAttempts = 3) {
-                try {
-                    val forecast  = fetchForecastJson(lat, lon)
-                    val aqiJson   = runCatching { fetchAqiJson(lat, lon) }.getOrNull()
-                    val cityName  = fetchCityName(lat, lon)
-                    parseForecast(forecast, aqiJson, cityName)
-                } catch (e: java.net.UnknownHostException) {
-                    WeatherState.Offline
-                } catch (e: Exception) {
-                    WeatherState.Error("${e.javaClass.simpleName}: ${e.message?.take(80)}")
-                }
+            try {
+                val forecast = fetchForecastJson(lat, lon)
+                // AQI is supplementary: if it fails, the rest of the forecast
+                // is still correct and useful, so its failure is intentionally
+                // discarded here rather than sinking the whole weather result.
+                val aqiJson = runCatching { fetchAqiJson(lat, lon) }.getOrNull()
+                val cityName = fetchCityName(lat, lon)
+                parseForecast(forecast, aqiJson, cityName)
+            } catch (e: java.net.UnknownHostException) {
+                WeatherState.Offline
+            } catch (e: Exception) {
+                WeatherState.Error("${e.javaClass.simpleName}: ${e.message?.take(80)}")
             }
         }
 
@@ -197,9 +207,9 @@ object WeatherRepository {
         else -> 0xFF9C27B0
     }
 
-    // ── HTTP helpers ──────────────────────────────────────────────────────────
+    // ── HTTP helpers — all timeout/retry logic lives in NetworkClient ──────────
 
-    private fun fetchForecastJson(lat: Double, lon: Double): JSONObject {
+    private suspend fun fetchForecastJson(lat: Double, lon: Double): JSONObject {
         val url = buildString {
             append("https://api.open-meteo.com/v1/forecast")
             append("?latitude=$lat&longitude=$lon")
@@ -210,57 +220,31 @@ object WeatherRepository {
             append(",uv_index_max,precipitation_probability_max")
             append("&timezone=auto&forecast_days=7")
         }
-        return JSONObject(fetchString(url))
+        return JSONObject(NetworkClient.fetchText(url))
     }
 
-    private fun fetchAqiJson(lat: Double, lon: Double): JSONObject {
+    private suspend fun fetchAqiJson(lat: Double, lon: Double): JSONObject {
         val url = buildString {
             append("https://air-quality-api.open-meteo.com/v1/air-quality")
             append("?latitude=$lat&longitude=$lon")
             append("&current=pm10,pm2_5,european_aqi")
         }
-        return JSONObject(fetchString(url))
+        return JSONObject(NetworkClient.fetchText(url))
     }
 
-    private fun fetchCityName(lat: Double, lon: Double): String = try {
+    private suspend fun fetchCityName(lat: Double, lon: Double): String = try {
         val url  = "https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon&zoom=10"
-        val json = JSONObject(fetchString(url, mapOf("User-Agent" to "Ciyato Launcher/1.0 (Android)")))
+        val json = JSONObject(NetworkClient.fetchText(url, mapOf("User-Agent" to "Ciyato Launcher/1.0 (Android)")))
         val addr = json.optJSONObject("address")
         listOf("city", "town", "village", "county").firstNotNullOfOrNull { k ->
             addr?.optString(k)?.takeIf { it.isNotBlank() }
         } ?: json.optString("display_name")?.split(",")?.first()?.trim() ?: "Your Location"
-    } catch (_: Exception) { "Your Location" }
-
-    private fun fetchString(url: String, headers: Map<String, String> = emptyMap()): String {
-        val conn = (URL(url).openConnection() as java.net.HttpURLConnection).apply {
-            connectTimeout = 8_000
-            readTimeout    = 8_000
-            headers.forEach { (k, v) -> setRequestProperty(k, v) }
-        }
-        if (conn.responseCode >= 400) {
-            val errorBody = conn.errorStream?.use { it.bufferedReader().readText() } ?: "HTTP Error ${conn.responseCode}"
-            throw Exception("HTTP ${conn.responseCode}: $errorBody")
-        }
-        // use{} guarantees the socket stream is closed even on parse failure —
-        // otherwise every fetch leaked a file descriptor.
-        return conn.getInputStream().use { it.bufferedReader().readText() }
-    }
-
-    // ── Retry helper (suggestion 118) ─────────────────────────────────────────
-
-    private suspend fun retryWithBackoff(
-        maxAttempts: Int,
-        block: suspend () -> WeatherState,
-    ): WeatherState {
-        var lastResult: WeatherState = WeatherState.Error("No attempts made")
-        repeat(maxAttempts) { attempt ->
-            lastResult = block()
-            if (lastResult is WeatherState.Success || lastResult is WeatherState.Offline ||
-                lastResult is WeatherState.NoPermission) return lastResult
-            // Don't sleep after the final attempt — that delay is pure dead time.
-            if (attempt < maxAttempts - 1) delay((1_000L shl attempt)) // 1s, 2s, 4s
-        }
-        return lastResult
+    } catch (_: Exception) {
+        // Reverse geocoding is cosmetic (just the display label) — the
+        // coordinates-based forecast above is unaffected by this failing, so
+        // falling back to an honest generic label beats sinking the whole
+        // weather result over a geocoder hiccup.
+        "Your Location"
     }
 
     // ── Parsing ───────────────────────────────────────────────────────────────
@@ -377,5 +361,119 @@ object WeatherRepository {
             val cal = java.util.Calendar.getInstance().apply { time = parsedDate }
             java.text.SimpleDateFormat("EEE", java.util.Locale.US).format(cal.time)
         } catch (_: Exception) { isoDate }
+    }
+}
+
+// ── Offline cache (suggestions 116/117) ─────────────────────────────────────
+//
+// Persists the fields needed to redraw the full weather UI (not just the
+// temperature) so that when a live fetch fails, the caller (LauncherViewModel,
+// which owns the DataStore) can show the last real snapshot instead of a bare
+// "offline" screen — clearly marked stale via [WeatherRepository.WeatherState.Success.isStale].
+// Top-level (not nested in the object) so callers can use it as a plain extension.
+
+fun WeatherRepository.WeatherState.Success.toCacheJson(): String {
+    val root = JSONObject()
+    root.put("tempC", tempC)
+    root.put("feelsLikeC", feelsLikeC)
+    root.put("highC", highC)
+    root.put("lowC", lowC)
+    root.put("condition", condition)
+    root.put("weatherCode", weatherCode)
+    root.put("windKmh", windKmh)
+    root.put("windDirectionDeg", windDirectionDeg)
+    root.put("humidity", humidity)
+    root.put("locationName", locationName)
+    root.put("isDay", isDay)
+    root.put("uvIndex", uvIndex)
+    root.put("sunrise", sunrise)
+    root.put("sunset", sunset)
+    root.put("hourly", JSONArray().apply {
+        hourly.forEach { h ->
+            put(JSONObject().apply {
+                put("timeLabel", h.timeLabel)
+                put("tempC", h.tempC)
+                put("weatherCode", h.weatherCode)
+                put("rainPct", h.rainPct)
+                put("isDay", h.isDay)
+            })
+        }
+    })
+    root.put("daily", JSONArray().apply {
+        daily.forEach { d ->
+            put(JSONObject().apply {
+                put("dayLabel", d.dayLabel)
+                put("highC", d.highC)
+                put("lowC", d.lowC)
+                put("weatherCode", d.weatherCode)
+                put("uvIndexMax", d.uvIndexMax)
+                put("rainPct", d.rainPct)
+            })
+        }
+    })
+    aqi?.let {
+        root.put("aqi", JSONObject().apply {
+            put("pm25", it.pm25)
+            put("pm10", it.pm10)
+            put("aqiEu", it.aqiEu)
+        })
+    }
+    return root.toString()
+}
+
+/** Restores a cached snapshot for offline/error display, marked [WeatherRepository.WeatherState.Success.isStale]. */
+fun weatherStateFromCacheJson(json: String, cachedAtMillis: Long): WeatherRepository.WeatherState.Success? {
+    if (json.isBlank()) return null
+    return try {
+        val root = JSONObject(json)
+        val hourlyArr = root.optJSONArray("hourly")
+        val dailyArr = root.optJSONArray("daily")
+        WeatherRepository.WeatherState.Success(
+            tempC = root.getInt("tempC"),
+            feelsLikeC = root.getInt("feelsLikeC"),
+            highC = root.getInt("highC"),
+            lowC = root.getInt("lowC"),
+            condition = root.getString("condition"),
+            weatherCode = root.getInt("weatherCode"),
+            windKmh = root.getDouble("windKmh"),
+            windDirectionDeg = root.getInt("windDirectionDeg"),
+            humidity = root.getInt("humidity"),
+            locationName = root.getString("locationName"),
+            isDay = root.getBoolean("isDay"),
+            uvIndex = root.getDouble("uvIndex"),
+            sunrise = root.getString("sunrise"),
+            sunset = root.getString("sunset"),
+            hourly = (0 until (hourlyArr?.length() ?: 0)).map { i ->
+                val h = hourlyArr!!.getJSONObject(i)
+                WeatherRepository.HourlyEntry(
+                    timeLabel = h.getString("timeLabel"),
+                    tempC = h.getInt("tempC"),
+                    weatherCode = h.getInt("weatherCode"),
+                    rainPct = h.getInt("rainPct"),
+                    isDay = h.getBoolean("isDay"),
+                )
+            },
+            daily = (0 until (dailyArr?.length() ?: 0)).map { i ->
+                val d = dailyArr!!.getJSONObject(i)
+                WeatherRepository.DailyEntry(
+                    dayLabel = d.getString("dayLabel"),
+                    highC = d.getInt("highC"),
+                    lowC = d.getInt("lowC"),
+                    weatherCode = d.getInt("weatherCode"),
+                    uvIndexMax = d.getDouble("uvIndexMax"),
+                    rainPct = d.getInt("rainPct"),
+                )
+            },
+            aqi = root.optJSONObject("aqi")?.let {
+                WeatherRepository.AqiData(pm25 = it.getDouble("pm25"), pm10 = it.getDouble("pm10"), aqiEu = it.getInt("aqiEu"))
+            },
+            isStale = true,
+            cachedAtMillis = cachedAtMillis,
+        )
+    } catch (_: Exception) {
+        // Corrupt or old-format cache (e.g. from a previous app version) — there
+        // is nothing useful to recover, so the caller falls back to its normal
+        // honest offline/error state instead of crashing on garbage input.
+        null
     }
 }

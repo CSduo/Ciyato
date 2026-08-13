@@ -297,8 +297,16 @@ private fun WeatherCardSuccess(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(ws.locationName, color = CiyatoMuted, fontSize = (subtextSz.value - 1).sp, maxLines = 1)
-            Box(modifier = Modifier.size(6.dp).clip(androidx.compose.foundation.shape.CircleShape).background(CiyatoGreen))
+            Text(
+                if (ws.isStale) "${ws.locationName} · Saved" else ws.locationName,
+                color = CiyatoMuted, fontSize = (subtextSz.value - 1).sp, maxLines = 1,
+            )
+            // Green = live data just fetched; amber = a saved snapshot shown
+            // because the last live fetch failed. Never the same dot for both.
+            Box(
+                modifier = Modifier.size(6.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(if (ws.isStale) CiyatoAmber else CiyatoGreen)
+            )
         }
     }
 }

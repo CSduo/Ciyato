@@ -185,6 +185,7 @@ fun WeatherDetailScreen(
                             WeatherInfoCard(Icons.Default.CloudOff, "Connection error", state.message, "Retry", onRefresh)
                         }
                         is WeatherState.Success -> {
+                            if (state.isStale) item { StaleWeatherBanner(state.cachedAtMillis, onRefresh) }
                             item { WeatherHeroCard(state, useFahrenheit) }
                             item { WeatherHighlightsRow(state, useFahrenheit) }
                             if (state.hourly.isNotEmpty()) {
@@ -388,6 +389,46 @@ private fun WeatherLoadingCard() {
             CircularProgressIndicator(color = CiyatoGold, strokeWidth = 3.dp, modifier = Modifier.size(48.dp))
             Text("Fetching local weather…", color = CiyatoSec, fontSize = 14.sp)
         }
+    }
+}
+
+// ─── Stale-cache banner ───────────────────────────────────────────────────────
+// Shown only when the weather on screen is a saved snapshot served because the
+// live fetch just failed — never rendered silently as if it were fresh.
+
+@Composable
+private fun StaleWeatherBanner(cachedAtMillis: Long?, onRefresh: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .background(CiyatoAmber.copy(alpha = 0.12f))
+            .border(1.dp, CiyatoAmber.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(Icons.Default.CloudOff, null, tint = CiyatoAmber, modifier = Modifier.size(18.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Showing saved weather", color = CiyatoWhite, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                "From ${formatRelativeAge(cachedAtMillis)} — couldn't reach the weather service",
+                color = CiyatoMuted, fontSize = 11.sp,
+            )
+        }
+        TextButton(onClick = onRefresh) {
+            Text("Retry", color = CiyatoAmber, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+        }
+    }
+}
+
+private fun formatRelativeAge(millis: Long?): String {
+    if (millis == null) return "earlier"
+    val ageMs = (System.currentTimeMillis() - millis).coerceAtLeast(0)
+    val minutes = ageMs / 60_000
+    return when {
+        minutes < 1  -> "just now"
+        minutes < 60 -> "$minutes min ago"
+        minutes < 24 * 60 -> "${minutes / 60} h ago"
+        else -> "${minutes / (24 * 60)} d ago"
     }
 }
 

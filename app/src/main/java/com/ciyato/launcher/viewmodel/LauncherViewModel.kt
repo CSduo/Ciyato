@@ -8,6 +8,7 @@ import android.provider.MediaStore
 import android.view.Window
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.ciyato.launcher.BuildConfig
 import com.ciyato.launcher.data.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -147,7 +148,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val crashReporting     = settings.crashReporting     .stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val biometricLock      = settings.biometricLock      .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val appLockTimerMin    = settings.appLockTimerMin    .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
-    val networkCallLog     = settings.networkCallLog     .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     val useSystemWallpaper = settings.useSystemWallpaper.stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val ciyatoVideoWallpaper = settings.ciyatoVideoWallpaper.stateIn(viewModelScope, SharingStarted.Eagerly, "")
@@ -234,7 +234,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun setCrashReporting(v: Boolean)     = viewModelScope.launch { settings.setCrashReporting(v) }
     fun setBiometricLock(v: Boolean)      = viewModelScope.launch { settings.setBiometricLock(v) }
     fun setAppLockTimerMin(v: Int)        = viewModelScope.launch { settings.setAppLockTimerMin(v) }
-    fun setNetworkCallLog(v: Boolean)     = viewModelScope.launch { settings.setNetworkCallLog(v) }
     fun setShowRecentlyLaunched(v: Boolean)= viewModelScope.launch { settings.setShowRecentlyLaunched(v) }
 
     fun setUseSystemWallpaper(v: Boolean)  = viewModelScope.launch { settings.setUseSystemWallpaper(v) }
@@ -1345,13 +1344,25 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     )
     val weatherState: StateFlow<WeatherRepository.WeatherState> = _weatherState.asStateFlow()
 
-    private val WEATHER_CACHE_TTL_MS = 30 * 60 * 1_000L  // 30 minutes (Suggestion 116)
-
+    /**
+     * Fetches weather, using the persisted cache both as a TTL-based "don't
+     * refetch yet" short-circuit AND, on a genuine network failure, as a
+     * last-known-good snapshot so the user sees real (if stale) numbers
+     * instead of a bare failure screen. See [applyWeatherResult].
+     */
     fun fetchWeather(context: Context) {
         viewModelScope.launch {
-            val cacheAt  = settings.weatherCacheAt.first()
-            val cacheAge = System.currentTimeMillis() - cacheAt
-            if (cacheAge < WEATHER_CACHE_TTL_MS && _weatherState.value is WeatherRepository.WeatherState.Success) {
+            val cacheJson = settings.weatherCacheJson.first()
+            val cacheAt   = settings.weatherCacheAt.first()
+            val cacheAge  = System.currentTimeMillis() - cacheAt
+            val cached    = weatherStateFromCacheJson(cacheJson, cacheAt)
+
+            // Fresh cache (within TTL) is painted instantly and marked NOT
+            // stale — covers both "already fetched this session" and "cold
+            // start with a recent snapshot still on disk", neither of which
+            // needs a network round trip.
+            if (cached != null && cacheAge < BuildConfig.WEATHER_CACHE_TTL_MS) {
+                _weatherState.value = cached.copy(isStale = false, cachedAtMillis = null)
                 return@launch
             }
 
@@ -1364,16 +1375,19 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 WeatherRepository.WeatherState.NoLocation
             }
-            _weatherState.value = result
-            if (result is WeatherRepository.WeatherState.Success) {
-                settings.setWeatherCache("cached")
-            }
+            applyWeatherResult(result, cached)
         }
     }
 
     fun forceRefreshWeather(context: Context) {
         viewModelScope.launch {
-            settings.clearWeatherCache()
+            // Deliberately does NOT clear the cache first: if the forced
+            // refresh itself fails, the last known-good snapshot is still
+            // there to fall back to (stale-labeled) instead of losing it.
+            val cacheJson = settings.weatherCacheJson.first()
+            val cacheAt   = settings.weatherCacheAt.first()
+            val cached    = weatherStateFromCacheJson(cacheJson, cacheAt)
+
             if (_weatherState.value !is WeatherRepository.WeatherState.Success) {
                 _weatherState.value = WeatherRepository.WeatherState.Loading
             }
@@ -1382,10 +1396,33 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 WeatherRepository.fetchWeather(loc.lat, loc.lon)
             else
                 WeatherRepository.WeatherState.NoLocation
-            _weatherState.value = refreshed
-            if (refreshed is WeatherRepository.WeatherState.Success) {
-                settings.setWeatherCache("cached")
+            applyWeatherResult(refreshed, cached)
+        }
+    }
+
+    /**
+     * On [result] Success: persists a real cache snapshot (the previous code
+     * wrote the literal string "cached" — a debounce flag with no actual
+     * data, useless for offline display). On Offline/Error: falls back to
+     * [cached] (already marked stale by [weatherStateFromCacheJson]) so a
+     * transient outage shows last-known weather instead of a blank failure
+     * card — but only when we truly have something to fall back to; with no
+     * cache the honest Offline/Error state passes through unchanged.
+     * NoLocation/NoPermission are not network failures and pass through as-is —
+     * showing stale weather there would misrepresent why nothing loaded.
+     */
+    private suspend fun applyWeatherResult(
+        result: WeatherRepository.WeatherState,
+        cached: WeatherRepository.WeatherState.Success?,
+    ) {
+        _weatherState.value = when (result) {
+            is WeatherRepository.WeatherState.Success -> {
+                settings.setWeatherCache(result.toCacheJson())
+                result
             }
+            is WeatherRepository.WeatherState.Offline,
+            is WeatherRepository.WeatherState.Error -> cached ?: result
+            else -> result
         }
     }
 

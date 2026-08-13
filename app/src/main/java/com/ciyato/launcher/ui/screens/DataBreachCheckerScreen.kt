@@ -17,16 +17,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.data.NetworkClient
 import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
+import kotlinx.coroutines.withContext
+import java.net.UnknownHostException
 import java.security.MessageDigest
 
 /**
@@ -39,6 +37,12 @@ import java.security.MessageDigest
 sealed class BreachResult {
     data class Found(val count: Int) : BreachResult()
     object NotFound : BreachResult()
+}
+
+/** Distinguishes "we have an answer" from "the check itself failed" — never collapsed into one. */
+private sealed class CheckOutcome {
+    data class Answered(val result: BreachResult) : CheckOutcome()
+    data class Failed(val reason: String) : CheckOutcome()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,29 +58,30 @@ fun DataBreachCheckerScreen(
     var result by remember { mutableStateOf<BreachResult?>(null) }
     var error by remember { mutableStateOf("") }
 
-    suspend fun checkPassword(pw: String): BreachResult? {
-        if (pw.isBlank()) return null
-        return withContext(Dispatchers.IO) {
-            try {
-                val sha1 = sha1(pw).uppercase()
-                val prefix = sha1.take(5)
-                val suffix = sha1.drop(5)
-                val url = URL("https://api.pwnedpasswords.com/range/$prefix")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.setRequestProperty("User-Agent", "Ciyato-Launcher")
-                conn.connectTimeout = 10_000
-                conn.readTimeout = 10_000
-                val responseCode = conn.responseCode
-                if (responseCode != 200) return@withContext null
-                val lines = BufferedReader(InputStreamReader(conn.inputStream)).readLines()
-                val match = lines.firstOrNull { it.startsWith(suffix, ignoreCase = true) }
-                if (match != null) {
-                    val count = match.substringAfter(":").trim().toIntOrNull() ?: 0
-                    BreachResult.Found(count)
-                } else {
-                    BreachResult.NotFound
-                }
-            } catch (_: Exception) { null }
+    suspend fun checkPassword(pw: String): CheckOutcome = withContext(Dispatchers.IO) {
+        val sha1 = sha1(pw).uppercase()
+        val prefix = sha1.take(5)
+        val suffix = sha1.drop(5)
+        try {
+            // NetworkClient handles the timeout + retry-on-transient-failure
+            // policy and always closes the connection, even on error.
+            val body = NetworkClient.fetchText(
+                "https://api.pwnedpasswords.com/range/$prefix",
+                headers = mapOf("User-Agent" to "Ciyato-Launcher"),
+            )
+            val match = body.lineSequence().firstOrNull { it.startsWith(suffix, ignoreCase = true) }
+            val breachResult = if (match != null) {
+                BreachResult.Found(match.substringAfter(":").trim().toIntOrNull() ?: 0)
+            } else {
+                BreachResult.NotFound
+            }
+            CheckOutcome.Answered(breachResult)
+        } catch (_: UnknownHostException) {
+            CheckOutcome.Failed("You're offline. Check your connection and try again.")
+        } catch (e: NetworkClient.HttpStatusException) {
+            CheckOutcome.Failed("The breach-check service returned an error (HTTP ${e.code}). Try again shortly.")
+        } catch (_: Exception) {
+            CheckOutcome.Failed("Could not reach the breach-check service. Try again.")
         }
     }
 
@@ -141,9 +146,10 @@ fun DataBreachCheckerScreen(
                     result = null
                     error = ""
                     scope.launch {
-                        val r = checkPassword(password)
-                        result = r
-                        if (r == null) error = "Could not reach server. Check your connection."
+                        when (val outcome = checkPassword(password)) {
+                            is CheckOutcome.Answered -> result = outcome.result
+                            is CheckOutcome.Failed   -> error = outcome.reason
+                        }
                         isChecking = false
                     }
                 },

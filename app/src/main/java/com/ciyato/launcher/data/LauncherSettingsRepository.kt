@@ -39,7 +39,6 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore("ciyato_se
  *  137 Hidden apps with PIN
  *  138 Privacy mode
  *  141 App lock timer
- *  143 Certificate pinning toggle
  *  144 Crash reporting
  *  145 Anti-screenshot flag
  */
@@ -130,11 +129,17 @@ class LauncherSettingsRepository(private val context: Context) {
         val KEY_APP_LOCK_TIMER_MIN     = intPreferencesKey("app_lock_timer_min")     // 0 = immediate
         val KEY_APP_LOCK_PACKAGES      = stringPreferencesKey("app_lock_packages")   // JSON set of pkgs
 
-        // ── Privacy & Security (#138, #143, #144, #145) ───────────────────────
+        // ── Privacy & Security (#138, #144, #145) ─────────────────────────────
+        // #143 KEY_CERT_PINNING lived here plus the matching BuildConfig flag in
+        // app/build.gradle.kts, but neither was ever read by anything — a
+        // security toggle with no wiring behind it. Removed as part of the
+        // cert-pinning decision documented in build.gradle.kts: pinning was
+        // rejected for the app's actual hosts (all serve short-lived automated
+        // CA certs with no in-app pin-update path), so there is nothing this
+        // toggle could honestly control.
         val KEY_PRIVACY_MODE           = booleanPreferencesKey("privacy_mode")
         val KEY_SCREENSHOT_BLOCKED     = booleanPreferencesKey("screenshot_blocked")
         val KEY_CRASH_REPORTING        = booleanPreferencesKey("crash_reporting")
-        val KEY_CERT_PINNING           = booleanPreferencesKey("cert_pinning")
 
         // ── Cloud & Backup (#120, #125) ───────────────────────────────────────
         val KEY_OTA_CHECK_ENABLED      = booleanPreferencesKey("ota_check_enabled")
@@ -144,8 +149,9 @@ class LauncherSettingsRepository(private val context: Context) {
         // ── App recommendations (#123) ────────────────────────────────────────
         val KEY_APP_RECOMMENDATIONS    = booleanPreferencesKey("app_recommendations")
 
-        // ── Network call log (#142) ───────────────────────────────────────────
-        val KEY_NETWORK_CALL_LOG       = booleanPreferencesKey("network_call_log")
+        // #142 KEY_NETWORK_CALL_LOG (and the OkHttp logging-interceptor dependency
+        // it implied) was declared but never read by any screen and never wired
+        // to a logging client — removed alongside #143 above for the same reason.
 
         // ── Debug (#113) ──────────────────────────────────────────────────────
         val KEY_DEBUG_WEATHER_STUB     = booleanPreferencesKey("debug_weather_stub")
@@ -271,14 +277,12 @@ class LauncherSettingsRepository(private val context: Context) {
     val privacyMode:            Flow<Boolean> = pref(KEY_PRIVACY_MODE,            false)
     val screenshotBlocked:      Flow<Boolean> = pref(KEY_SCREENSHOT_BLOCKED,      false)
     val crashReporting:         Flow<Boolean> = pref(KEY_CRASH_REPORTING,         true)
-    val certPinning:            Flow<Boolean> = pref(KEY_CERT_PINNING,            true)
 
     val otaCheckEnabled:        Flow<Boolean> = pref(KEY_OTA_CHECK_ENABLED,       true)
     val backupWebDavUrl:        Flow<String>  = pref(KEY_BACKUP_WEBDAV_URL,       "")
     val backupEnabled:          Flow<Boolean> = pref(KEY_BACKUP_ENABLED,          false)
 
     val appRecommendations:     Flow<Boolean> = pref(KEY_APP_RECOMMENDATIONS,     true)
-    val networkCallLog:         Flow<Boolean> = pref(KEY_NETWORK_CALL_LOG,        false)
 
     val debugWeatherStub:       Flow<Boolean> = pref(KEY_DEBUG_WEATHER_STUB,      false)
     val debugLocationStub:      Flow<Boolean> = pref(KEY_DEBUG_LOCATION_STUB,     false)
@@ -397,14 +401,12 @@ class LauncherSettingsRepository(private val context: Context) {
     suspend fun setPrivacyMode(v: Boolean)             = set(KEY_PRIVACY_MODE,            v)
     suspend fun setScreenshotBlocked(v: Boolean)       = set(KEY_SCREENSHOT_BLOCKED,      v)
     suspend fun setCrashReporting(v: Boolean)          = set(KEY_CRASH_REPORTING,         v)
-    suspend fun setCertPinning(v: Boolean)             = set(KEY_CERT_PINNING,            v)
 
     suspend fun setOtaCheckEnabled(v: Boolean)         = set(KEY_OTA_CHECK_ENABLED,       v)
     suspend fun setBackupWebDavUrl(v: String)          = set(KEY_BACKUP_WEBDAV_URL,       v)
     suspend fun setBackupEnabled(v: Boolean)           = set(KEY_BACKUP_ENABLED,          v)
 
     suspend fun setAppRecommendations(v: Boolean)      = set(KEY_APP_RECOMMENDATIONS,     v)
-    suspend fun setNetworkCallLog(v: Boolean)          = set(KEY_NETWORK_CALL_LOG,        v)
 
     suspend fun setDebugWeatherStub(v: Boolean)        = set(KEY_DEBUG_WEATHER_STUB,      v)
     suspend fun setDebugLocationStub(v: Boolean)       = set(KEY_DEBUG_LOCATION_STUB,     v)

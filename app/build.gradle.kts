@@ -27,7 +27,22 @@ android {
         buildConfigField("long",    "WEATHER_CACHE_TTL_MS","1800000L")   // 30 min
         buildConfigField("int",     "MAX_CRASH_LOGS",      "10")
         buildConfigField("boolean", "IS_INTERNAL",         "false")
-        buildConfigField("boolean", "ENABLE_CERT_PINNING", "true")       // #143
+        // #143 ENABLE_CERT_PINNING was declared here and in both build types
+        // but never wired into any HTTP client — a security toggle that did
+        // nothing. Deliberately NOT implemented rather than left dead:
+        // every host this app calls (api.open-meteo.com, air-quality-api.
+        // open-meteo.com, nominatim.openstreetmap.org, api.pwnedpasswords.com)
+        // serves short-lived (~90 day) certs from an automated CA (Let's
+        // Encrypt / Google Trust Services) that rotate on their schedule, not
+        // ours. This app has no remote pin-update or forced-update path, so a
+        // hard pin would go stale on routine rotation and permanently break
+        // weather/geocoding/breach-check for every installed user until a new
+        // APK is manually reinstalled — a worse outcome than the MITM risk
+        // being defended against, especially since none of these calls carry
+        // secrets (weather/location are public; the breach check already
+        // sends only a 5-char hash prefix via k-anonymity). HTTPS-only
+        // (usesCleartextTraffic="false", see AndroidManifest.xml) plus system
+        // CA trust is the real, already-working protection here.
     }
 
     buildTypes {
@@ -43,12 +58,10 @@ android {
             // (see docs/SALE_HANDOVER.md) before publishing to Google Play.
             signingConfig = signingConfigs.getByName("debug")
             buildConfigField("boolean", "IS_INTERNAL",         "false")
-            buildConfigField("boolean", "ENABLE_CERT_PINNING", "true")
         }
         debug {
             isDebuggable = true
             buildConfigField("boolean", "IS_INTERNAL",         "true")
-            buildConfigField("boolean", "ENABLE_CERT_PINNING", "false")  // easier dev
         }
     }
 
@@ -108,10 +121,12 @@ dependencies {
     // WorkManager (#20, #34, #54, #125)
     implementation(libs.androidx.work.runtime.ktx)
 
-    // OkHttp (#143 cert pinning, #142 network log)
-    implementation(platform(libs.okhttp.bom))
-    implementation(libs.okhttp)
-    implementation(libs.okhttp.logging)
+    // NOTE: OkHttp (#143 cert pinning, #142 network log) was declared here but
+    // never imported anywhere in the source — cert pinning was rejected (see
+    // the comment above ENABLE_CERT_PINNING's old declaration in defaultConfig)
+    // and no network-logging interceptor was ever wired up either. Removed
+    // rather than kept as unused APK weight; every real network call already
+    // goes through data/NetworkClient.kt on top of java.net.HttpURLConnection.
 
     // Biometric (#136, #137)
     implementation(libs.androidx.biometric)
