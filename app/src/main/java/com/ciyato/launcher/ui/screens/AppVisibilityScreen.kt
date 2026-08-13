@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material3.Button
@@ -150,13 +151,29 @@ fun AppVisibilityScreen(
             if (filteredApps.isEmpty()) {
                 item {
                     Box(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 56.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            if (apps.isEmpty()) "No ${title.lowercase()}" else "No apps match \"$searchQuery\"",
-                            color = CiyatoMuted
-                        )
+                        if (apps.isEmpty()) {
+                            CiyatoEmptyState(
+                                icon = if (mode == AppVisibilityMode.Hidden) Icons.Default.VisibilityOff else Icons.Default.RemoveCircleOutline,
+                                title = "No ${title.lowercase()}",
+                                subtitle = if (mode == AppVisibilityMode.Hidden)
+                                    "Apps you hide from Home, categories, and search will show up here."
+                                else
+                                    "Apps you remove from Ciyato's launcher surfaces will show up here.",
+                                modifier = Modifier.padding(16.dp),
+                            )
+                        } else {
+                            CiyatoEmptyState(
+                                icon = Icons.Default.SearchOff,
+                                title = "No apps match \"$searchQuery\"",
+                                subtitle = "Try a different search term.",
+                                actionLabel = "Clear Search",
+                                onAction = { searchQuery = "" },
+                                modifier = Modifier.padding(16.dp),
+                            )
+                        }
                     }
                 }
             } else {

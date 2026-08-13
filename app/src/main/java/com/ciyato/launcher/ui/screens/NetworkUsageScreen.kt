@@ -1,11 +1,14 @@
 package com.ciyato.launcher.ui.screens
 
+import android.app.AppOpsManager
 import android.app.usage.NetworkStats
 import android.app.usage.NetworkStatsManager
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.os.Build
 import android.os.RemoteException
+import android.provider.Settings
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -21,9 +24,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.util.concurrent.TimeUnit
@@ -49,12 +55,32 @@ fun NetworkUsageScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    var hasPermission by remember { mutableStateOf(hasUsageStatsPermission(context)) }
     var stats by remember { mutableStateOf<List<AppNetworkStat>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(hasPermission) }
 
-    LaunchedEffect(Unit) {
-        stats = getNetworkStats(context)
-        isLoading = false
+    // NetworkStatsManager.querySummary requires the same "Usage access" special
+    // app-op as screen-time stats. Granting happens in system Settings, so
+    // re-check on resume rather than relying on a runtime permission callback.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasPermission = hasUsageStatsPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(hasPermission) {
+        if (hasPermission) {
+            isLoading = true
+            stats = getNetworkStats(context)
+            isLoading = false
+        } else {
+            isLoading = false
+        }
     }
 
     val totalRx = stats.sumOf { it.rxBytes }
@@ -74,9 +100,41 @@ fun NetworkUsageScreen(
             )
         }
     ) { padding ->
+        if (!hasPermission) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text("📡", fontSize = 48.sp)
+                Spacer(Modifier.height(16.dp))
+                Text("Usage Access Required", color = CiyatoWhite, fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Ciyato needs Usage Access permission to break down mobile data by app.",
+                    color = CiyatoMuted, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                Spacer(Modifier.height(24.dp))
+                Button(
+                    onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
+                    colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold),
+                ) {
+                    Text("Grant Permission", color = Color.Black)
+                }
+            }
+            return@Scaffold
+        }
+
         if (isLoading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = CiyatoGold)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CircularProgressIndicator(color = CiyatoGold)
+                    Text("Reading data usage…", color = CiyatoMuted, fontSize = 14.sp)
+                }
             }
             return@Scaffold
         }
@@ -117,8 +175,8 @@ fun NetworkUsageScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("📡", fontSize = 32.sp)
                             Spacer(Modifier.height(8.dp))
-                            Text("No network data available", color = CiyatoMuted)
-                            Text("Network stats may require READ_NETWORK_USAGE_HISTORY permission",
+                            Text("No mobile data usage", color = CiyatoMuted, fontWeight = FontWeight.SemiBold)
+                            Text("No app has used mobile data in the last 30 days. Wi-Fi usage isn't counted here.",
                                 color = CiyatoMuted, fontSize = 12.sp,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         }
@@ -174,6 +232,26 @@ private fun NetStat(label: String, value: String, color: Color) {
         Text(value, color = color, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Text(label, color = CiyatoMuted, fontSize = 11.sp)
     }
+}
+
+/** Same "Usage access" special app-op that gates UsageStatsManager also gates NetworkStatsManager#querySummary. */
+private fun hasUsageStatsPermission(context: Context): Boolean {
+    val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+    val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        appOps.unsafeCheckOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            android.os.Process.myUid(),
+            context.packageName,
+        )
+    } else {
+        @Suppress("DEPRECATION")
+        appOps.checkOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            android.os.Process.myUid(),
+            context.packageName,
+        )
+    }
+    return mode == AppOpsManager.MODE_ALLOWED
 }
 
 private fun getNetworkStats(context: Context): List<AppNetworkStat> {

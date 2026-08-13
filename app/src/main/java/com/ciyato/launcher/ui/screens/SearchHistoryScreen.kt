@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.ui.components.CiyatoEmptyState
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import com.ciyato.launcher.viewmodel.searchHistory
@@ -83,13 +84,12 @@ fun SearchHistoryScreen(
     ) { padding ->
         if (history.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.History, null, tint = CiyatoMuted, modifier = Modifier.size(48.dp))
-                    Spacer(Modifier.height(12.dp))
-                    Text("No search history", color = CiyatoWhite, fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold)
-                    Text("Your searches will appear here", color = CiyatoMuted, fontSize = 14.sp)
-                }
+                CiyatoEmptyState(
+                    icon = Icons.Default.History,
+                    title = "No search history",
+                    subtitle = "Apps and terms you search for will be saved here so you can find them again.",
+                    modifier = Modifier.padding(32.dp),
+                )
             }
             return@Scaffold
         }

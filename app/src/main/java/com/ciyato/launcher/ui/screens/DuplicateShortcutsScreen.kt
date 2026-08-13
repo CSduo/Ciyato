@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.data.AppCategory
 import com.ciyato.launcher.data.InstalledApp
+import com.ciyato.launcher.ui.components.CiyatoEmptyState
 import com.ciyato.launcher.ui.components.RealAppIcon
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
@@ -96,10 +97,15 @@ fun DuplicateShortcutsScreen(
                 if (multiCatApps.isEmpty()) {
                     item {
                         Box(
-                            modifier = Modifier.fillMaxWidth().padding(40.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text("No multi-category apps detected yet.", color = CiyatoMuted)
+                            CiyatoEmptyState(
+                                icon = Icons.Default.AutoFixHigh,
+                                title = "No multi-category apps yet",
+                                subtitle = "Apps show up here only when Ciyato — or you, via a category override — places the same app in more than one section.",
+                                modifier = Modifier.padding(16.dp),
+                            )
                         }
                     }
                 } else {

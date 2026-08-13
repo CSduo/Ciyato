@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +29,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import com.ciyato.launcher.ui.components.CiyatoEmptyState
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.util.concurrent.TimeUnit
@@ -53,6 +55,7 @@ fun AppUsageStatsScreen(
     val context = LocalContext.current
     var hasPermission by remember { mutableStateOf(hasUsageStatsPermission(context)) }
     var stats by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(hasPermission) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -69,7 +72,11 @@ fun AppUsageStatsScreen(
 
     LaunchedEffect(hasPermission) {
         if (hasPermission) {
+            isLoading = true
             stats = getUsageStats(context)
+            isLoading = false
+        } else {
+            isLoading = false
         }
     }
 
@@ -114,6 +121,28 @@ fun AppUsageStatsScreen(
                 ) {
                     Text("Grant Permission", color = Color.Black)
                 }
+            }
+            return@Scaffold
+        }
+
+        if (isLoading) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CircularProgressIndicator(color = CiyatoGold)
+                    Text("Reading screen time…", color = CiyatoMuted, fontSize = 14.sp)
+                }
+            }
+            return@Scaffold
+        }
+
+        if (stats.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                CiyatoEmptyState(
+                    icon = Icons.Default.HourglassEmpty,
+                    title = "No screen time recorded",
+                    subtitle = "No app has been used for a full minute in the last 24 hours.",
+                    modifier = Modifier.padding(32.dp),
+                )
             }
             return@Scaffold
         }

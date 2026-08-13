@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.StickyNote2
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.ciyato.launcher.ui.components.CiyatoEmptyState
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.text.SimpleDateFormat
@@ -127,12 +129,14 @@ fun StickyNotesScreen(
     ) { padding ->
         if (notes.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("📝", fontSize = 48.sp)
-                    Spacer(Modifier.height(12.dp))
-                    Text("No notes yet", color = CiyatoWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Tap + to add a quick memo", color = CiyatoMuted)
-                }
+                CiyatoEmptyState(
+                    icon = Icons.Default.StickyNote2,
+                    title = "No notes yet",
+                    subtitle = "Tap + to add a quick memo",
+                    actionLabel = "Add Note",
+                    onAction = { showAddDialog = true },
+                    modifier = Modifier.padding(32.dp),
+                )
             }
             return@Scaffold
         }

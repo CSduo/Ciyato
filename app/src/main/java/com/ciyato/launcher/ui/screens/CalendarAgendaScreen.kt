@@ -64,6 +64,7 @@ fun CalendarAgendaScreen(
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED)
     }
     var events by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(hasPermission) }
     val addEvent: () -> Unit = {
         runCatching {
             context.startActivity(Intent(Intent.ACTION_INSERT).apply {
@@ -81,7 +82,11 @@ fun CalendarAgendaScreen(
 
     LaunchedEffect(hasPermission) {
         if (hasPermission) {
+            isLoading = true
             events = readCalendarEvents(context)
+            isLoading = false
+        } else {
+            isLoading = false
         }
     }
 
@@ -127,6 +132,16 @@ fun CalendarAgendaScreen(
                 }
                 TextButton(onClick = addEvent) {
                     Text("Add in Calendar", color = CiyatoSec)
+                }
+            }
+            return@Scaffold
+        }
+
+        if (isLoading) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CircularProgressIndicator(color = CiyatoGold)
+                    Text("Loading your calendar…", color = CiyatoMuted, fontSize = 14.sp)
                 }
             }
             return@Scaffold

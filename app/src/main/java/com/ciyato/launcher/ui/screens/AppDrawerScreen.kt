@@ -20,6 +20,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -42,6 +45,7 @@ import com.ciyato.launcher.data.AppCategory
 import com.ciyato.launcher.data.InstalledApp
 import com.ciyato.launcher.ui.components.AppContextMenu
 import com.ciyato.launcher.ui.components.AppIconTile
+import com.ciyato.launcher.ui.components.CiyatoEmptyState
 import com.ciyato.launcher.ui.components.CiyatoSearchBar
 import com.ciyato.launcher.ui.components.RealAppIcon
 import com.ciyato.launcher.ui.components.SmartCategoryCard
@@ -143,13 +147,25 @@ fun AppDrawerScreen(
 
         when {
             isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = CiyatoGold, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CircularProgressIndicator(color = CiyatoGold, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+                    Text("Loading apps…", color = CiyatoMuted, fontSize = 13.sp)
+                }
             }
             query.isNotBlank() -> SearchResultsGrid(
+                query = query,
                 results = searchResults.sortedBy { it.label.lowercase() },
                 onAppTap = viewModel::launchApp,
                 onAppLongTap = { contextMenuApp = it },
             )
+            groups.isEmpty() && standaloneApps.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CiyatoEmptyState(
+                    icon = Icons.Default.Apps,
+                    title = "No apps to show",
+                    subtitle = "Apps you've hidden or removed won't appear here. Restore them from Settings to see them again.",
+                    modifier = Modifier.padding(32.dp),
+                )
+            }
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
@@ -300,13 +316,19 @@ private fun AppLibraryGroupSheet(
 
 @Composable
 private fun SearchResultsGrid(
+    query: String,
     results: List<InstalledApp>,
     onAppTap: (InstalledApp) -> Unit,
     onAppLongTap: (InstalledApp) -> Unit,
 ) {
     if (results.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No apps found", color = CiyatoMuted, fontSize = 14.sp)
+            CiyatoEmptyState(
+                icon = Icons.Default.SearchOff,
+                title = "No apps found",
+                subtitle = "Nothing installed matches \"$query\".",
+                modifier = Modifier.padding(32.dp),
+            )
         }
         return
     }

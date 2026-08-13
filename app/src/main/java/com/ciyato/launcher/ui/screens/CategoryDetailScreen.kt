@@ -11,7 +11,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -145,15 +147,28 @@ fun CategoryDetailScreen(
                 if (filteredApps.isEmpty()) {
                     item {
                         Box(
-                            modifier = Modifier.fillMaxWidth().padding(40.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(
-                                if (searchQuery.isBlank()) "No apps in this category yet."
-                                else "No apps match \"$searchQuery\".",
-                                color = CiyatoMuted,
-                                textAlign = TextAlign.Center,
-                            )
+                            if (searchQuery.isBlank()) {
+                                CiyatoEmptyState(
+                                    icon = Icons.Default.Apps,
+                                    title = "No apps in this category yet",
+                                    subtitle = "Apps show up here once you assign them to $categoryDisplayName.",
+                                    actionLabel = "Add Apps",
+                                    onAction = { showAppPicker = true },
+                                    modifier = Modifier.padding(16.dp),
+                                )
+                            } else {
+                                CiyatoEmptyState(
+                                    icon = Icons.Default.SearchOff,
+                                    title = "No apps match \"$searchQuery\"",
+                                    subtitle = "Try a different search term.",
+                                    actionLabel = "Clear Search",
+                                    onAction = { searchQuery = "" },
+                                    modifier = Modifier.padding(16.dp),
+                                )
+                            }
                         }
                     }
                 } else {
