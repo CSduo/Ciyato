@@ -179,6 +179,9 @@ class LauncherSettingsRepository(private val context: Context) {
         val KEY_SAVE_FILE_SEARCH_HISTORY = booleanPreferencesKey("save_file_search_history")
         val KEY_FILE_SEARCH_INDEX      = stringPreferencesKey("file_search_index")
         val KEY_EXPANDED_APPS          = stringPreferencesKey("expanded_apps")
+
+        // ── Recent Files tagging ─────────────────────────────────────────────
+        val KEY_FILE_TAGS              = stringPreferencesKey("file_tags")       // JSON {"<uri>": ["tag1","tag2"]}
     }
 
     // ── Flows ─────────────────────────────────────────────────────────────────
@@ -294,6 +297,7 @@ class LauncherSettingsRepository(private val context: Context) {
     val fileSearchHistory:      Flow<String>  = pref(KEY_FILE_SEARCH_HISTORY,     "[]")
     val saveFileSearchHistory:  Flow<Boolean> = pref(KEY_SAVE_FILE_SEARCH_HISTORY, true)
     val fileSearchIndex:        Flow<String>  = pref(KEY_FILE_SEARCH_INDEX,       "")
+    val fileTags:               Flow<String>  = pref(KEY_FILE_TAGS,               "{}")
 
     // ── Setters ───────────────────────────────────────────────────────────────
 
@@ -411,6 +415,7 @@ class LauncherSettingsRepository(private val context: Context) {
     suspend fun setFileSearchHistory(v: String)        = set(KEY_FILE_SEARCH_HISTORY,      v)
     suspend fun setSaveFileSearchHistory(v: Boolean)   = set(KEY_SAVE_FILE_SEARCH_HISTORY, v)
     suspend fun setFileSearchIndex(v: String)          = set(KEY_FILE_SEARCH_INDEX,       v)
+    suspend fun setFileTags(v: String)                 = set(KEY_FILE_TAGS,               v)
 
     suspend fun resetLayout() {
         context.dataStore.edit { p ->

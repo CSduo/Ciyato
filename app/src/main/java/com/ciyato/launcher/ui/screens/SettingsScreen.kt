@@ -52,6 +52,7 @@ fun SettingsScreen(
     onNavigateToPermissionAudit: (() -> Unit)? = null,
     onNavigateToStorageCleanup: (() -> Unit)? = null,
     onNavigateToPhotoCollections: (() -> Unit)? = null,
+    onNavigateToRecentFiles: (() -> Unit)? = null,
     onNavigateToFocus: (() -> Unit)? = null,
     onNavigateToFiles: (() -> Unit)? = null,
     onNavigateToPhotos: (() -> Unit)? = null,
@@ -260,6 +261,15 @@ fun SettingsScreen(
                     icon = Icons.Default.PhotoLibrary,
                     iconColor = CiyatoGold,
                     onClick = { onNavigateToPhotoCollections?.invoke() }
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Recent Files",
+                    subtitle = "Browse recently modified files across the device and tag them to stay organized",
+                    icon = Icons.Default.History,
+                    iconColor = CiyatoGold,
+                    onClick = { onNavigateToRecentFiles?.invoke() }
                 )
             }
             item {
