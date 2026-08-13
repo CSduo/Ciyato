@@ -303,6 +303,14 @@ private fun ResizableWorkspaceTile(
         return proposedX to proposedY
     }
 
+    // A 1x1 tile (the overwhelming common case) must resolve to exactly 1f so
+    // its content renders byte-for-byte as before spans existed; only compute
+    // scaled copies when the span actually grows the tile.
+    val tileScale = tileVisualScale(spanX, spanY)
+    val tileIconSize = if (tileScale == 1f) iconSize else iconSize * tileScale
+    val tileFontSize = if (tileScale == 1f) fontSize else fontSize * tileScale
+    val tileLineHeight = if (tileScale == 1f) lineHeight else lineHeight * tileScale
+
     Box(
         modifier = modifier
             .graphicsLayer { scaleX = displaceScale; scaleY = displaceScale }
@@ -316,9 +324,9 @@ private fun ResizableWorkspaceTile(
             cell = cell,
             app = app,
             isEditMode = isEditMode,
-            iconSize = iconSize,
-            fontSize = fontSize,
-            lineHeight = lineHeight,
+            iconSize = tileIconSize,
+            fontSize = tileFontSize,
+            lineHeight = tileLineHeight,
             onTap = onTap,
             tileGesture = tileGesture,
             isExpanded = isExpanded,
@@ -382,6 +390,22 @@ private fun ResizableWorkspaceTile(
 /** Sane UI-side ceiling on a live spanY drag preview. The model (WorkspaceStore)
  *  is the real authority and clamps/rejects independently of this. */
 private const val MAX_RESIZE_SPAN = 6
+
+/** Visual scale for a tile's icon/label, derived from its span so a resized
+ *  tile reads as deliberate rather than a small icon lost in a bigger box.
+ *  Primarily driven by min(spanX, spanY): a 2x2 tile has more room in both
+ *  directions and can grow noticeably, while a 2x1 tile only gained width —
+ *  its height is unchanged, so scaling it as aggressively as a 2x2 would
+ *  overflow the row. A small secondary term keyed on max(spanX, spanY) still
+ *  gives that wide-but-short tile some modest growth instead of none. Never
+ *  multiplies spanX*spanY directly (that would scale on area, overreacting
+ *  to elongated shapes). A 1x1 tile always resolves to exactly 1f. */
+private fun tileVisualScale(spanX: Int, spanY: Int): Float {
+    val minSpan = minOf(spanX, spanY)
+    val maxSpan = maxOf(spanX, spanY)
+    val scale = 1f + 0.18f * (minSpan - 1) + 0.05f * (maxSpan - 1)
+    return scale.coerceIn(1f, 1.4f)
+}
 
 private val RESIZE_PRESETS = listOf(1 to 1, 2 to 1, 1 to 2, 2 to 2)
 
