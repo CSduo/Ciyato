@@ -104,7 +104,7 @@ fun PrivacyDashboardScreen(
                         modifier = Modifier.fillMaxWidth().padding(20.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
-                        RiskStat("${highRisk.size}", "High Risk", Color(0xFFEF4444))
+                        RiskStat("${highRisk.size}", "High Risk", CiyatoRed)
                         RiskStat("${medRisk.size}", "Medium", Color(0xFFFF9500))
                         RiskStat("${lowRisk.size}", "Low Risk", Color(0xFF39C66A))
                         RiskStat("${summaries.size}", "Total Apps", CiyatoSec)
@@ -139,7 +139,7 @@ fun PrivacyDashboardScreen(
             }
 
             if (highRisk.isNotEmpty()) {
-                item { SectionLabel("⚠ High Risk Apps", Color(0xFFEF4444)) }
+                item { SectionLabel("⚠ High Risk Apps", CiyatoRed) }
                 items(highRisk) { app ->
                     PrivacyAppRow(app = app, context = context)
                 }
@@ -165,7 +165,7 @@ fun PrivacyDashboardScreen(
 @Composable
 private fun PrivacyAppRow(app: AppPermissionSummary, context: Context) {
     val riskColor = when (app.riskLevel) {
-        RiskLevel.HIGH -> Color(0xFFEF4444)
+        RiskLevel.HIGH -> CiyatoRed
         RiskLevel.MEDIUM -> Color(0xFFFF9500)
         RiskLevel.LOW -> Color(0xFF39C66A)
     }

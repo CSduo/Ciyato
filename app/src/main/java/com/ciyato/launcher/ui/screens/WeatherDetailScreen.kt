@@ -607,7 +607,7 @@ private fun UvSunriseCard(state: WeatherState.Success) {
         state.uvIndex < 3  -> Color(0xFF39C66A)
         state.uvIndex < 6  -> Color(0xFFF5C542)
         state.uvIndex < 8  -> Color(0xFFFF8C42)
-        state.uvIndex < 11 -> Color(0xFFEF4444)
+        state.uvIndex < 11 -> CiyatoRed
         else               -> Color(0xFF9C27B0)
     }
     val uvLabel = when {

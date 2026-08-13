@@ -151,7 +151,7 @@ fun GuestModeScreen(
                         fontSize = 13.sp,
                     )
                     exitFailMessage?.let { message ->
-                        Text(message, color = Color(0xFFEF4444), fontSize = 13.sp)
+                        Text(message, color = CiyatoRed, fontSize = 13.sp)
                     }
                 }
             },

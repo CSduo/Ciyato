@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.ui.theme.CiyatoBg
+import com.ciyato.launcher.ui.theme.CiyatoRed
 
 /**
  * NotificationBadge — Suggestion #20
@@ -57,7 +58,7 @@ fun NotificationBadge(
             .widthIn(min = badgeWidth)
             .height(16.dp)
             .clip(CircleShape)
-            .background(Color(0xFFEF4444))
+            .background(CiyatoRed)
             .border(1.5.dp, CiyatoBg, CircleShape)
             .padding(horizontal = 3.dp),
         contentAlignment = Alignment.Center,

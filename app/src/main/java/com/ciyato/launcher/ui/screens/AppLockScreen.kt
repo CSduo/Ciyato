@@ -99,7 +99,7 @@ fun AppLockGate(
             Text("Authenticate to open this app", color = CiyatoMuted, fontSize = 14.sp)
 
             if (failMessage != null) {
-                Text(failMessage!!, color = Color(0xFFEF4444), fontSize = 14.sp)
+                Text(failMessage!!, color = CiyatoRed, fontSize = 14.sp)
             }
 
             if (biometricAvailable) {

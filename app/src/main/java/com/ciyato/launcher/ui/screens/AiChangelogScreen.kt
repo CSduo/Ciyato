@@ -180,7 +180,7 @@ private fun ChangelogCard(entry: PhoneChangeEntry) {
         ChangeType.USAGE_UP -> Color(0xFF7DB7FF)
         ChangeType.USAGE_DOWN -> CiyatoMuted
         ChangeType.UPDATE -> CiyatoGold
-        ChangeType.UNINSTALL -> Color(0xFFEF4444)
+        ChangeType.UNINSTALL -> CiyatoRed
     }
 
     Card(

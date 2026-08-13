@@ -84,7 +84,7 @@ fun HealthConnectWidget(
 
             if (healthData.heartRate > 0) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Favorite, null, tint = Color(0xFFEF4444),
+                    Icon(Icons.Default.Favorite, null, tint = CiyatoRed,
                         modifier = Modifier.size(18.dp))
                     Text("${healthData.heartRate}", color = CiyatoWhite, fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp)

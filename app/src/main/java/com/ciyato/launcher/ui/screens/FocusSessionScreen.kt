@@ -176,8 +176,8 @@ private fun ActiveSessionCard(
             onClick = onEnd,
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f)),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = CiyatoRed),
+            border = androidx.compose.foundation.BorderStroke(1.dp, CiyatoRed.copy(alpha = 0.4f)),
         ) {
             Icon(Icons.Default.Stop, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))

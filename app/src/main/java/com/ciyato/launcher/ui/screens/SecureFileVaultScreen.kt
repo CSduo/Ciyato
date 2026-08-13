@@ -180,7 +180,7 @@ fun SecureFileVaultScreen(
                         Text("Vault Locked", color = CiyatoWhite, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                         Text("Authenticate to access encrypted files", color = CiyatoMuted)
                         authError?.let { message ->
-                            Text(message, color = Color(0xFFEF4444), fontSize = 13.sp)
+                            Text(message, color = CiyatoRed, fontSize = 13.sp)
                         }
                         Button(onClick = { authError = null; authenticate() },
                             colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold)) {

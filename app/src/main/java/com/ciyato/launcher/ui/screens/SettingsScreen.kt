@@ -544,7 +544,7 @@ fun SettingsScreen(
                     title = "Reset All Ciyato Preferences",
                     subtitle = "Clear local settings, hidden apps, removed apps, and selected folders",
                     icon = Icons.Default.DeleteForever,
-                    iconColor = Color(0xFFEF4444),
+                    iconColor = CiyatoRed,
                     onClick = { showResetAllDialog = true }
                 )
             }
@@ -716,7 +716,7 @@ fun SettingsScreen(
                     viewModel.resetAllPreferences()
                     showResetAllDialog = false
                 }) {
-                    Text("Reset All", color = Color(0xFFEF4444))
+                    Text("Reset All", color = CiyatoRed)
                 }
             },
             dismissButton = {
@@ -774,7 +774,7 @@ private fun CrashLogsScreen(context: Context, onBack: () -> Unit) {
                 }},
                 actions = {
                     TextButton(onClick = { CrashReporter.clearLogs(context) }) {
-                        Text("Clear All", color = Color(0xFFEF4444))
+                        Text("Clear All", color = CiyatoRed)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),

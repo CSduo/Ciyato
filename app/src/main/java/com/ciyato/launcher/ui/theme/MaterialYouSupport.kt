@@ -32,7 +32,7 @@ private val CiyatoDarkColorScheme = darkColorScheme(
     onSurfaceVariant = CiyatoSec,
     background = CiyatoBg,
     onBackground = CiyatoWhite,
-    error = Color(0xFFEF4444),
+    error = CiyatoRed,
     onError = Color.White,
     outline = CiyatoBorder,
 )

@@ -179,7 +179,7 @@ fun CustomGreetingScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Reset to default greeting", color = Color(0xFFEF4444))
+                        Text("Reset to default greeting", color = CiyatoRed)
                     }
                 }
             }

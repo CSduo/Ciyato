@@ -186,7 +186,7 @@ fun AppContextMenu(
                     add(ContextMenuItem(
                         icon = Icons.Default.Delete,
                         label = "Uninstall",
-                        color = Color(0xFFEF4444),
+                        color = CiyatoRed,
                         action = {
                             uninstallApp(context, app.packageName)
                             onDismiss()
@@ -444,7 +444,7 @@ fun AppContextMenu(
                         modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(12.dp)
                     ) {
-                        Text("Reset to Default", color = Color(0xFFEF4444), modifier = Modifier.fillMaxWidth())
+                        Text("Reset to Default", color = CiyatoRed, modifier = Modifier.fillMaxWidth())
                     }
                 }
             },

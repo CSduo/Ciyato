@@ -197,7 +197,7 @@ private fun PermissionSummaryBanner(audited: List<AuditedApp>) {
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SummaryPill("${audited.size} reviewed", CiyatoSec, Modifier.weight(1f))
-            SummaryPill("$highCount sensitive", Color(0xFFEF4444), Modifier.weight(1f))
+            SummaryPill("$highCount sensitive", CiyatoRed, Modifier.weight(1f))
             SummaryPill("$medCount connectivity", Color(0xFFF5C542), Modifier.weight(1f))
         }
     }
@@ -220,7 +220,7 @@ private fun SummaryPill(text: String, color: Color, modifier: Modifier = Modifie
 @Composable
 private fun AuditAppCard(audited: AuditedApp, onClick: () -> Unit) {
     val riskColor = when (audited.riskLevel) {
-        PermissionRiskLevel.HIGH   -> Color(0xFFEF4444)
+        PermissionRiskLevel.HIGH   -> CiyatoRed
         PermissionRiskLevel.MEDIUM -> Color(0xFFF5C542)
         PermissionRiskLevel.LOW    -> Color(0xFF39C66A)
     }
@@ -263,7 +263,7 @@ private fun AuditAppCard(audited: AuditedApp, onClick: () -> Unit) {
         if (expanded) {
             HorizontalDivider(color = CiyatoSubtleBorder)
             if (audited.highRisk.isNotEmpty()) {
-                Text("Sensitive declared permissions:", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text("Sensitive declared permissions:", color = CiyatoRed, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 audited.highRisk.forEach { perm ->
                     Text("• ${perm.substringAfterLast(".")}", color = CiyatoSec, fontSize = 11.sp)
                 }

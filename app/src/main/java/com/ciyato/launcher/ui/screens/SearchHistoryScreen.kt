@@ -48,7 +48,7 @@ fun SearchHistoryScreen(
                     viewModel.clearSearchHistory()
                     showClearDialog = false
                 }) {
-                    Text("Clear All", color = Color(0xFFEF4444))
+                    Text("Clear All", color = CiyatoRed)
                 }
             },
             dismissButton = {
@@ -73,7 +73,7 @@ fun SearchHistoryScreen(
                 actions = {
                     if (history.isNotEmpty()) {
                         IconButton(onClick = { showClearDialog = true }) {
-                            Icon(Icons.Default.DeleteSweep, "Clear all", tint = Color(0xFFEF4444))
+                            Icon(Icons.Default.DeleteSweep, "Clear all", tint = CiyatoRed)
                         }
                     }
                 },
