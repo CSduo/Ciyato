@@ -763,6 +763,15 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         return cells.mapNotNull { c -> byPkg[c.packageName]?.let { c.cell to it } }.toMap()
     }
 
+    /** cell index → (spanX, spanY), for one workspace page. Mirrors
+     *  [cellAppsForPage]'s keys — WorkspaceGrid needs both maps to render and
+     *  resize spanning tiles, since [cellAppsForPage] alone loses span. */
+    fun cellSpansForPage(pageIndex: Int): Map<Int, Pair<Int, Int>> {
+        val workspaceIndex = workspaceIndexForPage(pageIndex) ?: return emptyMap()
+        val cells = currentWorkspaceLayout().workspaceAt(workspaceIndex)?.cells.orEmpty()
+        return cells.associate { it.cell to (it.spanX to it.spanY) }
+    }
+
     fun getCategoriesForWorkspace(pageIndex: Int): List<String> = workspaceIndexForPage(pageIndex)
         ?.let { currentWorkspaceLayout().workspaceAt(it)?.categoryKeys }
         .orEmpty()

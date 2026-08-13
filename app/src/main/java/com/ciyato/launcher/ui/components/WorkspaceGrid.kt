@@ -2,45 +2,70 @@ package com.ciyato.launcher.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material3.Text
 import com.ciyato.launcher.data.InstalledApp
+import com.ciyato.launcher.ui.theme.CiyatoBgEl2
 import com.ciyato.launcher.ui.theme.CiyatoGold
+import com.ciyato.launcher.ui.theme.CiyatoSec
 import com.ciyato.launcher.ui.theme.CiyatoSubtleBorder
 import com.ciyato.launcher.ui.theme.CiyatoWhite
+import kotlin.math.roundToInt
 
 /**
- * Fixed-grid workspace surface. Apps sit at explicit cells (row-major linear index).
+ * Fixed-grid workspace surface. Apps sit at explicit cells (row-major linear index)
+ * and may span multiple columns/rows (spanX/spanY, upstream in AppCell). A plain
+ * Row/Column-with-weight() grid can only ever express 1x1 tiles, so placement runs
+ * through a custom Layout: every cell's pixel rectangle is derived once from the
+ * incoming width, and each tile is measured to exactly spanX*spanY of those cells
+ * and placed at its origin corner.
  * Dynamically scales icon sizes, font sizes, line heights, and aspect ratios based on column count
  * so app labels remain 100% legible and visible across 4x5, 5x5, 6x5, and high-density grids.
  */
@@ -58,13 +83,15 @@ fun WorkspaceGrid(
     highlightCell: Int? = null,
     expandedPackages: Set<String> = emptySet(),
     tileGesture: (Modifier, cell: Int, app: InstalledApp) -> Modifier = { m, _, _ -> m },
+    // cell index -> (spanX, spanY) for every occupied cell in [cellApps]; a cell
+    // missing here is treated as 1x1, so a caller that never resizes anything
+    // can leave this at its default and behaviour is unchanged.
+    cellSpans: Map<Int, Pair<Int, Int>> = emptyMap(),
+    onResize: (packageName: String, spanX: Int, spanY: Int) -> Unit = { _, _, _ -> },
 ) {
     val cols = columns.coerceIn(3, 8)
-    val maxCell = cellApps.keys.maxOrNull() ?: -1
-    val neededRows = if (maxCell < 0) 0 else (maxCell / cols) + 1
-    val effectiveRows = maxOf(minRows.coerceAtLeast(1), neededRows)
 
-    // Calculate column-adaptive parameters for optimal legibility
+    // Column-adaptive parameters for legibility (unchanged from before spans).
     val (iconSize, fontSize, lineHeight, cellAspectRatio) = when {
         cols >= 6 -> Quad(38.dp, 9.5.sp, 11.sp, 0.70f)
         cols == 5 -> Quad(42.dp, 10.sp, 12.sp, 0.74f)
@@ -72,70 +99,343 @@ fun WorkspaceGrid(
     }
     val spacing = if (cols >= 6) 4.dp else 6.dp
 
-    Column(
+    // Live resize preview, package -> proposed (spanX, spanY). Populated only
+    // while a resize-handle drag is in progress and cleared the instant the
+    // finger lifts, so the grid falls back to reading size straight from
+    // [cellSpans] (the persisted layout) rather than an optimistic guess.
+    // resizeAppTile is fire-and-forget and silently no-ops on overlap/off-grid,
+    // so a size must never be shown here unless it's confirmed persisted.
+    val resizePreview = remember { mutableStateMapOf<String, Pair<Int, Int>>() }
+
+    // Pixel size of a single 1x1 cell, learned from whatever child actually gets
+    // measured to that size. Composition happens before measurement, so this
+    // can't be computed up front — it's populated on the first layout pass and
+    // is stable well before a person can physically grab a resize handle.
+    var cellPxSize by remember { mutableStateOf(IntSize.Zero) }
+
+    // Every rectangle currently covered by a placed (non-hidden) tile, keyed
+    // covered-cell -> origin-cell. Drives both the row count (a spanning tile on
+    // the last row extends the grid) and which cells skip the empty placeholder.
+    val coveredBy = buildMap {
+        cellApps.forEach { (origin, app) ->
+            if (app.packageName == hiddenPackage) return@forEach
+            val (spanX, spanY) = resizePreview[app.packageName] ?: cellSpans[origin] ?: (1 to 1)
+            val originCol = origin % cols
+            val originRow = origin / cols
+            for (dy in 0 until spanY) for (dx in 0 until spanX) {
+                put((originRow + dy) * cols + (originCol + dx), origin)
+            }
+        }
+    }
+    val maxCovered = coveredBy.keys.maxOrNull() ?: (cellApps.keys.maxOrNull() ?: -1)
+    val neededRows = if (maxCovered < 0) 0 else (maxCovered / cols) + 1
+    val effectiveRows = maxOf(minRows.coerceAtLeast(1), neededRows)
+    val totalCells = effectiveRows * cols
+
+    Layout(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(spacing),
-    ) {
-        repeat(effectiveRows) { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing),
-            ) {
-                repeat(cols) { col ->
-                    val cell = row * cols + col
-                    val app = cellApps[cell]
-                    val isCellTargeted = highlightCell == cell
+        content = {
+            for (cellIndex in 0 until totalCells) {
+                val originOfCovered = coveredBy[cellIndex]
+                val isOrigin = originOfCovered == cellIndex
+                val isCoveredByOther = originOfCovered != null && !isOrigin
+                val app = cellApps[cellIndex]
 
-                    // Calculate sliding scale displacement when an app is hovered over a cell
-                    val displaceScale by animateFloatAsState(
-                        targetValue = if (isCellTargeted && app != null) 0.90f else 1f,
-                        animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
-                        label = "grid_scale"
-                    )
-
-                    key(app?.packageName ?: "cell_$cell") {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .aspectRatio(cellAspectRatio)
-                                .onGloballyPositioned { onCellBounds(cell, it.boundsInRoot()) }
-                                .graphicsLayer {
-                                    scaleX = displaceScale
-                                    scaleY = displaceScale
-                                }
-                                .then(
-                                    if (isCellTargeted) {
-                                        Modifier.border(2.dp, CiyatoGold, RoundedCornerShape(16.dp))
-                                    } else {
-                                        Modifier
-                                    },
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            when {
-                                app != null && app.packageName != hiddenPackage ->
-                                    WorkspaceAppTile(
-                                        cell = cell,
-                                        app = app,
-                                        isEditMode = isEditMode,
-                                        iconSize = iconSize,
-                                        fontSize = fontSize,
-                                        lineHeight = lineHeight,
-                                        onTap = onAppTap,
-                                        tileGesture = tileGesture,
-                                        isExpanded = app.packageName in expandedPackages,
-                                    )
-                                isEditMode && app == null -> EmptyCellPlaceholder()
-                            }
-                        }
+                if (isOrigin && app != null && app.packageName != hiddenPackage) {
+                    val (spanX, spanY) = resizePreview[app.packageName] ?: cellSpans[cellIndex] ?: (1 to 1)
+                    val isTargeted = highlightCell != null && coveredBy[highlightCell] == cellIndex
+                    key(app.packageName) {
+                        ResizableWorkspaceTile(
+                            modifier = Modifier.layoutId(GridSlot(cellIndex, spanX, spanY)),
+                            cell = cellIndex,
+                            app = app,
+                            spanX = spanX,
+                            spanY = spanY,
+                            columns = cols,
+                            isEditMode = isEditMode,
+                            isTargeted = isTargeted,
+                            iconSize = iconSize,
+                            fontSize = fontSize,
+                            lineHeight = lineHeight,
+                            isExpanded = app.packageName in expandedPackages,
+                            cellPxSize = cellPxSize,
+                            onTap = onAppTap,
+                            tileGesture = tileGesture,
+                            onCellSizeMeasured = { cellPxSize = it },
+                            onResizePreview = { sx, sy -> resizePreview[app.packageName] = sx to sy },
+                            onResizeCommit = { sx, sy ->
+                                resizePreview.remove(app.packageName)
+                                if (sx != spanX || sy != spanY) onResize(app.packageName, sx, sy)
+                            },
+                            onResizeCancel = { resizePreview.remove(app.packageName) },
+                        )
+                    }
+                } else if (!isCoveredByOther) {
+                    // Either genuinely empty, or the origin of the tile currently
+                    // being dragged elsewhere (hidden here) — either way, a plain
+                    // 1x1 zone: bounds-only outside edit mode, a placeholder inside it.
+                    key("cell_$cellIndex") {
+                        WorkspaceCellZone(
+                            modifier = Modifier.layoutId(GridSlot(cellIndex, 1, 1)),
+                            cell = cellIndex,
+                            showPlaceholder = isEditMode && app == null,
+                            isTargeted = highlightCell == cellIndex,
+                            onCellBounds = onCellBounds,
+                            onSizeMeasured = { cellPxSize = it },
+                        )
+                    }
+                } else {
+                    // Covered by a neighbour's span: no placeholder is drawn (it's
+                    // already under that tile), but the cell still needs its own
+                    // 1x1 bounds reported — the drag system resolves a target cell
+                    // by index, independent of what currently occupies it.
+                    key("zone_$cellIndex") {
+                        WorkspaceCellZone(
+                            modifier = Modifier.layoutId(GridSlot(cellIndex, 1, 1)),
+                            cell = cellIndex,
+                            showPlaceholder = false,
+                            isTargeted = false,
+                            onCellBounds = onCellBounds,
+                            onSizeMeasured = { },
+                        )
                     }
                 }
+            }
+        },
+    ) { measurables, constraints ->
+        val spacingPx = spacing.roundToPx()
+        val cellW = ((constraints.maxWidth - spacingPx * (cols - 1)) / cols).coerceAtLeast(0)
+        val cellH = (cellW / cellAspectRatio).roundToInt().coerceAtLeast(0)
+
+        val placed = measurables.map { measurable ->
+            val slot = measurable.layoutId as GridSlot
+            val w = slot.spanX * cellW + spacingPx * (slot.spanX - 1)
+            val h = slot.spanY * cellH + spacingPx * (slot.spanY - 1)
+            slot to measurable.measure(Constraints.fixed(w.coerceAtLeast(0), h.coerceAtLeast(0)))
+        }
+        val totalHeight = effectiveRows * cellH + spacingPx * (effectiveRows - 1).coerceAtLeast(0)
+
+        layout(constraints.maxWidth, totalHeight) {
+            placed.forEach { (slot, placeable) ->
+                val col = slot.cell % cols
+                val row = slot.cell / cols
+                placeable.placeRelative(col * (cellW + spacingPx), row * (cellH + spacingPx))
             }
         }
     }
 }
 
+/** Placement key threaded through the custom [Layout]: which cell a child
+ *  originates at, and how many columns/rows (>=1) its rectangle spans. */
+private data class GridSlot(val cell: Int, val spanX: Int, val spanY: Int)
+
 private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
+/** A single 1x1 grid cell that isn't (visibly) covered by a spanning tile:
+ *  reports its own root-coordinate rect for the drag system regardless of
+ *  content, and optionally draws the empty-cell placeholder or the drag-target
+ *  highlight border. */
+@Composable
+private fun WorkspaceCellZone(
+    cell: Int,
+    showPlaceholder: Boolean,
+    isTargeted: Boolean,
+    onCellBounds: (cell: Int, bounds: Rect) -> Unit,
+    onSizeMeasured: (IntSize) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .onGloballyPositioned {
+                onCellBounds(cell, it.boundsInRoot())
+                onSizeMeasured(it.size)
+            }
+            .then(
+                if (isTargeted) Modifier.border(2.dp, CiyatoGold, RoundedCornerShape(16.dp)) else Modifier,
+            ),
+    ) {
+        if (showPlaceholder) EmptyCellPlaceholder()
+    }
+}
+
+/** A placed app tile, sized to spanX*spanY cells by the parent [Layout]. In
+ *  edit mode it also carries a free-drag resize handle (bottom-right) and a
+ *  compact fixed-preset menu (top-left) — both are separate child elements
+ *  from the tile body itself, never additional gestures on it. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ResizableWorkspaceTile(
+    cell: Int,
+    app: InstalledApp,
+    spanX: Int,
+    spanY: Int,
+    columns: Int,
+    isEditMode: Boolean,
+    isTargeted: Boolean,
+    iconSize: Dp,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    isExpanded: Boolean,
+    cellPxSize: IntSize,
+    onTap: (InstalledApp) -> Unit,
+    tileGesture: (Modifier, cell: Int, app: InstalledApp) -> Modifier,
+    onCellSizeMeasured: (IntSize) -> Unit,
+    onResizePreview: (spanX: Int, spanY: Int) -> Unit,
+    onResizeCommit: (spanX: Int, spanY: Int) -> Unit,
+    onResizeCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val displaceScale by animateFloatAsState(
+        targetValue = if (isTargeted) 0.90f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
+        label = "grid_scale",
+    )
+    var showPresetMenu by remember(app.packageName) { mutableStateOf(false) }
+    var dragBaseSpan by remember(app.packageName) { mutableStateOf(spanX to spanY) }
+    var dragAccum by remember(app.packageName) { mutableStateOf(Offset.Zero) }
+
+    fun spanFromDrag(): Pair<Int, Int> {
+        val cellW = cellPxSize.width.coerceAtLeast(1)
+        val cellH = cellPxSize.height.coerceAtLeast(1)
+        val maxSpanX = (columns - (cell % columns)).coerceAtLeast(1)
+        val proposedX = (dragBaseSpan.first + (dragAccum.x / cellW).roundToInt()).coerceIn(1, maxSpanX)
+        val proposedY = (dragBaseSpan.second + (dragAccum.y / cellH).roundToInt()).coerceIn(1, MAX_RESIZE_SPAN)
+        return proposedX to proposedY
+    }
+
+    Box(
+        modifier = modifier
+            .graphicsLayer { scaleX = displaceScale; scaleY = displaceScale }
+            .then(if (isTargeted) Modifier.border(2.dp, CiyatoGold, RoundedCornerShape(16.dp)) else Modifier)
+            .onGloballyPositioned {
+                onCellSizeMeasured(IntSize(it.size.width / spanX, it.size.height / spanY))
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        WorkspaceAppTile(
+            cell = cell,
+            app = app,
+            isEditMode = isEditMode,
+            iconSize = iconSize,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            onTap = onTap,
+            tileGesture = tileGesture,
+            isExpanded = isExpanded,
+        )
+
+        if (isEditMode) {
+            // Fixed-proportion presets: a compact size badge that opens a small
+            // menu of the four common shapes — a one-tap alternative to dragging.
+            Box(modifier = Modifier.align(Alignment.TopStart)) {
+                Text(
+                    text = "$spanX×$spanY",
+                    color = CiyatoSec,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .padding(3.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(CiyatoBgEl2.copy(alpha = 0.88f))
+                        .border(1.dp, CiyatoSubtleBorder, RoundedCornerShape(6.dp))
+                        .clickable { showPresetMenu = true }
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                        .semantics { contentDescription = "Resize ${app.label}, currently $spanX by $spanY cells" },
+                )
+                DropdownMenu(expanded = showPresetMenu, onDismissRequest = { showPresetMenu = false }) {
+                    RESIZE_PRESETS.forEach { (presetX, presetY) ->
+                        DropdownMenuItem(
+                            text = { Text("$presetX×$presetY", color = CiyatoWhite) },
+                            onClick = {
+                                showPresetMenu = false
+                                if (presetX != spanX || presetY != spanY) onResizeCommit(presetX, presetY)
+                            },
+                        )
+                    }
+                }
+            }
+
+            // Free-drag handle. Its own pointerInput scope entirely separate from
+            // the tile body above, so it never races the tile's long-press drag.
+            ResizeHandle(
+                description = "Resize ${app.label}",
+                modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp),
+                onDragStart = {
+                    dragBaseSpan = spanX to spanY
+                    dragAccum = Offset.Zero
+                },
+                onDrag = { delta ->
+                    dragAccum += delta
+                    val (sx, sy) = spanFromDrag()
+                    onResizePreview(sx, sy)
+                },
+                onDragEnd = {
+                    val (sx, sy) = spanFromDrag()
+                    onResizeCommit(sx, sy)
+                },
+                onDragCancel = onResizeCancel,
+            )
+        }
+    }
+}
+
+/** Sane UI-side ceiling on a live spanY drag preview. The model (WorkspaceStore)
+ *  is the real authority and clamps/rejects independently of this. */
+private const val MAX_RESIZE_SPAN = 6
+
+private val RESIZE_PRESETS = listOf(1 to 1, 2 to 1, 1 to 2, 2 to 2)
+
+/** Small drag-affordance anchored to a tile's bottom-right corner. Uses an
+ *  immediate [detectDragGestures] (no long-press) since it's a dedicated,
+ *  physically separate hit target from the tile body's long-press-to-move. */
+@Composable
+private fun ResizeHandle(
+    description: String,
+    onDragStart: () -> Unit,
+    onDrag: (Offset) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // The gesture below is deliberately keyed on Unit — never on span/position
+    // state the drag itself changes — so it's never torn down and restarted
+    // mid-drag. That means its detectDragGestures block is only ever entered
+    // ONCE and then handles every future gesture from that same coroutine, so
+    // the callbacks it closes over must stay current via rememberUpdatedState
+    // rather than being captured stale from the first composition.
+    val currentOnDragStart by rememberUpdatedState(onDragStart)
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+    val currentOnDragCancel by rememberUpdatedState(onDragCancel)
+    Box(
+        modifier = modifier
+            .size(20.dp)
+            .clip(RoundedCornerShape(topStart = 8.dp, bottomEnd = 12.dp))
+            .background(CiyatoBgEl2.copy(alpha = 0.9f))
+            .border(1.dp, CiyatoGold.copy(alpha = 0.55f), RoundedCornerShape(topStart = 8.dp, bottomEnd = 12.dp))
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { currentOnDragStart() },
+                    onDrag = { change, amount -> change.consume(); currentOnDrag(amount) },
+                    onDragEnd = { currentOnDragEnd() },
+                    onDragCancel = { currentOnDragCancel() },
+                )
+            }
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.size(10.dp)) {
+            val strokeW = 1.6.dp.toPx()
+            drawLine(CiyatoGold, Offset(0f, size.height), Offset(size.width, 0f), strokeWidth = strokeW)
+            drawLine(
+                CiyatoGold,
+                Offset(size.width * 0.5f, size.height),
+                Offset(size.width, size.height * 0.5f),
+                strokeWidth = strokeW,
+            )
+        }
+    }
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -222,8 +522,7 @@ private fun WorkspaceAppTile(
 private fun EmptyCellPlaceholder() {
     Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
+            .fillMaxSize()
             .padding(6.dp)
             .clip(RoundedCornerShape(13.dp))
             .background(CiyatoWhite.copy(alpha = 0.03f))

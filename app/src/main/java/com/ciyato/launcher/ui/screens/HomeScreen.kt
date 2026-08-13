@@ -1327,13 +1327,18 @@ fun HomeScreen(
                                 val cellApps1 = remember(apps, workspaceLayoutV2, gridSizePref) {
                                     viewModel.cellAppsForPage(1)
                                 }
+                                val cellSpans1 = remember(apps, workspaceLayoutV2, gridSizePref) {
+                                    viewModel.cellSpansForPage(1)
+                                }
                                 WorkspaceGrid(
                                     columns = columns,
                                     minRows = 2,
                                     cellApps = cellApps1,
+                                    cellSpans = cellSpans1,
                                     expandedPackages = expandedAppsSet,
                                     isEditMode = isEditMode,
                                     onAppTap = { app -> viewModel.launchApp(app) },
+                                    onResize = { pkg, spanX, spanY -> viewModel.resizeAppTile(1, pkg, spanX, spanY) },
                                     hiddenPackage = dragController.activePackage,
                                     highlightCell = dragController.targetCell.takeIf {
                                         dragController.isActive && !dragController.overDock && pagerState.currentPage == 1
@@ -1534,12 +1539,17 @@ fun HomeScreen(
                                     val cellApps = remember(apps, pageIndex, workspaceLayoutV2, gridSizePref) {
                                         viewModel.cellAppsForPage(pageIndex)
                                     }
+                                    val cellSpans = remember(apps, pageIndex, workspaceLayoutV2, gridSizePref) {
+                                        viewModel.cellSpansForPage(pageIndex)
+                                    }
                                     WorkspaceGrid(
                                         columns = gridCols,
                                         minRows = gridRows,
                                         cellApps = cellApps,
+                                        cellSpans = cellSpans,
                                         isEditMode = isEditMode,
                                         onAppTap = { tapped -> viewModel.launchApp(tapped) },
+                                        onResize = { pkg, spanX, spanY -> viewModel.resizeAppTile(pageIndex, pkg, spanX, spanY) },
                                         hiddenPackage = dragController.activePackage,
                                         highlightCell = dragController.targetCell.takeIf {
                                             dragController.isActive && !dragController.overDock
