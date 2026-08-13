@@ -11,8 +11,25 @@ import org.json.JSONObject
  * index) instead of a bare ordered list, enabling free placement with gaps. The
  * [appPackages] read accessor keeps every existing caller working. v1 layouts are
  * upgraded losslessly on parse (sequential cell = list index).
+ *
+ * A cell may span more than 1x1 via [AppCell.spanX]/[AppCell.spanY] (default 1,
+ * so every pre-span layout and caller is unaffected). Occupancy is therefore a
+ * rectangle, not a point — see [coveredCells].
  */
-data class AppCell(val packageName: String, val cell: Int)
+data class AppCell(val packageName: String, val cell: Int, val spanX: Int = 1, val spanY: Int = 1)
+
+/** Linear row-major indices this cell's spanX×spanY rectangle covers on a grid
+ *  that is [columns] wide. Span 1x1 always resolves to exactly `{cell}`. */
+fun AppCell.coveredCells(columns: Int): Set<Int> {
+    val cols = columns.coerceAtLeast(1)
+    val col = cell.coerceAtLeast(0) % cols
+    val row = cell.coerceAtLeast(0) / cols
+    val sx = spanX.coerceAtLeast(1)
+    val sy = spanY.coerceAtLeast(1)
+    return buildSet {
+        for (dy in 0 until sy) for (dx in 0 until sx) add((row + dy) * cols + (col + dx))
+    }
+}
 
 data class WorkspaceRecord(
     val id: String,
@@ -52,6 +69,11 @@ data class WorkspaceLayout(
 
 object WorkspaceStore {
     private const val MAX_WORKSPACES = 10
+
+    /** Sane upper bound on a tile's span in either axis — bigger than any real
+     *  grid dimension, just enough to stop corrupt data or a fat-fingered resize
+     *  from producing an absurd or unfittable rectangle. */
+    private const val MAX_SPAN = 8
 
     fun parse(raw: String): WorkspaceLayout? = runCatching {
         val root = JSONObject(raw)
@@ -98,7 +120,15 @@ object WorkspaceStore {
             val obj = array.optJSONObject(index) ?: continue
             val pkg = obj.optString("pkg").trim()
             if (pkg.isBlank()) continue
-            add(AppCell(pkg, obj.optInt("cell", index).coerceAtLeast(0)))
+            add(
+                AppCell(
+                    packageName = pkg,
+                    cell = obj.optInt("cell", index).coerceAtLeast(0),
+                    // Missing spanX/spanY (every pre-span saved layout) defaults to 1x1.
+                    spanX = obj.optInt("spanX", 1).coerceIn(1, MAX_SPAN),
+                    spanY = obj.optInt("spanY", 1).coerceIn(1, MAX_SPAN),
+                ),
+            )
         }
     }
 
@@ -116,7 +146,16 @@ object WorkspaceStore {
                         workspace.name?.let { put("name", it) }
                         put("cells", JSONArray().apply {
                             workspace.cells.forEach { c ->
-                                put(JSONObject().apply { put("pkg", c.packageName); put("cell", c.cell) })
+                                put(
+                                    JSONObject().apply {
+                                        put("pkg", c.packageName)
+                                        put("cell", c.cell)
+                                        // Only written when spanning, so a non-spanning layout
+                                        // serializes byte-identical to before this feature.
+                                        if (c.spanX != 1) put("spanX", c.spanX)
+                                        if (c.spanY != 1) put("spanY", c.spanY)
+                                    },
+                                )
                             }
                         })
                         // Legacy mirror so any older reader still degrades gracefully.
@@ -244,7 +283,7 @@ object WorkspaceStore {
         if (!isValid(layout) || workspace.id !in layout.visualOrder) return null
         return layout.copy(workspaces = layout.workspaces.map { current ->
             if (current.id == workspace.id) workspace.copy(
-                cells = normalizeCells(workspace.cells),
+                cells = normalizeCells(workspace.cells, layout.authorColumns),
                 categoryKeys = workspace.categoryKeys.distinct(),
             ) else current
         })
@@ -252,11 +291,25 @@ object WorkspaceStore {
 
     // ── Positioned-cell operations (free placement, gaps, swaps) ──────────────
 
-    /** Smallest non-occupied cell index, row-major — fills gaps before extending. */
-    fun firstFreeCell(cells: List<AppCell>): Int {
-        val occupied = cells.mapTo(HashSet()) { it.cell }
+    /**
+     * Smallest cell index, row-major, whose spanX×spanY rectangle fits without
+     * overlapping [cells] or running off the right edge — fills gaps before
+     * extending. [columns] defaults so the pre-span single-arg call site keeps
+     * compiling; internal callers thread the workspace's real [columns] through.
+     */
+    fun firstFreeCell(
+        cells: List<AppCell>,
+        columns: Int = WorkspaceLayout.DEFAULT_COLUMNS,
+        spanX: Int = 1,
+        spanY: Int = 1,
+    ): Int {
+        val cols = columns.coerceAtLeast(1)
+        // Clamped to cols (not just MAX_SPAN) so a candidate at column 0 can
+        // always eventually fit — otherwise the search below would never end.
+        val sx = spanX.coerceIn(1, cols)
+        val sy = spanY.coerceIn(1, MAX_SPAN)
         var i = 0
-        while (i in occupied) i++
+        while (!fits(AppCell("", i, sx, sy), cells, cols)) i++
         return i
     }
 
@@ -268,7 +321,7 @@ object WorkspaceStore {
         var added = false
         packages.forEach { pkg ->
             if (existing.add(pkg)) {
-                cells = cells + AppCell(pkg, firstFreeCell(cells))
+                cells = cells + AppCell(pkg, firstFreeCell(cells, layout.authorColumns))
                 added = true
             }
         }
@@ -282,29 +335,64 @@ object WorkspaceStore {
         return withWorkspace(layout, workspace.copy(cells = workspace.cells.filterNot { it.packageName == packageName }))
     }
 
-    /** Places [packageName] at [targetCell] within one workspace, swapping any occupant. */
-    fun placeApp(layout: WorkspaceLayout, workspaceId: String, packageName: String, targetCell: Int): WorkspaceLayout? {
+    /**
+     * Places [packageName] at [targetCell] within one workspace, swapping any sole
+     * occupant. Preserves the app's existing span if it's already on this workspace;
+     * [spanX]/[spanY] only seed a brand-new arrival (e.g. from [moveApp]). Fails if
+     * the rectangle runs off-grid or would overlap more than one existing tile.
+     */
+    fun placeApp(
+        layout: WorkspaceLayout,
+        workspaceId: String,
+        packageName: String,
+        targetCell: Int,
+        spanX: Int = 1,
+        spanY: Int = 1,
+    ): WorkspaceLayout? {
         val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
-        val cell = targetCell.coerceAtLeast(0)
-        val sourceCell = workspace.cells.firstOrNull { it.packageName == packageName }?.cell
-        val occupant = workspace.cells.firstOrNull { it.cell == cell && it.packageName != packageName }
-        var cells = workspace.cells.filterNot { it.packageName == packageName }
-        if (occupant != null) {
-            val occupantTarget = sourceCell ?: firstFreeCell(cells.filterNot { it.packageName == occupant.packageName })
-            cells = cells.map { if (it.packageName == occupant.packageName) it.copy(cell = occupantTarget) else it }
+        val columns = layout.authorColumns
+        val current = workspace.cells.firstOrNull { it.packageName == packageName }
+        val moving = AppCell(packageName, targetCell.coerceAtLeast(0), current?.spanX ?: spanX, current?.spanY ?: spanY)
+        if (!onGrid(moving, columns)) return null
+        val without = workspace.cells.filterNot { it.packageName == packageName }
+        val covered = moving.coveredCells(columns)
+        val overlapping = without.filter { it.coveredCells(columns).any(covered::contains) }
+        if (overlapping.size > 1) return null // mover's rectangle would clobber more than one tile
+        var cells = without
+        overlapping.singleOrNull()?.let { occupant ->
+            val rest = without.filterNot { it.packageName == occupant.packageName }
+            // Swap the sole occupant back to the mover's old spot if it still fits
+            // there, else drop it on its own next free cell (matching its span).
+            val backAtSource = current?.let { occupant.copy(cell = it.cell) }?.takeIf { fits(it, rest, columns) }
+            val occupantTarget = backAtSource?.cell ?: firstFreeCell(rest, columns, occupant.spanX, occupant.spanY)
+            cells = rest + occupant.copy(cell = occupantTarget)
         }
-        cells = cells + AppCell(packageName, cell)
-        return withWorkspace(layout, workspace.copy(cells = cells))
+        return withWorkspace(layout, workspace.copy(cells = cells + moving))
     }
 
-    /** Moves [packageName] from one workspace to a cell in another (or the same). */
+    /** Moves [packageName] from one workspace to a cell in another (or the same),
+     *  carrying its existing span along. */
     fun moveApp(layout: WorkspaceLayout, fromWorkspaceId: String, toWorkspaceId: String, packageName: String, targetCell: Int): WorkspaceLayout? {
         if (fromWorkspaceId == toWorkspaceId) return placeApp(layout, toWorkspaceId, packageName, targetCell)
         val from = layout.workspaces.firstOrNull { it.id == fromWorkspaceId } ?: return null
-        if (packageName !in from.appPackages) return null
+        val source = from.cells.firstOrNull { it.packageName == packageName } ?: return null
         val without = withWorkspace(layout, from.copy(cells = from.cells.filterNot { it.packageName == packageName }))
             ?: return null
-        return placeApp(without, toWorkspaceId, packageName, targetCell)
+        return placeApp(without, toWorkspaceId, packageName, targetCell, source.spanX, source.spanY)
+    }
+
+    /**
+     * Changes [packageName]'s span within [workspaceId]. Returns null (no-op) if
+     * the resized rectangle would run off-grid or overlap another tile — the
+     * caller keeps whatever size last fit.
+     */
+    fun resizeApp(layout: WorkspaceLayout, workspaceId: String, packageName: String, spanX: Int, spanY: Int): WorkspaceLayout? {
+        val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
+        val current = workspace.cells.firstOrNull { it.packageName == packageName } ?: return null
+        val resized = current.copy(spanX = spanX.coerceIn(1, MAX_SPAN), spanY = spanY.coerceIn(1, MAX_SPAN))
+        val others = workspace.cells.filterNot { it.packageName == packageName }
+        if (!fits(resized, others, layout.authorColumns)) return null
+        return withWorkspace(layout, workspace.copy(cells = others + resized))
     }
 
     /**
@@ -334,16 +422,20 @@ object WorkspaceStore {
 
     // ── Validation & helpers ──────────────────────────────────────────────────
 
-    private fun normalizeCells(cells: List<AppCell>): List<AppCell> {
+    /** De-dupes packages and nudges any cell whose rectangle overlaps an
+     *  already-placed one (or a duplicate index) forward to the next fit. */
+    private fun normalizeCells(cells: List<AppCell>, columns: Int): List<AppCell> {
         val seenPkg = HashSet<String>()
-        val seenCell = HashSet<Int>()
         val result = ArrayList<AppCell>()
         for (c in cells.sortedBy { it.cell }) {
             if (!seenPkg.add(c.packageName)) continue
+            // Clamped to columns (not just MAX_SPAN) so the search below is
+            // guaranteed to terminate — see firstFreeCell for the same reasoning.
+            val spanX = c.spanX.coerceIn(1, columns.coerceAtLeast(1))
+            val spanY = c.spanY.coerceIn(1, MAX_SPAN)
             var cell = c.cell.coerceAtLeast(0)
-            while (cell in seenCell) cell++
-            seenCell.add(cell)
-            result.add(AppCell(c.packageName, cell))
+            while (!fits(AppCell(c.packageName, cell, spanX, spanY), result, columns)) cell++
+            result.add(AppCell(c.packageName, cell, spanX, spanY))
         }
         return result
     }
@@ -351,11 +443,12 @@ object WorkspaceStore {
     private fun isValid(layout: WorkspaceLayout): Boolean {
         val ids = layout.workspaces.map(WorkspaceRecord::id)
         val sequences = layout.workspaces.map(WorkspaceRecord::creationOrder)
+        val columns = layout.authorColumns
         val cellsValid = layout.workspaces.all { ws ->
             val cells = ws.cells
             cells.map { it.packageName }.distinct().size == cells.size &&
-                cells.map { it.cell }.distinct().size == cells.size &&
-                cells.all { it.cell >= 0 }
+                cells.all { it.cell >= 0 && it.spanX >= 1 && it.spanY >= 1 && onGrid(it, columns) } &&
+                !hasOverlap(cells, columns)
         }
         return layout.version == WorkspaceLayout.CURRENT_VERSION &&
             ids.size in 1..MAX_WORKSPACES &&
@@ -365,6 +458,26 @@ object WorkspaceStore {
             layout.visualOrder.toSet() == ids.toSet() &&
             layout.defaultWorkspaceId in ids &&
             cellsValid
+    }
+
+    /** True if [cell]'s rectangle stays within [columns] on its right edge. */
+    private fun onGrid(cell: AppCell, columns: Int): Boolean {
+        if (cell.cell < 0) return false
+        val cols = columns.coerceAtLeast(1)
+        return cell.cell % cols + cell.spanX.coerceAtLeast(1) <= cols
+    }
+
+    /** True if [candidate] is on-grid and overlaps none of [others]. */
+    private fun fits(candidate: AppCell, others: List<AppCell>, columns: Int): Boolean {
+        if (!onGrid(candidate, columns)) return false
+        val covered = candidate.coveredCells(columns)
+        return others.none { it.coveredCells(columns).any(covered::contains) }
+    }
+
+    /** True if any two cells in [cells] share a covered index on a [columns]-wide grid. */
+    private fun hasOverlap(cells: List<AppCell>, columns: Int): Boolean {
+        val seen = HashSet<Int>()
+        return cells.any { c -> c.coveredCells(columns).any { !seen.add(it) } }
     }
 
     private fun stringList(array: JSONArray?): List<String> = buildList {

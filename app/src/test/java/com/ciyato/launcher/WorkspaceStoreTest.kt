@@ -1,8 +1,11 @@
 package com.ciyato.launcher
 
+import com.ciyato.launcher.data.AppCell
 import com.ciyato.launcher.data.WorkspaceStore
+import com.ciyato.launcher.data.coveredCells
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class WorkspaceStoreTest {
@@ -153,5 +156,107 @@ class WorkspaceStoreTest {
         assertEquals(listOf("workspace-2", "workspace-1"), result.visualOrder)
         assertEquals("workspace-2", result.defaultWorkspaceId)
         assertNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(result)))
+    }
+
+    // ── Span (multi-cell tile) coverage ─────────────────────────────────────
+
+    @Test
+    fun `a spanning cell covers exactly its rectangle of grid indices`() {
+        val tile = AppCell("com.wide", cell = 1, spanX = 2, spanY = 2)
+        // On a 4-wide grid, cell 1 is row 0 col 1; a 2x2 tile from there covers
+        // (0,1),(0,2),(1,1),(1,2) => linear indices 1,2,5,6.
+        assertEquals(setOf(1, 2, 5, 6), tile.coveredCells(columns = 4))
+    }
+
+    @Test
+    fun `placing a spanning tile that would clobber more than one occupant is rejected`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.a,com.b,com.mover", "", "{}", "{}", "")
+        // workspace-1 starts as a@0, b@1, mover@2 on the default 4-wide grid.
+        val moved = requireNotNull(WorkspaceStore.placeApp(base, "workspace-1", "com.mover", 8))
+        val resized = requireNotNull(WorkspaceStore.resizeApp(moved, "workspace-1", "com.mover", 2, 2))
+        // mover is now a 2x2 tile at cell 8, covering {8,9,12,13} — clear of a@0 and b@1.
+
+        // Dragging mover onto cell 0 would cover {0,1,4,5}, clobbering both a@0 and b@1 at once.
+        val result = WorkspaceStore.placeApp(resized, "workspace-1", "com.mover", 0)
+        assertNull(result)
+    }
+
+    @Test
+    fun `placeApp rejects a placement that would run the tile off the grid's right edge`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.wide", "", "{}", "{}", "")
+        val resized = requireNotNull(WorkspaceStore.resizeApp(base, "workspace-1", "com.wide", 2, 1))
+        // com.wide is 2 wide at cell 0; column 3 is the last column on the default
+        // 4-wide grid, so starting a 2-wide tile there would spill past the edge.
+        val result = WorkspaceStore.placeApp(resized, "workspace-1", "com.wide", 3)
+        assertNull(result)
+    }
+
+    @Test
+    fun `firstFreeCell skips a slot a wider tile would overlap or run off the edge`() {
+        val blocked = listOf(AppCell("com.x", cell = 1))
+        // On a 3-wide grid, a 2-wide search must skip index 0 (would cover 0,1 —
+        // overlaps com.x at 1), skip index 1 (is com.x itself), skip index 2
+        // (2+2 > 3, runs off the right edge), and land on index 3 (row 1 — clear).
+        assertEquals(3, WorkspaceStore.firstFreeCell(blocked, columns = 3, spanX = 2, spanY = 1))
+    }
+
+    @Test
+    fun `addAppsAtFreeCells skips past a larger tile's full footprint, not just its origin`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.big", "", "{}", "{}", "")
+        val resized = requireNotNull(WorkspaceStore.resizeApp(base, "workspace-1", "com.big", 2, 2))
+        // com.big is a 2x2 tile at cell 0, covering {0,1,4,5} on the default 4-wide grid.
+        val result = requireNotNull(WorkspaceStore.addAppsAtFreeCells(resized, "workspace-1", listOf("com.new")))
+        val cells = result.workspaceAt(0)!!.cells.associateBy { it.packageName }
+        assertEquals(2, cells["com.new"]?.cell)
+    }
+
+    @Test
+    fun `resizeApp grows a tile into empty space`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.solo", "", "{}", "{}", "")
+        val result = requireNotNull(WorkspaceStore.resizeApp(base, "workspace-1", "com.solo", 2, 2))
+        val cell = result.workspaceAt(0)!!.cells.single { it.packageName == "com.solo" }
+        assertEquals(0, cell.cell)
+        assertEquals(2, cell.spanX)
+        assertEquals(2, cell.spanY)
+    }
+
+    @Test
+    fun `resizeApp rejects a resize that would overlap another tile`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.a,com.b", "", "{}", "{}", "")
+        // a@0, b@1 — growing a to 2 wide would reach into b's cell.
+        val result = WorkspaceStore.resizeApp(base, "workspace-1", "com.a", 2, 1)
+        assertNull(result)
+    }
+
+    @Test
+    fun `resizeApp rejects a resize that would run off the grid's right edge`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.a,com.b,com.c,com.last", "", "{}", "{}", "")
+        // com.last sits at cell 3 — the last column on the default 4-wide grid.
+        val result = WorkspaceStore.resizeApp(base, "workspace-1", "com.last", 2, 1)
+        assertNull(result)
+    }
+
+    @Test
+    fun `serialize then parse round-trips a tile's span`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.wide", "", "{}", "{}", "")
+        val resized = requireNotNull(WorkspaceStore.resizeApp(base, "workspace-1", "com.wide", 3, 2))
+        val reparsed = requireNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(resized)))
+        val cell = reparsed.workspaceAt(0)!!.cells.single { it.packageName == "com.wide" }
+        assertEquals(3, cell.spanX)
+        assertEquals(2, cell.spanY)
+    }
+
+    @Test
+    fun `a v2 layout saved without span fields still parses with every span defaulting to 1`() {
+        val v2 = """{"version":2,"defaultWorkspaceId":"workspace-1","visualOrder":["workspace-1"],"authorColumns":4,""" +
+            """"workspaces":[{"id":"workspace-1","creationOrder":1,"name":"W1",""" +
+            """"cells":[{"pkg":"com.a","cell":0},{"pkg":"com.b","cell":1}],""" +
+            """"categoryKeys":[],"starterDismissed":false}]}"""
+        val layout = requireNotNull(WorkspaceStore.parse(v2))
+        val cells = layout.workspaceAt(0)!!.cells.associateBy { it.packageName }
+        assertEquals(1, cells["com.a"]?.spanX)
+        assertEquals(1, cells["com.a"]?.spanY)
+        assertEquals(1, cells["com.b"]?.spanX)
+        assertEquals(1, cells["com.b"]?.spanY)
     }
 }
