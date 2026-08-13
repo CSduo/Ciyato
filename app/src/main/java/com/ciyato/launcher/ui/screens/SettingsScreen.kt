@@ -740,14 +740,7 @@ private fun CrashLogsScreen(context: Context, onBack: () -> Unit) {
         Scaffold(
             containerColor = CiyatoBg,
             topBar = {
-                @OptIn(ExperimentalMaterial3Api::class)
-                TopAppBar(
-                    title = { Text("Crash Log", color = CiyatoWhite, fontSize = 16.sp) },
-                    navigationIcon = { IconButton(onClick = { selectedContent = null }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoSec)
-                    }},
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
-                )
+                CiyatoTopBar(title = "Crash Log", onBack = { selectedContent = null })
             }
         ) { p ->
             androidx.compose.foundation.lazy.LazyColumn(
@@ -766,18 +759,14 @@ private fun CrashLogsScreen(context: Context, onBack: () -> Unit) {
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            @OptIn(ExperimentalMaterial3Api::class)
-            TopAppBar(
-                title = { Text("Crash Logs", color = CiyatoWhite) },
-                navigationIcon = { IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoSec)
-                }},
+            CiyatoTopBar(
+                title = "Crash Logs",
+                onBack = onBack,
                 actions = {
                     TextButton(onClick = { CrashReporter.clearLogs(context) }) {
                         Text("Clear All", color = CiyatoRed)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
             )
         }
     ) { p ->
