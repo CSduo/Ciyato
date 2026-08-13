@@ -27,14 +27,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.ciyato.launcher.data.VaultCrypto
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
  * SecureFileVaultScreen — Suggestion #68
- * Biometric-gated file vault using AES-256 encryption.
- * Files are encrypted on import and decrypted on open.
+ * Biometric-gated file vault using AES-256-GCM (Android Keystore) encryption.
+ * Files are encrypted on import and decrypted on open via [VaultCrypto].
  * Vault directory lives in app's internal private storage.
  */
 
@@ -45,16 +49,47 @@ fun SecureFileVaultScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var isUnlocked by remember { mutableStateOf(false) }
     var authError by remember { mutableStateOf<String?>(null) }
+    var vaultError by remember { mutableStateOf<String?>(null) }
     var vaultFiles by remember { mutableStateOf<List<String>>(emptyList()) }
 
     val vaultDir = remember {
         File(context.filesDir, "secure_vault").also { it.mkdirs() }
     }
 
-    fun loadVaultFiles() {
-        vaultFiles = vaultDir.listFiles()?.map { it.name } ?: emptyList()
+    suspend fun refreshVaultFiles() {
+        vaultFiles = withContext(Dispatchers.IO) {
+            vaultDir.listFiles()
+                ?.filterNot { VaultCrypto.isTempArtifact(it.name) }
+                ?.map { it.name }
+                ?: emptyList()
+        }
+    }
+
+    // Runs once per unlock: migrates any pre-hardening XOR-encoded files to AES-GCM in place,
+    // and re-verifies files already in the new format still decrypt. A file that fails either
+    // step is left untouched on disk (see VaultCrypto.storeFile) and reported, never dropped.
+    // Also sweeps any orphaned temp file a prior migration could have left behind if the app
+    // died between finishing that write and the rename that swaps it in (see VaultCrypto.storeFile)
+    // — safe to delete, since the real file it would have replaced was never touched.
+    fun onUnlocked() {
+        isUnlocked = true
+        scope.launch {
+            val failed = withContext(Dispatchers.IO) {
+                val entries = vaultDir.listFiles() ?: emptyArray()
+                val (orphans, files) = entries.partition { VaultCrypto.isTempArtifact(it.name) }
+                orphans.forEach { it.delete() }
+                files.count { file ->
+                    runCatching { VaultCrypto.verifyAndMigrate(file, context.packageName) }.isFailure
+                }
+            }
+            vaultError = if (failed > 0) {
+                "$failed file${if (failed != 1) "s" else ""} could not be verified and were left unchanged."
+            } else null
+            refreshVaultFiles()
+        }
     }
 
     fun authenticate() {
@@ -64,8 +99,7 @@ fun SecureFileVaultScreen(
             BiometricManager.Authenticators.DEVICE_CREDENTIAL
         )
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
-            isUnlocked = true
-            loadVaultFiles()
+            onUnlocked()
             return
         }
         // Fail CLOSED. This previously did `isUnlocked = true; loadVaultFiles()`,
@@ -79,8 +113,7 @@ fun SecureFileVaultScreen(
         BiometricPrompt(activity, ContextCompat.getMainExecutor(context),
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    isUnlocked = true
-                    loadVaultFiles()
+                    onUnlocked()
                 }
             }
         ).authenticate(
@@ -95,19 +128,19 @@ fun SecureFileVaultScreen(
     }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        if (uri != null) {
-            try {
-                val name = uri.lastPathSegment?.substringAfterLast('/') ?: "file_${System.currentTimeMillis()}"
-                val dest = File(vaultDir, "$name.enc")
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    val bytes = input.readBytes()
-                    // XOR cipher with app-specific key (production: use AES-256-GCM via Android Keystore)
-                    val key = context.packageName.toByteArray()
-                    val encrypted = ByteArray(bytes.size) { i -> (bytes[i].toInt() xor key[i % key.size].toInt()).toByte() }
-                    dest.writeBytes(encrypted)
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val name = uri.lastPathSegment?.substringAfterLast('/') ?: "file_${System.currentTimeMillis()}"
+                    val dest = File(vaultDir, "$name.enc")
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("Couldn't open the selected file")
+                    VaultCrypto.storeFile(dest, bytes)
                 }
-                loadVaultFiles()
-            } catch (_: Exception) {}
+            }
+            vaultError = result.exceptionOrNull()?.let { "Couldn't add the file securely — nothing was saved." }
+            refreshVaultFiles()
         }
     }
 
@@ -162,6 +195,9 @@ fun SecureFileVaultScreen(
                         Icon(Icons.Default.FolderOpen, null, tint = CiyatoMuted, modifier = Modifier.size(48.dp))
                         Text("Vault is empty", color = CiyatoWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Text("Tap + to add encrypted files", color = CiyatoMuted)
+                        vaultError?.let { message ->
+                            Text(message, color = CiyatoRed, fontSize = 13.sp)
+                        }
                         Button(onClick = { filePicker.launch("*/*") },
                             colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold)) {
                             Icon(Icons.Default.Add, null, tint = Color.Black)
@@ -176,6 +212,11 @@ fun SecureFileVaultScreen(
                         Text("${vaultFiles.size} encrypted file${if (vaultFiles.size != 1) "s" else ""}",
                             color = CiyatoMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
                     }
+                    vaultError?.let { message ->
+                        item {
+                            Text(message, color = CiyatoRed, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
+                        }
+                    }
                     items(vaultFiles) { name ->
                         Card(colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
                             shape = RoundedCornerShape(12.dp)) {
@@ -185,8 +226,10 @@ fun SecureFileVaultScreen(
                                 Text(name.removeSuffix(".enc"), color = CiyatoWhite,
                                     fontSize = 13.sp, modifier = Modifier.weight(1f))
                                 IconButton(onClick = {
-                                    File(vaultDir, name).delete()
-                                    loadVaultFiles()
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) { File(vaultDir, name).delete() }
+                                        refreshVaultFiles()
+                                    }
                                 }) {
                                     Icon(Icons.Default.Delete, null, tint = Color(0xFFFF6B6B),
                                         modifier = Modifier.size(18.dp))
