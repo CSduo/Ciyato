@@ -686,6 +686,23 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Resizes a home-screen tile to span [spanX] x [spanY] cells.
+     *
+     * WorkspaceStore.resizeApp returns null when the new rectangle would overlap
+     * a neighbour or run off the right edge, and updateLayout skips a null
+     * transform — so a rejected resize leaves the saved layout exactly as it was
+     * rather than persisting a size that doesn't actually fit. Callers must
+     * reflect that by snapping the tile back, never by showing the rejected size.
+     */
+    fun resizeAppTile(pageIndex: Int, pkg: String, spanX: Int, spanY: Int) = viewModelScope.launch {
+        updateLayout { layout ->
+            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+                ?: return@updateLayout null
+            WorkspaceStore.resizeApp(layout, workspace.id, pkg, spanX, spanY)
+        }
+    }
+
     /** Moves an app to a specific cell on another workspace (used by cross-page drag). */
     fun moveAppToCell(fromPage: Int, toPage: Int, pkg: String, cell: Int) = viewModelScope.launch {
         updateLayout { layout ->
