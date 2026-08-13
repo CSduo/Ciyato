@@ -149,6 +149,7 @@ private sealed class LauncherDest {
     object DataBreachChecker  : LauncherDest()   // Suggestion 85
     object SafeBrowsing       : LauncherDest()   // Suggestion 83
     object SearchHistory      : LauncherDest()   // Suggestion 108
+    object StickyNotes        : LauncherDest()   // DataStore-backed quick notes
 }
 
 // ── Root composable ───────────────────────────────────────────────────────────
@@ -193,6 +194,7 @@ private fun LauncherRoot(
             is LauncherDest.DataBreachChecker,
             is LauncherDest.SafeBrowsing,
             is LauncherDest.SearchHistory -> LauncherDest.Settings
+            is LauncherDest.StickyNotes -> LauncherDest.Settings
             else -> LauncherDest.Home
         }
     }
@@ -284,6 +286,7 @@ private fun LauncherRoot(
             onNavigateToDataBreachChecker = { dest = LauncherDest.DataBreachChecker },
             onNavigateToSafeBrowsing   = { dest = LauncherDest.SafeBrowsing },
             onNavigateToSearchHistory  = { dest = LauncherDest.SearchHistory },
+            onNavigateToStickyNotes    = { dest = LauncherDest.StickyNotes },
         )
 
         is LauncherDest.Search -> SearchScreen(
@@ -390,6 +393,11 @@ private fun LauncherRoot(
         )
 
         is LauncherDest.SafeBrowsing -> SafeBrowsingHelperScreen( // Suggestion 83
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.StickyNotes -> StickyNotesScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )

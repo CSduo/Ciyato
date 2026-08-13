@@ -69,6 +69,7 @@ fun SettingsScreen(
     onNavigateToDataBreachChecker: (() -> Unit)? = null,
     onNavigateToSafeBrowsing: (() -> Unit)? = null,
     onNavigateToSearchHistory: (() -> Unit)? = null,
+    onNavigateToStickyNotes: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val view    = LocalView.current
@@ -424,6 +425,15 @@ fun SettingsScreen(
                     icon = Icons.Default.History,
                     iconColor = CiyatoBlue,
                     onClick = { onNavigateToSearchHistory?.invoke() }
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Sticky Notes",
+                    subtitle = "Quick notes kept on this device",
+                    icon = Icons.Default.StickyNote2,
+                    iconColor = CiyatoAmber,
+                    onClick = { onNavigateToStickyNotes?.invoke() }
                 )
             }
             item {
