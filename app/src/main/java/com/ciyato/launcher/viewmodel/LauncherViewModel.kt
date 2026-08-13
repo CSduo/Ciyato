@@ -1332,7 +1332,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (_weatherState.value !is WeatherRepository.WeatherState.Success) {
                 _weatherState.value = WeatherRepository.WeatherState.Loading
             }
-            val loc = LocationHelper.getLocation(context) ?: LocationHelper.getIpLocationFallback()
+            val loc = LocationHelper.getLocation(context)
             val result = if (loc != null) {
                 WeatherRepository.fetchWeather(loc.lat, loc.lon)
             } else {
@@ -1351,7 +1351,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (_weatherState.value !is WeatherRepository.WeatherState.Success) {
                 _weatherState.value = WeatherRepository.WeatherState.Loading
             }
-            val loc = LocationHelper.getLocation(context) ?: LocationHelper.getIpLocationFallback()
+            val loc = LocationHelper.getLocation(context)
             val refreshed = if (loc != null)
                 WeatherRepository.fetchWeather(loc.lat, loc.lon)
             else

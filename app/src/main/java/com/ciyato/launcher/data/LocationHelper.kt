@@ -24,6 +24,15 @@ import kotlin.coroutines.resume
  *   2. Fall back to the network provider and choose the best recent fix.
  *   3. If still nothing, request a fresh single update and wait up to 8 s.
  *   4. Return null only if all three steps fail.
+ *
+ * Location never leaves the device. There is deliberately no IP-geolocation
+ * fallback: the previous one POSTed to a third-party host over plaintext
+ * http://, which (a) the platform blocked outright under this app's
+ * usesCleartextTraffic="false" policy, so it silently never worked, and
+ * (b) would have disclosed the user's IP — and therefore approximate
+ * location — to that third party and to any network observer, with no
+ * consent prompt. Returning null is the honest answer when the device
+ * itself cannot supply a fix.
  */
 object LocationHelper {
 
@@ -46,26 +55,9 @@ object LocationHelper {
         )?.let { return it.toLatLon() }
 
         // Request a fresh fix with an 8-second timeout.
-        val gpsLoc = withTimeoutOrNull(8_000L) {
+        return withTimeoutOrNull(8_000L) {
             requestSingleUpdate(lm, hasPrecisePermission(context))
         }?.toLatLon()
-
-        if (gpsLoc != null) return gpsLoc
-
-        return getIpLocationFallback()
-    }
-
-    suspend fun getIpLocationFallback(): LatLon? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        runCatching {
-            val conn = java.net.URL("http://ip-api.com/json/").openConnection() as java.net.HttpURLConnection
-            conn.connectTimeout = 4000
-            conn.readTimeout = 4000
-            val text = conn.inputStream.bufferedReader().readText()
-            val json = org.json.JSONObject(text)
-            val lat = json.optDouble("lat")
-            val lon = json.optDouble("lon")
-            if (!lat.isNaN() && !lon.isNaN()) LatLon(lat, lon) else null
-        }.getOrNull()
     }
 
     fun hasPermission(context: Context): Boolean =

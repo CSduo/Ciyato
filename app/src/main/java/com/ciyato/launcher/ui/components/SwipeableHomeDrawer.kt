@@ -10,6 +10,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
@@ -35,6 +36,7 @@ fun SwipeableHomeDrawer(
     var drawerState by remember { mutableStateOf(DrawerState.HOME) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val animatedOffset = remember { Animatable(0f) }
+    val dragScope = rememberCoroutineScope()
 
     val targetOffset = when (drawerState) {
         DrawerState.HOME -> 0f
@@ -71,9 +73,10 @@ fun SwipeableHomeDrawer(
                         val rawTarget = targetOffset + dragOffset
                         val clamped = rawTarget.coerceIn(-screenWidthPx * 1.05f, screenWidthPx * 0.05f)
                         animatedOffset.updateBounds(lowerBound = -screenWidthPx * 1.05f, upperBound = 0f)
-                        kotlinx.coroutines.runBlocking {
-                            animatedOffset.snapTo(clamped)
-                        }
+                        // Never runBlocking here: this fires on every pointer-move
+                        // frame, and blocking the main thread mid-gesture is exactly
+                        // what makes a drawer swipe stutter (and risks an ANR).
+                        dragScope.launch { animatedOffset.snapTo(clamped) }
                     },
                 )
             },
