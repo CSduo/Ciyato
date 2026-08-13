@@ -142,6 +142,12 @@ private sealed class LauncherDest {
     object StorageCleanup     : LauncherDest()   // Suggestion 26
     object PhotoCollections   : LauncherDest()   // Real screenshots/recent/videos/large/memories collections
     object RecentFiles        : LauncherDest()   // Recent files browser + file tagging
+    object ContextualSuggestions : LauncherDest()  // Suggestion 30
+    object VoiceCommands      : LauncherDest()   // Suggestion 39
+    object AnomalyDetection   : LauncherDest()   // Suggestion 37
+    object AiChangelog        : LauncherDest()   // Suggestion 45
+    object DataBreachChecker  : LauncherDest()   // Suggestion 85
+    object SafeBrowsing       : LauncherDest()   // Suggestion 83
 }
 
 // ── Root composable ───────────────────────────────────────────────────────────
@@ -178,7 +184,13 @@ private fun LauncherRoot(
             is LauncherDest.PhotoCollections,
             is LauncherDest.RecentFiles,
             is LauncherDest.HiddenApps,
-            is LauncherDest.RemovedApps -> LauncherDest.Settings
+            is LauncherDest.RemovedApps,
+            is LauncherDest.ContextualSuggestions,
+            is LauncherDest.VoiceCommands,
+            is LauncherDest.AnomalyDetection,
+            is LauncherDest.AiChangelog,
+            is LauncherDest.DataBreachChecker,
+            is LauncherDest.SafeBrowsing -> LauncherDest.Settings
             else -> LauncherDest.Home
         }
     }
@@ -263,6 +275,12 @@ private fun LauncherRoot(
             onNavigateToWallpaper      = { dest = LauncherDest.WallpaperStudio },
             onNavigateToHiddenApps     = { dest = LauncherDest.HiddenApps },
             onNavigateToRemovedApps    = { dest = LauncherDest.RemovedApps },
+            onNavigateToContextualSuggestions = { dest = LauncherDest.ContextualSuggestions },
+            onNavigateToVoiceCommands  = { dest = LauncherDest.VoiceCommands },
+            onNavigateToAnomalyDetection = { dest = LauncherDest.AnomalyDetection },
+            onNavigateToAiChangelog    = { dest = LauncherDest.AiChangelog },
+            onNavigateToDataBreachChecker = { dest = LauncherDest.DataBreachChecker },
+            onNavigateToSafeBrowsing   = { dest = LauncherDest.SafeBrowsing },
         )
 
         is LauncherDest.Search -> SearchScreen(
@@ -334,6 +352,41 @@ private fun LauncherRoot(
         )
 
         is LauncherDest.RecentFiles -> RecentFilesScreen(
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.ContextualSuggestions -> ContextualSuggestionsScreen( // Suggestion 30
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.VoiceCommands -> VoiceCommandScreen( // Suggestion 39
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+            onOpenCategory = { category -> dest = LauncherDest.CategoryDetail(category) },
+            onOpenSearch   = {
+                viewModel.setSearch(it)
+                dest = LauncherDest.Search
+            },
+        )
+
+        is LauncherDest.AnomalyDetection -> AnomalyDetectionScreen( // Suggestion 37
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.AiChangelog -> AiChangelogScreen( // Suggestion 45
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.DataBreachChecker -> DataBreachCheckerScreen( // Suggestion 85
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.SafeBrowsing -> SafeBrowsingHelperScreen( // Suggestion 83
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )

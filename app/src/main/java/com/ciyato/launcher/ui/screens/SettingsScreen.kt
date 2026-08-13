@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Launch
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -61,6 +62,12 @@ fun SettingsScreen(
     onNavigateToWallpaper: (() -> Unit)? = null,
     onNavigateToHiddenApps: (() -> Unit)? = null,
     onNavigateToRemovedApps: (() -> Unit)? = null,
+    onNavigateToContextualSuggestions: (() -> Unit)? = null,
+    onNavigateToVoiceCommands: (() -> Unit)? = null,
+    onNavigateToAnomalyDetection: (() -> Unit)? = null,
+    onNavigateToAiChangelog: (() -> Unit)? = null,
+    onNavigateToDataBreachChecker: (() -> Unit)? = null,
+    onNavigateToSafeBrowsing: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val view    = LocalView.current
@@ -212,6 +219,45 @@ fun SettingsScreen(
                     onCheckedChange = viewModel::setSmartCategories
                 )
             }
+            // ── Smart Insights ───────────────────────────────────────────────
+            item { SectionHeader("Smart Insights") }
+            item {
+                CiyatoListCard(
+                    title = "Smart Suggestions",
+                    subtitle = "App suggestions based on your time-of-day usage patterns",
+                    icon = Icons.Default.AutoAwesome,
+                    iconColor = CiyatoGold,
+                    onClick = { onNavigateToContextualSuggestions?.invoke() }
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Usage Anomalies",
+                    subtitle = "Flags apps whose usage today is unusually high or low",
+                    icon = Icons.AutoMirrored.Filled.TrendingUp,
+                    iconColor = CiyatoGold,
+                    onClick = { onNavigateToAnomalyDetection?.invoke() }
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Today's Summary",
+                    subtitle = "A digest of new installs and notable usage changes today",
+                    icon = Icons.Default.Description,
+                    iconColor = CiyatoGold,
+                    onClick = { onNavigateToAiChangelog?.invoke() }
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Voice Commands",
+                    subtitle = "Open apps and control Ciyato with your voice",
+                    icon = Icons.Default.Mic,
+                    iconColor = CiyatoGold,
+                    onClick = { onNavigateToVoiceCommands?.invoke() }
+                )
+            }
+
             // ── Weather ───────────────────────────────────────────────────────
             item { SectionHeader("Weather") }
             item {
@@ -392,6 +438,24 @@ fun SettingsScreen(
                     icon = Icons.Default.Security,
                     iconColor = CiyatoBlue,
                     onClick = { onNavigateToPermissionAudit?.invoke() }
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Breach Checker",
+                    subtitle = "Check if a password appeared in a known data breach — never leaves your device",
+                    icon = Icons.Default.Shield,
+                    iconColor = CiyatoBlue,
+                    onClick = { onNavigateToDataBreachChecker?.invoke() }
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Safe Browsing Helper",
+                    subtitle = "Heuristic check for suspicious URLs before you open them",
+                    icon = Icons.Default.GppGood,
+                    iconColor = CiyatoBlue,
+                    onClick = { onNavigateToSafeBrowsing?.invoke() }
                 )
             }
 
