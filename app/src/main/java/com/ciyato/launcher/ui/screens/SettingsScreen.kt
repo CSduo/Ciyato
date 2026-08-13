@@ -50,6 +50,7 @@ fun SettingsScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
     onNavigateToPermissionAudit: (() -> Unit)? = null,
+    onNavigateToStorageCleanup: (() -> Unit)? = null,
     onNavigateToFocus: (() -> Unit)? = null,
     onNavigateToFiles: (() -> Unit)? = null,
     onNavigateToPhotos: (() -> Unit)? = null,
@@ -240,6 +241,15 @@ fun SettingsScreen(
                             showForgetFilesDialog = true
                         }
                     }
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Storage Cleanup",
+                    subtitle = "Scan for large files, old screenshots, downloads, cache, and empty files",
+                    icon = Icons.Default.Storage,
+                    iconColor = CiyatoGold,
+                    onClick = { onNavigateToStorageCleanup?.invoke() }
                 )
             }
             item {

@@ -139,6 +139,7 @@ private sealed class LauncherDest {
     object Agenda             : LauncherDest()
     object FocusSession       : LauncherDest()   // Suggestion 75
     object PermissionAudit    : LauncherDest()   // Suggestion 139
+    object StorageCleanup     : LauncherDest()   // Suggestion 26
 }
 
 // ── Root composable ───────────────────────────────────────────────────────────
@@ -171,6 +172,7 @@ private fun LauncherRoot(
     androidx.activity.compose.BackHandler(enabled = dest != LauncherDest.Home) {
         dest = when (dest) {
             is LauncherDest.PermissionAudit,
+            is LauncherDest.StorageCleanup,
             is LauncherDest.HiddenApps,
             is LauncherDest.RemovedApps -> LauncherDest.Settings
             else -> LauncherDest.Home
@@ -249,6 +251,7 @@ private fun LauncherRoot(
                 )
             },
             onNavigateToPermissionAudit= { dest = LauncherDest.PermissionAudit },
+            onNavigateToStorageCleanup = { dest = LauncherDest.StorageCleanup },
             onNavigateToFocus          = { dest = LauncherDest.FocusSession },
             onNavigateToTheme          = { dest = LauncherDest.ThemeStudio },
             onNavigateToWallpaper      = { dest = LauncherDest.WallpaperStudio },
@@ -312,6 +315,11 @@ private fun LauncherRoot(
         is LauncherDest.PermissionAudit -> PermissionAuditScreen( // Suggestion 139
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Home },
+        )
+
+        is LauncherDest.StorageCleanup -> StorageCleanupScreen( // Suggestion 26
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
         )
 
     }
