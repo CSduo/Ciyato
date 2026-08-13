@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.IntentSender
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.os.StatFs
 import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -81,11 +83,13 @@ fun StorageCleanupScreen(
     var isScanning by remember { mutableStateOf(true) }
     var results by remember { mutableStateOf<List<CategoryResult>>(emptyList()) }
     var selectedCategory by remember { mutableStateOf<CleanupCategory?>(null) }
+    var deviceStorage by remember { mutableStateOf<DeviceStorageOverview?>(null) }
 
     LaunchedEffect(hasPermission) {
         isScanning = true
-        results = withContext(Dispatchers.IO) {
-            buildList {
+        val (overview, scanned) = withContext(Dispatchers.IO) {
+            val overview = readDeviceStorageOverview(context, hasPermission)
+            val scanned = buildList {
                 add(scanCache(context))
                 // Categories backed by MediaStore can't be measured without the
                 // media permission, so they simply don't appear rather than
@@ -97,7 +101,10 @@ fun StorageCleanupScreen(
                     add(scanEmptyFiles(context))
                 }
             }
+            overview to scanned
         }
+        deviceStorage = overview
+        results = scanned
         isScanning = false
     }
 
@@ -155,6 +162,9 @@ fun StorageCleanupScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    deviceStorage?.let { overview ->
+                        item { StorageBreakdownCard(overview = overview, hasPermission = hasPermission) }
+                    }
                     item {
                         CleanupSummaryCard(
                             totalBytes = measuredBytes,
@@ -295,6 +305,75 @@ private fun CleanupSummaryCard(totalBytes: Long, totalCount: Int, overlapNote: B
 }
 
 @Composable
+private fun StorageBreakdownCard(overview: DeviceStorageOverview, hasPermission: Boolean) {
+    Column(
+        Modifier.fillMaxWidth().clip(CiyatoShapes.large).background(CiyatoBgEl)
+            .border(1.dp, CiyatoSubtleBorder, CiyatoShapes.large).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Device storage", color = CiyatoMuted, style = labelL)
+            Text(
+                "${MediaLibraryRepository.formatBytes(overview.usedBytes)} used of ${MediaLibraryRepository.formatBytes(overview.totalBytes)}",
+                color = CiyatoGold,
+                style = headingM,
+            )
+            Text(
+                "${MediaLibraryRepository.formatBytes(overview.freeBytes)} free",
+                color = CiyatoSec,
+                style = bodyM,
+            )
+        }
+
+        if (overview.slices.isNotEmpty()) {
+            StorageBreakdownBar(slices = overview.slices)
+            StorageBreakdownLegend(slices = overview.slices)
+        } else if (!hasPermission) {
+            Text(
+                "Grant media access below to see the breakdown by category.",
+                color = CiyatoMuted,
+                style = bodyS,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StorageBreakdownBar(slices: List<StorageBreakdownSlice>) {
+    val visible = slices.filter { it.bytes > 0L }
+    if (visible.isEmpty()) return
+    Row(
+        Modifier.fillMaxWidth().height(10.dp).clip(CiyatoShapes.small).background(CiyatoBgEl3),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        visible.forEach { slice ->
+            Box(
+                Modifier
+                    .weight(slice.bytes.toFloat())
+                    .fillMaxHeight()
+                    .background(slice.color),
+            )
+        }
+    }
+}
+
+@Composable
+private fun StorageBreakdownLegend(slices: List<StorageBreakdownSlice>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        slices.forEach { slice ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(slice.color))
+                Text(slice.label, color = CiyatoSec, style = bodyM, modifier = Modifier.weight(1f))
+                Text(MediaLibraryRepository.formatBytes(slice.bytes), color = CiyatoWhite, style = labelL)
+            }
+        }
+    }
+}
+
+@Composable
 private fun CleanupCategoryCard(result: CategoryResult, onClick: () -> Unit) {
     CiyatoListCard(
         title = result.category.label,
@@ -378,11 +457,42 @@ private data class CategoryResult(
     val items: List<CleanupItem>,
 )
 
+/** One real, measured slice of used storage for the breakdown bar/legend. */
+private data class StorageBreakdownSlice(
+    val label: String,
+    val bytes: Long,
+    val color: Color,
+)
+
+/**
+ * Whole-device storage snapshot. [totalBytes]/[usedBytes]/[freeBytes] come from
+ * StatFs and need no permission; [slices] is only populated when media
+ * permission is granted, since it's built from MediaStore aggregate queries.
+ */
+private data class DeviceStorageOverview(
+    val totalBytes: Long,
+    val usedBytes: Long,
+    val freeBytes: Long,
+    val slices: List<StorageBreakdownSlice>,
+)
+
 // ── Real scanning (MediaStore + app cache) ──────────────────────────────────
 
 private const val LARGE_FILE_THRESHOLD = 50L * 1024 * 1024 // 50 MB
 private const val OLD_SCREENSHOT_DAYS = 30L
 private const val DISPLAY_LIMIT = 250
+
+/** MIME types counted as "Documents" in the storage breakdown below. */
+private val DOCUMENT_MIMES = listOf(
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain",
+)
 
 private val filesUri: Uri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
 
@@ -446,6 +556,56 @@ private fun folderSize(file: java.io.File): Long = when {
     file.isFile -> file.length()
     file.isDirectory -> file.listFiles()?.sumOf { folderSize(it) } ?: 0L
     else -> 0L
+}
+
+/**
+ * Real, on-device storage breakdown: total/used/free from [StatFs] (no permission
+ * needed), plus a per-category split of used space from MediaStore aggregate
+ * queries (needs media permission — omitted entirely when it's not granted,
+ * rather than showing a guessed split).
+ */
+@Suppress("DEPRECATION")
+private fun readDeviceStorageOverview(context: Context, hasPermission: Boolean): DeviceStorageOverview {
+    val stat = StatFs(Environment.getExternalStorageDirectory().path)
+    val totalBytes = stat.blockCountLong * stat.blockSizeLong
+    val freeBytes = stat.availableBlocksLong * stat.blockSizeLong
+    val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
+
+    val slices = if (hasPermission) {
+        val media = MediaStore.Files.FileColumns.MEDIA_TYPE
+        val mime = MediaStore.Files.FileColumns.MIME_TYPE
+
+        val (_, imageBytes) = summarize(context, "$media = ${MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE}", null)
+        val (_, videoBytes) = summarize(context, "$media = ${MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO}", null)
+        val (_, audioBytes) = summarize(context, "$media = ${MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO}", null)
+
+        // Documents/Downloads = recognized document MIME types, plus anything
+        // sitting in the Downloads folder — excluding image/video/audio there
+        // so it isn't double-counted against the categories above.
+        val docSelection = "$mime IN (${DOCUMENT_MIMES.joinToString(",") { "?" }}) OR " +
+            "($pathColumn LIKE ? AND $media NOT IN (" +
+            "${MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE}, " +
+            "${MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO}, " +
+            "${MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO}))"
+        val docArgs = (DOCUMENT_MIMES + "%Download%").toTypedArray()
+        val (_, docBytes) = summarize(context, docSelection, docArgs)
+
+        // Whatever's left of used space that wasn't measured above — system
+        // files, app installs/data, and anything MediaStore doesn't expose.
+        val otherBytes = (usedBytes - (imageBytes + videoBytes + audioBytes + docBytes)).coerceAtLeast(0L)
+
+        listOf(
+            StorageBreakdownSlice("Images", imageBytes, CiyatoBlue),
+            StorageBreakdownSlice("Videos", videoBytes, CiyatoPurple),
+            StorageBreakdownSlice("Audio", audioBytes, CiyatoGreen),
+            StorageBreakdownSlice("Documents & Downloads", docBytes, CiyatoAmber),
+            StorageBreakdownSlice("Other / app data", otherBytes, CiyatoMuted),
+        )
+    } else {
+        emptyList()
+    }
+
+    return DeviceStorageOverview(totalBytes = totalBytes, usedBytes = usedBytes, freeBytes = freeBytes, slices = slices)
 }
 
 /** Accurate count + total bytes for a selection, scanning every matching row (never capped). */
