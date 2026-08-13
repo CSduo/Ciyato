@@ -68,6 +68,7 @@ fun SettingsScreen(
     onNavigateToAiChangelog: (() -> Unit)? = null,
     onNavigateToDataBreachChecker: (() -> Unit)? = null,
     onNavigateToSafeBrowsing: (() -> Unit)? = null,
+    onNavigateToSearchHistory: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val view    = LocalView.current
@@ -414,6 +415,15 @@ fun SettingsScreen(
                     icon = Icons.Default.VisibilityOff,
                     checked = privacyMode,
                     onCheckedChange = viewModel::setPrivacyMode
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Search History",
+                    subtitle = "Review and clear the searches saved from the app search bar",
+                    icon = Icons.Default.History,
+                    iconColor = CiyatoBlue,
+                    onClick = { onNavigateToSearchHistory?.invoke() }
                 )
             }
             item {

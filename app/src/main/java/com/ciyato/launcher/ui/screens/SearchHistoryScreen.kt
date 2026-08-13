@@ -20,13 +20,14 @@ import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.ui.components.CiyatoEmptyState
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
-import com.ciyato.launcher.viewmodel.searchHistory
-import com.ciyato.launcher.viewmodel.clearSearchHistory
-import com.ciyato.launcher.viewmodel.removeSearchQuery
 
 /**
  * SearchHistoryScreen — Suggestion #108
  * Shows search history with the ability to tap a query, clear individual entries, or clear all.
+ *
+ * Backed by [LauncherViewModel.recentSearches] — the same DataStore-persisted
+ * list that SearchScreen reads from and writes to — so this screen and the
+ * search bar's "Recent" section always agree.
  */
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,7 +37,7 @@ fun SearchHistoryScreen(
     onBack: () -> Unit,
     onQuerySelected: (String) -> Unit,
 ) {
-    val history by viewModel.searchHistory.collectAsState()
+    val history by viewModel.recentSearches.collectAsState()
     var showClearDialog by remember { mutableStateOf(false) }
 
     if (showClearDialog) {
@@ -46,7 +47,7 @@ fun SearchHistoryScreen(
             text = { Text("This will remove all ${history.size} saved searches.", color = CiyatoSec) },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.clearSearchHistory()
+                    viewModel.clearRecentSearches()
                     showClearDialog = false
                 }) {
                     Text("Clear All", color = CiyatoRed)
@@ -108,7 +109,7 @@ fun SearchHistoryScreen(
                         Icon(Icons.Default.History, null, tint = CiyatoMuted, modifier = Modifier.size(20.dp))
                     },
                     trailingContent = {
-                        IconButton(onClick = { viewModel.removeSearchQuery(query) }) {
+                        IconButton(onClick = { viewModel.removeRecentSearch(query) }) {
                             Icon(Icons.Default.Clear, "Remove", tint = CiyatoMuted, modifier = Modifier.size(18.dp))
                         }
                     },

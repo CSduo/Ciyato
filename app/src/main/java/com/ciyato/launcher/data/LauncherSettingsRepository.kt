@@ -182,6 +182,9 @@ class LauncherSettingsRepository(private val context: Context) {
 
         // ── Recent Files tagging ─────────────────────────────────────────────
         val KEY_FILE_TAGS              = stringPreferencesKey("file_tags")       // JSON {"<uri>": ["tag1","tag2"]}
+
+        // ── Sticky Notes ──────────────────────────────────────────────────────
+        val KEY_STICKY_NOTES           = stringPreferencesKey("sticky_notes")    // JSON [{"id":..,"text":..,"colorIdx":..,"createdAt":..}]
     }
 
     // ── Flows ─────────────────────────────────────────────────────────────────
@@ -298,6 +301,7 @@ class LauncherSettingsRepository(private val context: Context) {
     val saveFileSearchHistory:  Flow<Boolean> = pref(KEY_SAVE_FILE_SEARCH_HISTORY, true)
     val fileSearchIndex:        Flow<String>  = pref(KEY_FILE_SEARCH_INDEX,       "")
     val fileTags:               Flow<String>  = pref(KEY_FILE_TAGS,               "{}")
+    val stickyNotes:            Flow<String>  = pref(KEY_STICKY_NOTES,            "[]")
 
     // ── Setters ───────────────────────────────────────────────────────────────
 
@@ -416,6 +420,7 @@ class LauncherSettingsRepository(private val context: Context) {
     suspend fun setSaveFileSearchHistory(v: Boolean)   = set(KEY_SAVE_FILE_SEARCH_HISTORY, v)
     suspend fun setFileSearchIndex(v: String)          = set(KEY_FILE_SEARCH_INDEX,       v)
     suspend fun setFileTags(v: String)                 = set(KEY_FILE_TAGS,               v)
+    suspend fun setStickyNotes(v: String)              = set(KEY_STICKY_NOTES,            v)
 
     suspend fun resetLayout() {
         context.dataStore.edit { p ->

@@ -148,6 +148,7 @@ private sealed class LauncherDest {
     object AiChangelog        : LauncherDest()   // Suggestion 45
     object DataBreachChecker  : LauncherDest()   // Suggestion 85
     object SafeBrowsing       : LauncherDest()   // Suggestion 83
+    object SearchHistory      : LauncherDest()   // Suggestion 108
 }
 
 // ── Root composable ───────────────────────────────────────────────────────────
@@ -190,7 +191,8 @@ private fun LauncherRoot(
             is LauncherDest.AnomalyDetection,
             is LauncherDest.AiChangelog,
             is LauncherDest.DataBreachChecker,
-            is LauncherDest.SafeBrowsing -> LauncherDest.Settings
+            is LauncherDest.SafeBrowsing,
+            is LauncherDest.SearchHistory -> LauncherDest.Settings
             else -> LauncherDest.Home
         }
     }
@@ -281,6 +283,7 @@ private fun LauncherRoot(
             onNavigateToAiChangelog    = { dest = LauncherDest.AiChangelog },
             onNavigateToDataBreachChecker = { dest = LauncherDest.DataBreachChecker },
             onNavigateToSafeBrowsing   = { dest = LauncherDest.SafeBrowsing },
+            onNavigateToSearchHistory  = { dest = LauncherDest.SearchHistory },
         )
 
         is LauncherDest.Search -> SearchScreen(
@@ -389,6 +392,15 @@ private fun LauncherRoot(
         is LauncherDest.SafeBrowsing -> SafeBrowsingHelperScreen( // Suggestion 83
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.SearchHistory -> SearchHistoryScreen( // Suggestion 108
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+            onQuerySelected = {
+                viewModel.setSearch(it)
+                dest = LauncherDest.Search
+            },
         )
 
     }

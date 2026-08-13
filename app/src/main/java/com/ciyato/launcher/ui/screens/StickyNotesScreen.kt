@@ -23,29 +23,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.ciyato.launcher.data.LauncherSettingsRepository
+import com.ciyato.launcher.data.StickyNote
+import com.ciyato.launcher.data.StickyNoteStore
 import com.ciyato.launcher.ui.components.CiyatoEmptyState
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
 /**
  * StickyNotesScreen — Suggestion #52
  * Quick memos with color coding, staggered grid, and inline editing.
- * In a full implementation, notes would be backed by Room + LiveData.
+ * Notes are persisted through [LauncherSettingsRepository] (DataStore) via
+ * [StickyNoteStore], so they survive an app restart.
  */
-
-data class StickyNote(
-    val id: String = UUID.randomUUID().toString(),
-    val text: String,
-    val colorIdx: Int = 0,
-    val createdAt: Long = System.currentTimeMillis(),
-)
 
 private val NOTE_COLORS = listOf(
     Color(0xFF1E293B),
@@ -71,14 +70,13 @@ fun StickyNotesScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
 ) {
-    var notes by remember {
-        mutableStateOf(listOf(
-            StickyNote(text = "Pick up groceries\n- Eggs\n- Milk\n- Bread", colorIdx = 1),
-            StickyNote(text = "Call dentist tomorrow at 10am", colorIdx = 0),
-            StickyNote(text = "Book flights for July trip ✈️", colorIdx = 4),
-            StickyNote(text = "Read 20 pages daily", colorIdx = 2),
-        ))
-    }
+    val context = LocalContext.current
+    val settingsRepo = remember { LauncherSettingsRepository(context) }
+    val scope = rememberCoroutineScope()
+
+    val notesJson by settingsRepo.stickyNotes.collectAsState(initial = "[]")
+    val notes = remember(notesJson) { StickyNoteStore.parse(notesJson) }
+
     var showAddDialog by remember { mutableStateOf(false) }
     var editingNote by remember { mutableStateOf<StickyNote?>(null) }
 
@@ -87,12 +85,14 @@ fun StickyNotesScreen(
             initial = editingNote?.text ?: "",
             initialColorIdx = editingNote?.colorIdx ?: 0,
             onSave = { text, colorIdx ->
-                if (editingNote != null) {
-                    notes = notes.map {
-                        if (it.id == editingNote!!.id) it.copy(text = text, colorIdx = colorIdx) else it
+                val target = editingNote
+                scope.launch {
+                    val updated = when {
+                        target != null -> StickyNoteStore.updateNote(notesJson, target.id, text, colorIdx)
+                        text.isNotBlank() -> StickyNoteStore.addNote(notesJson, StickyNote(text = text, colorIdx = colorIdx))
+                        else -> notesJson
                     }
-                } else if (text.isNotBlank()) {
-                    notes = listOf(StickyNote(text = text, colorIdx = colorIdx)) + notes
+                    settingsRepo.setStickyNotes(updated)
                 }
                 showAddDialog = false
                 editingNote = null
@@ -155,7 +155,9 @@ fun StickyNotesScreen(
                 NoteCard(
                     note = note,
                     onTap = { editingNote = note },
-                    onDelete = { notes = notes.filter { it.id != note.id } },
+                    onDelete = {
+                        scope.launch { settingsRepo.setStickyNotes(StickyNoteStore.deleteNote(notesJson, note.id)) }
+                    },
                 )
             }
         }
