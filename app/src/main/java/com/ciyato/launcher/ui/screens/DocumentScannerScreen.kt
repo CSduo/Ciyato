@@ -95,7 +95,7 @@ fun DocumentScannerScreen(
                 title = { Text("Document Scanner", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = CiyatoWhite)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
@@ -160,7 +160,7 @@ fun DocumentScannerScreen(
                             Spacer(Modifier.width(10.dp))
                             Text("Page ${i + 1}", color = CiyatoWhite, modifier = Modifier.weight(1f))
                             IconButton(onClick = { scannedPages = scannedPages.filter { it != uri } }) {
-                                Icon(Icons.Default.Close, null, tint = CiyatoMuted, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Close, "Close", tint = CiyatoMuted, modifier = Modifier.size(18.dp))
                             }
                         }
                     }

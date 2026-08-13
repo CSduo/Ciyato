@@ -67,7 +67,7 @@ fun SearchHistoryScreen(
                 title = { Text("Search History", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = CiyatoWhite)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
                     }
                 },
                 actions = {

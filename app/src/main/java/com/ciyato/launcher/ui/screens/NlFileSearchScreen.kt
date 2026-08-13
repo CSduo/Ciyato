@@ -140,7 +140,7 @@ fun NlFileSearchScreen(
                 title = { Text("Smart File Search", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = CiyatoWhite)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
@@ -163,7 +163,7 @@ fun NlFileSearchScreen(
                     leadingIcon = { Icon(Icons.Default.AutoAwesome, null, tint = CiyatoGold, modifier = Modifier.size(20.dp)) },
                     trailingIcon = {
                         IconButton(onClick = { scope.launch { search(query) } }) {
-                            Icon(Icons.Default.Search, null, tint = CiyatoSec)
+                            Icon(Icons.Default.Search, "Search", tint = CiyatoSec)
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),

@@ -107,12 +107,12 @@ fun WidgetHostScreen(
                 title = { Text("Widgets", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = CiyatoWhite)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
                     }
                 },
                 actions = {
                     IconButton(onClick = { showPickerDialog = true }) {
-                        Icon(Icons.Default.Add, null, tint = CiyatoGold)
+                        Icon(Icons.Default.Add, "Add widget", tint = CiyatoGold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
@@ -133,7 +133,7 @@ fun WidgetHostScreen(
                         onClick = { showPickerDialog = true },
                         colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold),
                     ) {
-                        Icon(Icons.Default.Add, null, tint = Color.Black)
+                        Icon(Icons.Default.Add, "Add widget", tint = Color.Black)
                         Spacer(Modifier.width(6.dp))
                         Text("Add Widget", color = Color.Black, fontWeight = FontWeight.SemiBold)
                     }

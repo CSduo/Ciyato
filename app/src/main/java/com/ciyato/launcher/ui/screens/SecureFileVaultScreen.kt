@@ -153,13 +153,13 @@ fun SecureFileVaultScreen(
                 title = { Text("Secure Vault", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = CiyatoWhite)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
                     }
                 },
                 actions = {
                     if (isUnlocked) {
                         IconButton(onClick = { filePicker.launch("*/*") }) {
-                            Icon(Icons.Default.Add, null, tint = CiyatoGold)
+                            Icon(Icons.Default.Add, "Add file to vault", tint = CiyatoGold)
                         }
                     }
                 },
@@ -200,7 +200,7 @@ fun SecureFileVaultScreen(
                         }
                         Button(onClick = { filePicker.launch("*/*") },
                             colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold)) {
-                            Icon(Icons.Default.Add, null, tint = Color.Black)
+                            Icon(Icons.Default.Add, "Add file to vault", tint = Color.Black)
                             Spacer(Modifier.width(6.dp))
                             Text("Add File", color = Color.Black, fontWeight = FontWeight.SemiBold)
                         }

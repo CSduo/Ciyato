@@ -67,7 +67,7 @@ fun NetworkUsageScreen(
                 title = { Text("Data Usage", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = CiyatoWhite)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),

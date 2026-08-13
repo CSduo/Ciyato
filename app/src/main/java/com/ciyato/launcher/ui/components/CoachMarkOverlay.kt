@@ -107,7 +107,7 @@ fun CoachMarkBanner(
                 Text(mark.body, color = CiyatoSec, fontSize = 13.sp, lineHeight = 18.sp)
             }
             IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                Icon(Icons.Default.Close, null, tint = CiyatoMuted, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Close, "Close", tint = CiyatoMuted, modifier = Modifier.size(16.dp))
             }
         }
     }
