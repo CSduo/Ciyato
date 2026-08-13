@@ -70,6 +70,9 @@ fun SettingsScreen(
     onNavigateToSafeBrowsing: (() -> Unit)? = null,
     onNavigateToSearchHistory: (() -> Unit)? = null,
     onNavigateToStickyNotes: (() -> Unit)? = null,
+    onNavigateToAutoBackup: (() -> Unit)? = null,
+    onNavigateToDuplicateShortcuts: (() -> Unit)? = null,
+    onNavigateToWidgetHost: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val view    = LocalView.current
@@ -168,6 +171,15 @@ fun SettingsScreen(
                     onClick = { onNavigateToTheme?.invoke() }
                 )
             }
+            item {
+                CiyatoListCard(
+                    title = "Widgets",
+                    subtitle = "Place Android app widgets on your home screen",
+                    icon = Icons.Default.Widgets,
+                    iconColor = CiyatoGold,
+                    onClick = { onNavigateToWidgetHost?.invoke() }
+                )
+            }
 
             // ── Smart Layout ──────────────────────────────────────────────────
             item { SectionHeader("Smart Layout") }
@@ -219,6 +231,15 @@ fun SettingsScreen(
                     icon = Icons.Default.Category,
                     checked = smartCategories,
                     onCheckedChange = viewModel::setSmartCategories
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Duplicate Smart Shortcuts",
+                    subtitle = "See which apps appear in more than one category",
+                    icon = Icons.Default.AutoFixHigh,
+                    iconColor = CiyatoGold,
+                    onClick = { onNavigateToDuplicateShortcuts?.invoke() }
                 )
             }
             // ── Smart Insights ───────────────────────────────────────────────
@@ -309,6 +330,15 @@ fun SettingsScreen(
                     icon = Icons.Default.PhotoLibrary,
                     iconColor = CiyatoGold,
                     onClick = { onNavigateToPhotoCollections?.invoke() }
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Photo Backup",
+                    subtitle = "Back up photos to a folder you choose, automatically or on demand",
+                    icon = Icons.Default.Backup,
+                    iconColor = CiyatoGold,
+                    onClick = { onNavigateToAutoBackup?.invoke() }
                 )
             }
             item {

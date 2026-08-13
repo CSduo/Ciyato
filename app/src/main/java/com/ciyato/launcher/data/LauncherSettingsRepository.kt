@@ -185,6 +185,15 @@ class LauncherSettingsRepository(private val context: Context) {
 
         // ── Sticky Notes ──────────────────────────────────────────────────────
         val KEY_STICKY_NOTES           = stringPreferencesKey("sticky_notes")    // JSON [{"id":..,"text":..,"colorIdx":..,"createdAt":..}]
+
+        // ── Photo Backup (SAF folder + WorkManager schedule) ─────────────────
+        val KEY_PHOTO_BACKUP_FOLDER_URI   = stringPreferencesKey("photo_backup_folder_uri")
+        val KEY_PHOTO_BACKUP_AUTO_ENABLED = booleanPreferencesKey("photo_backup_auto_enabled")
+        val KEY_PHOTO_BACKUP_LAST_RUN_AT  = longPreferencesKey("photo_backup_last_run_at")
+        val KEY_PHOTO_BACKUP_LAST_COUNT   = intPreferencesKey("photo_backup_last_count")
+
+        // ── Widget host (placed AppWidgetHost widget IDs) ─────────────────────
+        val KEY_PLACED_WIDGET_IDS      = stringPreferencesKey("placed_widget_ids") // JSON array of ints
     }
 
     // ── Flows ─────────────────────────────────────────────────────────────────
@@ -302,6 +311,13 @@ class LauncherSettingsRepository(private val context: Context) {
     val fileSearchIndex:        Flow<String>  = pref(KEY_FILE_SEARCH_INDEX,       "")
     val fileTags:               Flow<String>  = pref(KEY_FILE_TAGS,               "{}")
     val stickyNotes:            Flow<String>  = pref(KEY_STICKY_NOTES,            "[]")
+
+    val photoBackupFolderUri:   Flow<String>  = pref(KEY_PHOTO_BACKUP_FOLDER_URI,   "")
+    val photoBackupAutoEnabled: Flow<Boolean> = pref(KEY_PHOTO_BACKUP_AUTO_ENABLED, false)
+    val photoBackupLastRunAt:   Flow<Long>    = pref(KEY_PHOTO_BACKUP_LAST_RUN_AT,  0L)
+    val photoBackupLastCount:   Flow<Int>     = pref(KEY_PHOTO_BACKUP_LAST_COUNT,   0)
+
+    val placedWidgetIds:        Flow<String>  = pref(KEY_PLACED_WIDGET_IDS,         "[]")
 
     // ── Setters ───────────────────────────────────────────────────────────────
 
@@ -421,6 +437,17 @@ class LauncherSettingsRepository(private val context: Context) {
     suspend fun setFileSearchIndex(v: String)          = set(KEY_FILE_SEARCH_INDEX,       v)
     suspend fun setFileTags(v: String)                 = set(KEY_FILE_TAGS,               v)
     suspend fun setStickyNotes(v: String)              = set(KEY_STICKY_NOTES,            v)
+
+    suspend fun setPhotoBackupFolderUri(v: String)     = set(KEY_PHOTO_BACKUP_FOLDER_URI,   v)
+    suspend fun setPhotoBackupAutoEnabled(v: Boolean)  = set(KEY_PHOTO_BACKUP_AUTO_ENABLED, v)
+    suspend fun setPhotoBackupLastRun(atMs: Long, count: Int) {
+        context.dataStore.edit {
+            it[KEY_PHOTO_BACKUP_LAST_RUN_AT] = atMs
+            it[KEY_PHOTO_BACKUP_LAST_COUNT] = count
+        }
+    }
+
+    suspend fun setPlacedWidgetIds(v: String)          = set(KEY_PLACED_WIDGET_IDS,       v)
 
     suspend fun resetLayout() {
         context.dataStore.edit { p ->

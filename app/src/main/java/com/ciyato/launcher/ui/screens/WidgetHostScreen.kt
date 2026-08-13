@@ -27,13 +27,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.ciyato.launcher.data.LauncherSettingsRepository
+import com.ciyato.launcher.data.PlacedWidgetStore
 import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * WidgetHostScreen — Suggestion #15
  * Allows users to pick and place Android app widgets on the Ciyato home screen
  * using AppWidgetHost + AppWidgetManager APIs.
+ *
+ * Placed widget IDs are persisted through [LauncherSettingsRepository] (see
+ * [PlacedWidgetStore]) so they survive leaving this screen — the host's
+ * widget-ID allocation already outlives the screen, so keeping only an
+ * in-memory list of what's placed both loses widgets on navigation and leaks
+ * the IDs the host allocated for them. On load, every saved ID is reconciled
+ * against [AppWidgetManager]: an ID whose provider no longer exists (e.g. the
+ * providing app was uninstalled) is deallocated via
+ * [AppWidgetHost.deleteAppWidgetId] and dropped, rather than rendered as a
+ * broken tile.
  */
 
 private const val WIDGET_HOST_ID = 1001
@@ -49,15 +63,43 @@ fun WidgetHostScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settingsRepo = remember { LauncherSettingsRepository(context) }
     val widgetManager = remember { AppWidgetManager.getInstance(context) }
     val widgetHost = remember { AppWidgetHost(context, WIDGET_HOST_ID).also { it.startListening() } }
 
     var placedWidgets by remember { mutableStateOf<List<PlacedWidget>>(emptyList()) }
     var availableProviders by remember { mutableStateOf<List<AppWidgetProviderInfo>>(emptyList()) }
     var showPickerDialog by remember { mutableStateOf(false) }
+    var isLoaded by remember { mutableStateOf(false) }
+
+    fun persistIds(widgets: List<PlacedWidget>) {
+        scope.launch { settingsRepo.setPlacedWidgetIds(PlacedWidgetStore.serialize(widgets.map { it.appWidgetId })) }
+    }
 
     LaunchedEffect(Unit) {
         availableProviders = widgetManager.installedProviders
+
+        val savedIds = PlacedWidgetStore.parse(settingsRepo.placedWidgetIds.first())
+        val valid = mutableListOf<PlacedWidget>()
+        val staleIds = mutableListOf<Int>()
+        savedIds.forEach { id ->
+            val info = widgetManager.getAppWidgetInfo(id)
+            if (info != null) {
+                valid += PlacedWidget(appWidgetId = id, label = info.loadLabel(context.packageManager), providerInfo = info)
+            } else {
+                staleIds += id
+            }
+        }
+        if (staleIds.isNotEmpty()) {
+            // The provider is gone (app uninstalled, or binding never completed) —
+            // deallocate the ID rather than leave it dangling on the host, and drop
+            // it from what we persist so it isn't rendered as a broken tile.
+            staleIds.forEach { widgetHost.deleteAppWidgetId(it) }
+            settingsRepo.setPlacedWidgetIds(PlacedWidgetStore.serialize(valid.map { it.appWidgetId }))
+        }
+        placedWidgets = valid
+        isLoaded = true
     }
 
     DisposableEffect(Unit) {
@@ -71,11 +113,17 @@ fun WidgetHostScreen(
         if (appWidgetId != -1) {
             val info = widgetManager.getAppWidgetInfo(appWidgetId)
             if (info != null) {
-                placedWidgets = placedWidgets + PlacedWidget(
+                val updated = placedWidgets + PlacedWidget(
                     appWidgetId = appWidgetId,
                     label = info.loadLabel(context.packageManager),
                     providerInfo = info,
                 )
+                placedWidgets = updated
+                persistIds(updated)
+            } else {
+                // Binding was declined/cancelled — the ID was already allocated by
+                // pickWidget() below, so free it instead of leaking it.
+                widgetHost.deleteAppWidgetId(appWidgetId)
             }
         }
     }
@@ -90,11 +138,13 @@ fun WidgetHostScreen(
             }
             bindWidgetLauncher.launch(intent)
         } else {
-            placedWidgets = placedWidgets + PlacedWidget(
+            val updated = placedWidgets + PlacedWidget(
                 appWidgetId = appWidgetId,
                 label = provider.loadLabel(context.packageManager),
                 providerInfo = provider,
             )
+            placedWidgets = updated
+            persistIds(updated)
         }
         showPickerDialog = false
     }
@@ -113,7 +163,11 @@ fun WidgetHostScreen(
             )
         }
     ) { padding ->
-        if (placedWidgets.isEmpty()) {
+        if (!isLoaded) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = CiyatoGold)
+            }
+        } else if (placedWidgets.isEmpty()) {
             Box(
                 Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
@@ -144,8 +198,12 @@ fun WidgetHostScreen(
                         context = context,
                         widget = widget,
                         host = widgetHost,
-                        onRemove = { placedWidgets = placedWidgets.filter { it.appWidgetId != widget.appWidgetId }
-                            widgetHost.deleteAppWidgetId(widget.appWidgetId) },
+                        onRemove = {
+                            val updated = placedWidgets.filter { it.appWidgetId != widget.appWidgetId }
+                            placedWidgets = updated
+                            widgetHost.deleteAppWidgetId(widget.appWidgetId)
+                            persistIds(updated)
+                        },
                     )
                 }
             }

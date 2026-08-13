@@ -150,6 +150,9 @@ private sealed class LauncherDest {
     object SafeBrowsing       : LauncherDest()   // Suggestion 83
     object SearchHistory      : LauncherDest()   // Suggestion 108
     object StickyNotes        : LauncherDest()   // DataStore-backed quick notes
+    object AutoBackup         : LauncherDest()   // Suggestion 67 — photo backup, manual + WorkManager schedule
+    object DuplicateShortcuts : LauncherDest()   // Apps placed in more than one smart category
+    object WidgetHost         : LauncherDest()   // Suggestion 15 — AppWidgetHost placement
 }
 
 // ── Root composable ───────────────────────────────────────────────────────────
@@ -195,6 +198,9 @@ private fun LauncherRoot(
             is LauncherDest.SafeBrowsing,
             is LauncherDest.SearchHistory -> LauncherDest.Settings
             is LauncherDest.StickyNotes -> LauncherDest.Settings
+            is LauncherDest.AutoBackup -> LauncherDest.Settings
+            is LauncherDest.DuplicateShortcuts -> LauncherDest.Settings
+            is LauncherDest.WidgetHost -> LauncherDest.Settings
             else -> LauncherDest.Home
         }
     }
@@ -287,6 +293,9 @@ private fun LauncherRoot(
             onNavigateToSafeBrowsing   = { dest = LauncherDest.SafeBrowsing },
             onNavigateToSearchHistory  = { dest = LauncherDest.SearchHistory },
             onNavigateToStickyNotes    = { dest = LauncherDest.StickyNotes },
+            onNavigateToAutoBackup     = { dest = LauncherDest.AutoBackup },
+            onNavigateToDuplicateShortcuts = { dest = LauncherDest.DuplicateShortcuts },
+            onNavigateToWidgetHost     = { dest = LauncherDest.WidgetHost },
         )
 
         is LauncherDest.Search -> SearchScreen(
@@ -409,6 +418,20 @@ private fun LauncherRoot(
                 viewModel.setSearch(it)
                 dest = LauncherDest.Search
             },
+        )
+
+        is LauncherDest.AutoBackup -> AutoBackupScreen( // Suggestion 67
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.DuplicateShortcuts -> DuplicateShortcutsScreen(
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.WidgetHost -> WidgetHostScreen( // Suggestion 15
+            onBack    = { dest = LauncherDest.Settings },
         )
 
     }
