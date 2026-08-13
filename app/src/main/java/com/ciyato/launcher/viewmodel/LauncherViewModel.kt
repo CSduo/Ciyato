@@ -733,7 +733,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         updateLayout { layout ->
             layout.copy(
                 authorColumns = cols,
-                workspaces = layout.workspaces.map { WorkspaceStore.reflow(it) },
+                workspaces = layout.workspaces.map { WorkspaceStore.reflow(it, cols) },
             )
         }
     }
@@ -840,7 +840,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 ?: return@updateLayout null
             val to = layout.workspaceAt(workspaceIndexForPage(toPage) ?: return@updateLayout null)
                 ?: return@updateLayout null
-            WorkspaceStore.moveApp(layout, from.id, to.id, packageName, WorkspaceStore.firstFreeCell(to.cells))
+            WorkspaceStore.moveApp(layout, from.id, to.id, packageName, WorkspaceStore.firstFreeCell(to.cells, layout.authorColumns))
         }
     }
 

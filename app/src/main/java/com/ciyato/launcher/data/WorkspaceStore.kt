@@ -232,9 +232,24 @@ object WorkspaceStore {
             val destinationIndex = remaining.indexOfFirst { it.id == destinationId }
             if (destinationIndex >= 0) {
                 val destination = remaining[destinationIndex]
-                remaining[destinationIndex] = destination
-                    .withPackages((destination.appPackages + removed.appPackages).distinct())
-                    .copy(categoryKeys = (destination.categoryKeys + removed.categoryKeys).distinct())
+                // Span-preserving merge: destination's own tiles keep their exact
+                // cells; each incoming tile (destination wins on package clash,
+                // matching the old distinct() precedence) lands at the first free
+                // cell its own rectangle fits, so nothing is dropped or flattened.
+                val columns = layout.authorColumns
+                val existing = destination.cells.mapTo(HashSet()) { it.packageName }
+                var cells = destination.cells
+                removed.cells.sortedBy { it.cell }.forEach { incoming ->
+                    if (existing.add(incoming.packageName)) {
+                        val spanX = incoming.spanX.coerceIn(1, columns.coerceAtLeast(1))
+                        val spanY = incoming.spanY.coerceIn(1, MAX_SPAN)
+                        cells = cells + AppCell(incoming.packageName, firstFreeCell(cells, columns, spanX, spanY), spanX, spanY)
+                    }
+                }
+                remaining[destinationIndex] = destination.copy(
+                    cells = cells,
+                    categoryKeys = (destination.categoryKeys + removed.categoryKeys).distinct(),
+                )
             }
         }
         val order = layout.visualOrder.filterNot { it == workspaceId }
@@ -397,7 +412,10 @@ object WorkspaceStore {
 
     /**
      * Legacy sequential move (drop into an ordered slot). Kept for the accessible
-     * reorder path; repacks row-major so no gap or duplicate can appear.
+     * reorder path; repacks row-major so no gap or duplicate can appear. Unlike
+     * [WorkspaceRecord.withPackages] (1x1-by-construction), this re-places every
+     * tile at its first-fitting cell in the new reading order, so the moved tile
+     * and every tile shifted around it keep their existing span.
      */
     fun moveAppWithinWorkspace(
         layout: WorkspaceLayout,
@@ -414,11 +432,37 @@ object WorkspaceStore {
         if (sourceIndex == targetIndex) return layout
         apps.removeAt(sourceIndex)
         apps.add(targetIndex, packageName)
-        return withWorkspace(layout, workspace.withPackages(apps))
+        val spanByPackage = workspace.cells.associateBy { it.packageName }
+        val columns = layout.authorColumns
+        var cells = emptyList<AppCell>()
+        apps.forEach { pkg ->
+            val span = spanByPackage[pkg]
+            val spanX = (span?.spanX ?: 1).coerceIn(1, columns.coerceAtLeast(1))
+            val spanY = (span?.spanY ?: 1).coerceIn(1, MAX_SPAN)
+            cells = cells + AppCell(pkg, firstFreeCell(cells, columns, spanX, spanY), spanX, spanY)
+        }
+        return withWorkspace(layout, workspace.copy(cells = cells))
     }
 
-    /** Repack a record's cells row-major (drops gaps) — used on grid resize. */
-    fun reflow(record: WorkspaceRecord): WorkspaceRecord = record.withPackages(record.appPackages)
+    /**
+     * Repack a record's cells row-major on a grid [columns] wide — used when the
+     * grid's column count changes. Every tile keeps its span where its rectangle
+     * still fits; where it no longer does (columns shrank under it), spanX is
+     * clamped down to what fits rather than the app being dropped or reset to
+     * 1x1. Every app is always preserved.
+     */
+    fun reflow(record: WorkspaceRecord, columns: Int = WorkspaceLayout.DEFAULT_COLUMNS): WorkspaceRecord {
+        val cols = columns.coerceAtLeast(1)
+        var cells = emptyList<AppCell>()
+        record.cells.sortedBy { it.cell }.forEach { c ->
+            if (cells.none { it.packageName == c.packageName }) {
+                val spanX = c.spanX.coerceIn(1, cols)
+                val spanY = c.spanY.coerceIn(1, MAX_SPAN)
+                cells = cells + AppCell(c.packageName, firstFreeCell(cells, cols, spanX, spanY), spanX, spanY)
+            }
+        }
+        return record.copy(cells = cells)
+    }
 
     // ── Validation & helpers ──────────────────────────────────────────────────
 

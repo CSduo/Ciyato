@@ -259,4 +259,72 @@ class WorkspaceStoreTest {
         assertEquals(1, cells["com.b"]?.spanX)
         assertEquals(1, cells["com.b"]?.spanY)
     }
+
+    // ── Span-preserving flattening paths (reflow, move, remove+merge) ────────
+
+    @Test
+    fun `reflow preserves a spanning tile when the new grid still fits it`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.big", "", "{}", "{}", "")
+        val resized = requireNotNull(WorkspaceStore.resizeApp(base, "workspace-1", "com.big", 2, 2))
+        val withSolo = requireNotNull(WorkspaceStore.addAppsAtFreeCells(resized, "workspace-1", listOf("com.solo")))
+        // com.big is a 2x2 tile at cell 0 (covers {0,1,4,5}); com.solo sits at cell 2.
+        // Widening the grid to 6 columns still comfortably fits the 2x2 rectangle.
+        val reflowed = WorkspaceStore.reflow(withSolo.workspaceAt(0)!!, columns = 6)
+        val big = reflowed.cells.single { it.packageName == "com.big" }
+        assertEquals(2, big.spanX)
+        assertEquals(2, big.spanY)
+        assertEquals(setOf("com.big", "com.solo"), reflowed.cells.map { it.packageName }.toSet())
+    }
+
+    @Test
+    fun `reflow clamps a span that no longer fits a narrower grid instead of dropping the app`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.wide", "", "{}", "{}", "")
+        val resized = requireNotNull(WorkspaceStore.resizeApp(base, "workspace-1", "com.wide", 3, 1))
+        val withOther = requireNotNull(WorkspaceStore.addAppsAtFreeCells(resized, "workspace-1", listOf("com.other")))
+        // com.wide is 3 columns wide on the default 4-wide grid. Shrinking to a
+        // 2-column grid can no longer fit that width — spanX must clamp down to
+        // what fits, and both apps must still be present afterward.
+        val reflowed = WorkspaceStore.reflow(withOther.workspaceAt(0)!!, columns = 2)
+        val wide = reflowed.cells.single { it.packageName == "com.wide" }
+        assertEquals(2, wide.spanX)
+        assertEquals(setOf("com.wide", "com.other"), reflowed.cells.map { it.packageName }.toSet())
+    }
+
+    @Test
+    fun `moveAppWithinWorkspace preserves the moved tile's span and any tile it displaces`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.wide1", "", "{}", "{}", "")
+        val wide1 = requireNotNull(WorkspaceStore.resizeApp(base, "workspace-1", "com.wide1", 2, 1))
+        val withApps = requireNotNull(WorkspaceStore.addAppsAtFreeCells(wide1, "workspace-1", listOf("com.b", "com.wide2")))
+        // com.wide1 is 2x1 at cell 0 (covers {0,1}); com.b lands at cell 2; com.wide2
+        // lands at cell 3 as a plain 1x1. Move it to cell 4 (row 1) so it has room
+        // to grow to 2x1 without running off the grid's right edge.
+        val relocated = requireNotNull(WorkspaceStore.placeApp(withApps, "workspace-1", "com.wide2", 4))
+        val setup = requireNotNull(WorkspaceStore.resizeApp(relocated, "workspace-1", "com.wide2", 2, 1))
+        // Reading order is now [com.wide1, com.b, com.wide2]; moving com.wide2 to
+        // the front displaces both com.wide1 and com.b.
+        val result = requireNotNull(
+            WorkspaceStore.moveAppWithinWorkspace(setup, "workspace-1", "com.wide2", destinationIndex = 0),
+        )
+        val cells = result.workspaceAt(0)!!.cells.associateBy { it.packageName }
+        assertEquals(2, cells["com.wide2"]?.spanX) // the moved tile kept its span
+        assertEquals(1, cells["com.wide2"]?.spanY)
+        assertEquals(2, cells["com.wide1"]?.spanX) // a tile it displaced kept its span too
+        assertEquals(setOf("com.wide1", "com.b", "com.wide2"), cells.keys)
+    }
+
+    @Test
+    fun `remove with moveContentsTo carries a spanning tile into the destination without overlap`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.wide", "com.solo", "{}", "{}", "")
+        val resized = requireNotNull(WorkspaceStore.resizeApp(base, "workspace-1", "com.wide", 2, 2))
+        // workspace-1 has a 2x2 com.wide at cell 0; workspace-2 has a plain com.solo at cell 0.
+        val result = requireNotNull(WorkspaceStore.remove(resized, "workspace-1", moveContentsTo = "workspace-2"))
+        val destination = result.workspaceAt(0)!!
+        val wide = destination.cells.single { it.packageName == "com.wide" }
+        val solo = destination.cells.single { it.packageName == "com.solo" }
+        assertEquals(2, wide.spanX)
+        assertEquals(2, wide.spanY)
+        assertEquals(0, solo.cell) // destination's own tile keeps its original cell
+        // The merged workspace must still be internally valid — no overlap, on-grid.
+        assertNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(result)))
+    }
 }
