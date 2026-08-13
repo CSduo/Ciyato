@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
@@ -35,14 +34,11 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -62,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.CiyatoBg
 import com.ciyato.launcher.ui.theme.CiyatoBgEl
 import com.ciyato.launcher.ui.theme.CiyatoBgEl2
@@ -262,7 +259,6 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FilesHomeContent(
     rootUri: Uri?,
@@ -292,13 +288,9 @@ private fun FilesHomeContent(
     androidx.compose.material3.Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Files", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = CiyatoSec)
-                    }
-                },
+            CiyatoTopBar(
+                title = "Files",
+                onBack = onBack,
                 actions = {
                     if (rootUri != null) {
                         IconButton(onClick = onRefresh) {
@@ -309,7 +301,6 @@ private fun FilesHomeContent(
                         Icon(Icons.Default.FolderOpen, contentDescription = "Open Files Browser", tint = CiyatoSec)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
             )
         },
     ) { padding ->

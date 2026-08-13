@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
@@ -33,6 +32,7 @@ import com.ciyato.launcher.data.FileSearchHistoryStore
 import com.ciyato.launcher.data.FileSearchIndex
 import com.ciyato.launcher.data.FileSearchIndexEntry
 import com.ciyato.launcher.data.FileSearchIndexStore
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.text.SimpleDateFormat
@@ -65,7 +65,6 @@ data class ParsedQuery(
     val minimumSizeBytes: Long? = null,
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NlFileSearchScreen(
     viewModel: LauncherViewModel,
@@ -136,15 +135,7 @@ fun NlFileSearchScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Smart File Search", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
-            )
+            CiyatoTopBar(title = "Smart File Search", onBack = onBack)
         }
     ) { padding ->
         LazyColumn(

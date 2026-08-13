@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Event
@@ -25,12 +24,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgendaScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -49,24 +48,16 @@ fun AgendaScreen(onBack: () -> Unit) {
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Agenda", color = CiyatoWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text(dateStr, color = CiyatoSec, fontSize = 12.sp)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = CiyatoSec)
-                    }
-                },
+            CiyatoTopBar(
+                title = "Agenda",
+                subtitle = dateStr,
+                subtitleColor = CiyatoSec,
+                onBack = onBack,
                 actions = {
                     IconButton(onClick = openCalendarInsert) {
                         Icon(Icons.Default.Add, contentDescription = "Add event", tint = CiyatoGold)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
             )
         }
     ) { padding ->

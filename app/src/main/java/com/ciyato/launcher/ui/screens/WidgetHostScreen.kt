@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.*
@@ -28,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 
 /**
@@ -44,7 +44,6 @@ data class PlacedWidget(
     val providerInfo: AppWidgetProviderInfo,
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WidgetHostScreen(
     onBack: () -> Unit,
@@ -103,19 +102,14 @@ fun WidgetHostScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Widgets", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
+            CiyatoTopBar(
+                title = "Widgets",
+                onBack = onBack,
                 actions = {
                     IconButton(onClick = { showPickerDialog = true }) {
                         Icon(Icons.Default.Add, "Add widget", tint = CiyatoGold)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
             )
         }
     ) { padding ->

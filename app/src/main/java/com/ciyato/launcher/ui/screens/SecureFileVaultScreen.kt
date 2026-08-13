@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.ciyato.launcher.data.VaultCrypto
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.Dispatchers
@@ -42,7 +42,6 @@ import java.io.File
  * Vault directory lives in app's internal private storage.
  */
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SecureFileVaultScreen(
     viewModel: LauncherViewModel,
@@ -149,13 +148,9 @@ fun SecureFileVaultScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Secure Vault", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
+            CiyatoTopBar(
+                title = "Secure Vault",
+                onBack = onBack,
                 actions = {
                     if (isUnlocked) {
                         IconButton(onClick = { filePicker.launch("*/*") }) {
@@ -163,7 +158,6 @@ fun SecureFileVaultScreen(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
             )
         }
     ) { padding ->

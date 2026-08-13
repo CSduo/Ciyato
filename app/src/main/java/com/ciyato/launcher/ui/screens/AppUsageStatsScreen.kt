@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,6 +29,7 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import com.ciyato.launcher.ui.components.CiyatoEmptyState
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.util.concurrent.TimeUnit
@@ -46,7 +46,6 @@ data class AppUsageStat(
     val lastUsed: Long,
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppUsageStatsScreen(
     viewModel: LauncherViewModel,
@@ -83,15 +82,7 @@ fun AppUsageStatsScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Screen Time", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
-            )
+            CiyatoTopBar(title = "Screen Time", onBack = onBack)
         }
     ) { padding ->
         if (!hasPermission) {

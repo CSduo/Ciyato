@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 
@@ -57,7 +56,6 @@ private val DANGEROUS_PERMISSIONS = mapOf(
     "android.permission.PROCESS_OUTGOING_CALLS" to "Phone Calls",
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrivacyDashboardScreen(
     viewModel: LauncherViewModel,
@@ -75,15 +73,7 @@ fun PrivacyDashboardScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Privacy Dashboard", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
-            )
+            CiyatoTopBar(title = "Privacy Dashboard", onBack = onBack)
         }
     ) { padding ->
         LazyColumn(

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.History
@@ -14,10 +13,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.ui.components.CiyatoEmptyState
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 
@@ -30,7 +29,6 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
  * search bar's "Recent" section always agree.
  */
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchHistoryScreen(
     viewModel: LauncherViewModel,
@@ -65,13 +63,9 @@ fun SearchHistoryScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Search History", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
+            CiyatoTopBar(
+                title = "Search History",
+                onBack = onBack,
                 actions = {
                     if (history.isNotEmpty()) {
                         IconButton(onClick = { showClearDialog = true }) {
@@ -79,7 +73,6 @@ fun SearchHistoryScreen(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
             )
         }
     ) { padding ->

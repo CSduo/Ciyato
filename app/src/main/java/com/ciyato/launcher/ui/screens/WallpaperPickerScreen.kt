@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.*
@@ -35,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import coil.compose.AsyncImage
@@ -63,7 +63,6 @@ private val GRADIENT_PRESETS = listOf(
     GradientWallpaper("mono", "Monochrome", listOf(Color(0xFF000000), Color(0xFF202020), Color(0xFF3B3B3B))),
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WallpaperPickerScreen(
     viewModel: LauncherViewModel,
@@ -123,15 +122,7 @@ fun WallpaperPickerScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Wallpaper Studio", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
-            )
+            CiyatoTopBar(title = "Wallpaper Studio", onBack = onBack)
         }
     ) { padding ->
         Column(

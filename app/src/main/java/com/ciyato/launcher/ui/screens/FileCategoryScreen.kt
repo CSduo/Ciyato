@@ -19,17 +19,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +44,7 @@ import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import com.ciyato.launcher.data.MediaLibraryRepository
 import com.ciyato.launcher.data.MediaLibraryRepository.CategoryKey
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.CiyatoBg
 import com.ciyato.launcher.ui.theme.CiyatoBgEl
 import com.ciyato.launcher.ui.theme.CiyatoGold
@@ -64,7 +60,6 @@ import java.util.Date
  * Flat file list for one library category (Screenshots, Documents, Downloads…).
  * Tapping a row opens the file with the system's default app.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileCategoryScreen(
     categoryKey: String,
@@ -112,19 +107,10 @@ fun FileCategoryScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(title, color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
-                        Text("${files.size} files", color = CiyatoGold, fontSize = 12.sp)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
+            CiyatoTopBar(
+                title = title,
+                subtitle = "${files.size} files",
+                onBack = onBack,
             )
         },
     ) { padding ->

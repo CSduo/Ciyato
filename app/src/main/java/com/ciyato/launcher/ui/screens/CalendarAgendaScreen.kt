@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.text.SimpleDateFormat
@@ -53,7 +53,6 @@ data class CalendarEvent(
     val calendarName: String,
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarAgendaScreen(
     viewModel: LauncherViewModel,
@@ -93,19 +92,14 @@ fun CalendarAgendaScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Agenda", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
+            CiyatoTopBar(
+                title = "Agenda",
+                onBack = onBack,
                 actions = {
                     IconButton(onClick = addEvent) {
                         Icon(Icons.Default.Add, contentDescription = "Add event", tint = CiyatoGold)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
             )
         }
     ) { padding ->

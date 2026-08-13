@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.StickyNote2
@@ -33,6 +32,7 @@ import com.ciyato.launcher.data.LauncherSettingsRepository
 import com.ciyato.launcher.data.StickyNote
 import com.ciyato.launcher.data.StickyNoteStore
 import com.ciyato.launcher.ui.components.CiyatoEmptyState
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
@@ -64,7 +64,6 @@ private val NOTE_ACCENT_COLORS = listOf(
     Color(0xFF06B6D4),
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StickyNotesScreen(
     viewModel: LauncherViewModel,
@@ -107,15 +106,7 @@ fun StickyNotesScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Notes", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
-            )
+            CiyatoTopBar(title = "Notes", onBack = onBack)
         },
         floatingActionButton = {
             FloatingActionButton(

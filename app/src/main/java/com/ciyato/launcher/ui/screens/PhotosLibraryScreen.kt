@@ -32,7 +32,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -43,8 +42,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -75,6 +72,7 @@ import com.ciyato.launcher.data.PhotoAiLabeler
 import com.ciyato.launcher.data.PhotoDeviceLibrary
 import com.ciyato.launcher.data.PhotoDeviceLibrary.DeviceImage
 import com.ciyato.launcher.ui.components.CiyatoTabRow
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.CiyatoBg
 import com.ciyato.launcher.ui.theme.CiyatoBgEl
 import com.ciyato.launcher.ui.theme.CiyatoGold
@@ -121,7 +119,6 @@ private fun mediaAccess(context: Context): MediaAccess {
  * Ciyato Photos — device-wide gallery in smart collections.
  * Falls back to the curated photo-picker flow when media permission is denied.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotosLibraryScreen(
     viewModel: LauncherViewModel,
@@ -220,30 +217,17 @@ fun PhotosLibraryScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Ciyato Photos", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
-                        Text(
-                            openCollection?.let { key -> collectionTitle(key, collections) }
-                                ?: if (access == MediaAccess.PARTIAL) {
-                                    "${images.size} photos you shared with Ciyato"
-                                } else {
-                                    "${images.size} photos on this device"
-                                },
-                            color = CiyatoGold,
-                            fontSize = 12.sp,
-                        )
-                    }
+            CiyatoTopBar(
+                title = "Ciyato Photos",
+                subtitle = openCollection?.let { key -> collectionTitle(key, collections) }
+                    ?: if (access == MediaAccess.PARTIAL) {
+                        "${images.size} photos you shared with Ciyato"
+                    } else {
+                        "${images.size} photos on this device"
+                    },
+                onBack = {
+                    if (openCollection != null) openCollection = null else onBack()
                 },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        if (openCollection != null) openCollection = null else onBack()
-                    }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
             )
         },
     ) { padding ->

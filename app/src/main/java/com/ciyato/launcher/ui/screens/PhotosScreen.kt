@@ -34,7 +34,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CollectionsBookmark
@@ -50,15 +49,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -84,6 +80,7 @@ import com.ciyato.launcher.data.PhotoCollection
 import com.ciyato.launcher.data.PhotoDeviceLibrary
 import com.ciyato.launcher.data.PhotoLibraryStore
 import com.ciyato.launcher.data.PhotoMediaRepository
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.CiyatoBg
 import com.ciyato.launcher.ui.theme.CiyatoBgEl
 import com.ciyato.launcher.ui.theme.CiyatoBgEl2
@@ -102,7 +99,6 @@ private enum class PhotosMode(val label: String) {
     COLLECTIONS("Collections"),
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotosScreen(
     viewModel: LauncherViewModel,
@@ -195,24 +191,15 @@ fun PhotosScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Ciyato Photos", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
-                        Text("Only media you explicitly select", color = CiyatoGold, fontSize = 12.sp)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = CiyatoSec)
-                    }
-                },
+            CiyatoTopBar(
+                title = "Ciyato Photos",
+                subtitle = "Only media you explicitly select",
+                onBack = onBack,
                 actions = {
                     IconButton(onClick = openPicker) {
                         Icon(Icons.Default.AddPhotoAlternate, contentDescription = "Add media", tint = CiyatoGold)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
             )
         },
     ) { padding ->

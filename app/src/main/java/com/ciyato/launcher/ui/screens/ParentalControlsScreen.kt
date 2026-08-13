@@ -5,7 +5,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.data.AppCategory
 import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -30,7 +30,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
  * Production: use DevicePolicyManager for hard enforcement.
  */
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ParentalControlsScreen(
     viewModel: LauncherViewModel,
@@ -50,15 +49,7 @@ fun ParentalControlsScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Parental Controls", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
-            )
+            CiyatoTopBar(title = "Parental Controls", onBack = onBack)
         }
     ) { padding ->
         Column(

@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,13 +30,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ciyato.launcher.data.MediaLibraryRepository
 import com.ciyato.launcher.ui.components.BulkDeleteBar
 import com.ciyato.launcher.ui.components.BulkDeleteState
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +52,6 @@ import kotlin.coroutines.resume
 
 data class MediaItem(val id: Long, val uri: Uri, val name: String, val sizeBytes: Long)
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BulkDeleteFilesScreen(
     viewModel: LauncherViewModel,
@@ -122,15 +120,7 @@ fun BulkDeleteFilesScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Select & Delete", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
-            )
+            CiyatoTopBar(title = "Select & Delete", onBack = onBack)
         },
         snackbarHost = { SnackbarHost(snackbarHost) },
     ) { padding ->

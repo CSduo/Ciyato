@@ -11,7 +11,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +21,7 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlin.math.sin
@@ -35,7 +35,6 @@ import kotlin.math.sin
 
 enum class StressLevel { CALM, MILD, STRESSED }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StressFreeModeScreen(
     viewModel: LauncherViewModel,
@@ -78,15 +77,7 @@ fun StressFreeModeScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Stress-Free Mode", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
-            )
+            CiyatoTopBar(title = "Stress-Free Mode", onBack = onBack)
         }
     ) { padding ->
         Column(

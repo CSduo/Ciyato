@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
@@ -23,11 +22,11 @@ import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.data.AppCategory
 import com.ciyato.launcher.data.InstalledApp
 import com.ciyato.launcher.ui.components.CiyatoEmptyState
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.components.RealAppIcon
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DuplicateShortcutsScreen(
     viewModel: LauncherViewModel,
@@ -39,22 +38,7 @@ fun DuplicateShortcutsScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Duplicate Smart Shortcuts",
-                        color = CiyatoWhite,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = CiyatoSec)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
-            )
+            CiyatoTopBar(title = "Duplicate Smart Shortcuts", onBack = onBack)
         }
     ) { padding ->
         Box(

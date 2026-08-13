@@ -10,7 +10,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import androidx.compose.ui.draw.clip
 import com.ciyato.launcher.viewmodel.LauncherViewModel
@@ -46,7 +46,6 @@ private val GREETING_SUGGESTIONS = listOf(
     "Good vibes only ✨",
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CustomGreetingScreen(
     viewModel: LauncherViewModel,
@@ -65,19 +64,14 @@ fun CustomGreetingScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Custom Greeting", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
+            CiyatoTopBar(
+                title = "Custom Greeting",
+                onBack = onBack,
                 actions = {
                     IconButton(onClick = { save(customText) }) {
                         Icon(Icons.Default.Check, "Save", tint = CiyatoGold)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
             )
         }
     ) { padding ->

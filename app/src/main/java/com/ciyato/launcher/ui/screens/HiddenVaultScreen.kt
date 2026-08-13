@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -26,6 +25,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.ciyato.launcher.data.InstalledApp
 import com.ciyato.launcher.ui.components.AppIconView
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import com.ciyato.launcher.viewmodel.isHidden
@@ -36,7 +36,6 @@ import com.ciyato.launcher.viewmodel.isHidden
  * Requires passing BiometricPrompt before revealing any app names.
  */
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HiddenVaultScreen(
     viewModel: LauncherViewModel,
@@ -94,15 +93,7 @@ fun HiddenVaultScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            TopAppBar(
-                title = { Text("Hidden Vault", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg),
-            )
+            CiyatoTopBar(title = "Hidden Vault", onBack = onBack)
         }
     ) { padding ->
         AnimatedContent(
