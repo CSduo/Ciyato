@@ -51,6 +51,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToPermissionAudit: (() -> Unit)? = null,
     onNavigateToStorageCleanup: (() -> Unit)? = null,
+    onNavigateToPhotoCollections: (() -> Unit)? = null,
     onNavigateToFocus: (() -> Unit)? = null,
     onNavigateToFiles: (() -> Unit)? = null,
     onNavigateToPhotos: (() -> Unit)? = null,
@@ -250,6 +251,15 @@ fun SettingsScreen(
                     icon = Icons.Default.Storage,
                     iconColor = CiyatoGold,
                     onClick = { onNavigateToStorageCleanup?.invoke() }
+                )
+            }
+            item {
+                CiyatoListCard(
+                    title = "Photo Collections",
+                    subtitle = "Screenshots, recent, videos, large photos, and month-by-month memories",
+                    icon = Icons.Default.PhotoLibrary,
+                    iconColor = CiyatoGold,
+                    onClick = { onNavigateToPhotoCollections?.invoke() }
                 )
             }
             item {

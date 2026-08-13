@@ -140,6 +140,7 @@ private sealed class LauncherDest {
     object FocusSession       : LauncherDest()   // Suggestion 75
     object PermissionAudit    : LauncherDest()   // Suggestion 139
     object StorageCleanup     : LauncherDest()   // Suggestion 26
+    object PhotoCollections   : LauncherDest()   // Real screenshots/recent/videos/large/memories collections
 }
 
 // ── Root composable ───────────────────────────────────────────────────────────
@@ -173,6 +174,7 @@ private fun LauncherRoot(
         dest = when (dest) {
             is LauncherDest.PermissionAudit,
             is LauncherDest.StorageCleanup,
+            is LauncherDest.PhotoCollections,
             is LauncherDest.HiddenApps,
             is LauncherDest.RemovedApps -> LauncherDest.Settings
             else -> LauncherDest.Home
@@ -252,6 +254,7 @@ private fun LauncherRoot(
             },
             onNavigateToPermissionAudit= { dest = LauncherDest.PermissionAudit },
             onNavigateToStorageCleanup = { dest = LauncherDest.StorageCleanup },
+            onNavigateToPhotoCollections = { dest = LauncherDest.PhotoCollections },
             onNavigateToFocus          = { dest = LauncherDest.FocusSession },
             onNavigateToTheme          = { dest = LauncherDest.ThemeStudio },
             onNavigateToWallpaper      = { dest = LauncherDest.WallpaperStudio },
@@ -318,6 +321,11 @@ private fun LauncherRoot(
         )
 
         is LauncherDest.StorageCleanup -> StorageCleanupScreen( // Suggestion 26
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.PhotoCollections -> PhotoCollectionsScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )

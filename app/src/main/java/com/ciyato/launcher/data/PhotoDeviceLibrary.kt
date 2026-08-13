@@ -4,8 +4,11 @@ import android.content.ClipData
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
+import android.util.Size
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -30,6 +33,16 @@ object PhotoDeviceLibrary {
         val title: String,
         val coverUri: Uri?,
         val count: Int,
+    )
+
+    data class DeviceVideo(
+        val uri: Uri,
+        val id: Long,
+        val name: String,
+        val bucket: String,
+        val takenAtMs: Long,
+        val sizeBytes: Long,
+        val durationMs: Long,
     )
 
     suspend fun loadImages(context: Context, limit: Int = 3_000): List<DeviceImage> =
@@ -109,6 +122,73 @@ object PhotoDeviceLibrary {
         }
         else -> emptyList()
     }
+
+    /**
+     * Device-wide videos, newest first. Mirrors [loadImages] but against the Video
+     * MediaStore table. Unlike Images, the video table's DATE_TAKEN column was only
+     * added in API 29 — querying it unconditionally throws on API 26–28 (this app's
+     * minSdk), so DATE_MODIFIED (present on every API level) is used as the one date
+     * source here instead.
+     */
+    suspend fun loadVideos(context: Context, limit: Int = 1_000): List<DeviceVideo> =
+        withContext(Dispatchers.IO) {
+            buildList {
+                runCatching {
+                    context.contentResolver.query(
+                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                        arrayOf(
+                            MediaStore.Video.Media._ID,
+                            MediaStore.Video.Media.DISPLAY_NAME,
+                            MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
+                            MediaStore.Video.Media.DATE_MODIFIED,
+                            MediaStore.Video.Media.SIZE,
+                            MediaStore.Video.Media.DURATION,
+                        ),
+                        null,
+                        null,
+                        "${MediaStore.Video.Media.DATE_MODIFIED} DESC",
+                    )?.use { cursor ->
+                        while (cursor.moveToNext() && size < limit) {
+                            val id = cursor.getLong(0)
+                            add(
+                                DeviceVideo(
+                                    uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id),
+                                    id = id,
+                                    name = cursor.getString(1) ?: "",
+                                    bucket = cursor.getString(2) ?: "Other",
+                                    takenAtMs = cursor.getLong(3) * 1000L,
+                                    sizeBytes = cursor.getLong(4),
+                                    durationMs = cursor.getLong(5),
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+    /**
+     * A real decoded frame for [uri], used as a grid thumbnail since Coil's default
+     * pipeline (no coil-video artifact here) can't decode video containers. API 29+
+     * uses the unified thumbnail API; older devices fall back to the deprecated but
+     * still-functional MediaStore video-thumbnails table, keyed by [videoId].
+     */
+    suspend fun loadVideoThumbnail(context: Context, uri: Uri, videoId: Long): Bitmap? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                if (Build.VERSION.SDK_INT >= 29) {
+                    context.contentResolver.loadThumbnail(uri, Size(384, 384), null)
+                } else {
+                    @Suppress("DEPRECATION")
+                    MediaStore.Video.Thumbnails.getThumbnail(
+                        context.contentResolver,
+                        videoId,
+                        MediaStore.Video.Thumbnails.MINI_KIND,
+                        null,
+                    )
+                }
+            }.getOrNull()
+        }
 
     /** Group images by month for the timeline view, newest month first. */
     fun timeline(images: List<DeviceImage>): List<Pair<String, List<DeviceImage>>> {
