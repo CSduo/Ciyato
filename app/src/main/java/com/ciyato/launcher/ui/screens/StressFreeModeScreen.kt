@@ -169,8 +169,15 @@ fun StressFreeModeScreen(
                                         "Enable Do Not Disturb" -> {
                                             val nm = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
                                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && nm?.isNotificationPolicyAccessGranted == false) {
-                                                Toast.makeText(context, "DND permission required", Toast.LENGTH_SHORT).show()
+                                                // Can't flip DND without this permission — send the user to grant it
+                                                // instead of claiming success we didn't achieve.
+                                                Toast.makeText(context, "Grant Do Not Disturb access to continue", Toast.LENGTH_SHORT).show()
+                                                context.startActivity(
+                                                    android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                )
                                             } else {
+                                                nm?.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY)
                                                 Toast.makeText(context, "Do Not Disturb enabled", Toast.LENGTH_SHORT).show()
                                             }
                                         }
@@ -180,10 +187,16 @@ fun StressFreeModeScreen(
                                         }
                                         "Pause Focus Timer" -> {
                                             viewModel.endFocusSession()
-                                            Toast.makeText(context, "Focus Timer paused", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Focus session ended", Toast.LENGTH_SHORT).show()
                                         }
                                         else -> {
-                                            Toast.makeText(context, "$label action triggered", Toast.LENGTH_SHORT).show()
+                                            // Apps can't disable Wi-Fi/mobile data directly on modern Android —
+                                            // hand off to the real system settings instead of faking it.
+                                            Toast.makeText(context, "Flip Airplane Mode to go offline", Toast.LENGTH_SHORT).show()
+                                            context.startActivity(
+                                                android.content.Intent(android.provider.Settings.ACTION_AIRPLANE_MODE_SETTINGS)
+                                                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            )
                                         }
                                     }
                                 }

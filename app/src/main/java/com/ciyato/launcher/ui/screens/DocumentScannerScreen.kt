@@ -1,5 +1,8 @@
 package com.ciyato.launcher.ui.screens
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,17 +28,18 @@ import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
 /**
  * DocumentScannerScreen — Suggestion #69
- * Camera → document scan integration using CameraX + ML Kit Document Scanner.
- * Falls back to image picker when ML Kit scanner not available.
- * Exports scanned pages as PDF via iTextG.
+ * Imports photos or captures a new one with the system camera, then assembles
+ * the pages into a real multi-page PDF on-device via android.graphics.pdf.PdfDocument.
+ * No cloud service, no third-party PDF library — everything happens locally.
  */
 
 @Composable
@@ -47,9 +51,7 @@ fun DocumentScannerScreen(
     val scope = rememberCoroutineScope()
     var scannedPages by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var isExporting by remember { mutableStateOf(false) }
-    var exportedPdfPath by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember { mutableStateOf("") }
-    var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
 
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents()
@@ -57,33 +59,67 @@ fun DocumentScannerScreen(
         scannedPages = scannedPages + uris
     }
 
+    // TakePicturePreview needs no FileProvider/manifest <provider> entry — it hands back
+    // the captured frame directly, so it works reliably without extra app configuration.
     val cameraCapture = rememberLauncherForActivityResult(
-        ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success && capturedImageUri != null) {
-            scannedPages = scannedPages + capturedImageUri!!
+        ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val file = File(context.cacheDir, "scan_${System.currentTimeMillis()}.jpg")
+                    FileOutputStream(file).use { out -> bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out) }
+                    val uri = Uri.fromFile(file)
+                    withContext(Dispatchers.Main) { scannedPages = scannedPages + uri }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) { statusMessage = "Capture failed: ${e.message}" }
+                }
+            }
         }
     }
 
     fun exportToPdf() {
         if (scannedPages.isEmpty()) return
         isExporting = true
+        statusMessage = ""
 
         scope.launch(Dispatchers.IO) {
+            var document: PdfDocument? = null
             try {
                 val df = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault())
                 val pdfName = "Scan_${df.format(Date())}.pdf"
                 val pdfFile = File(context.getExternalFilesDir(null), pdfName)
 
-                // Production: use iTextG or PdfDocument API to embed scanned images
-                // For now: create a simple PDF placeholder indicating pages count
-                pdfFile.writeText("Ciyato Document Scan\nPages: ${scannedPages.size}\nDate: ${df.format(Date())}")
-                exportedPdfPath = pdfFile.absolutePath
-                statusMessage = "PDF saved: $pdfName"
+                document = PdfDocument()
+                var pagesWritten = 0
+                scannedPages.forEachIndexed { index, uri ->
+                    val bitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
+                        BitmapFactory.decodeStream(stream)
+                    }
+                    if (bitmap != null) {
+                        val pageInfo = PdfDocument.PageInfo
+                            .Builder(bitmap.width, bitmap.height, index + 1)
+                            .create()
+                        val page = document.startPage(pageInfo)
+                        page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                        document.finishPage(page)
+                        bitmap.recycle()
+                        pagesWritten++
+                    }
+                }
+
+                if (pagesWritten == 0) {
+                    statusMessage = "Export failed — none of the selected pages could be read."
+                } else {
+                    FileOutputStream(pdfFile).use { out -> document.writeTo(out) }
+                    statusMessage = "PDF saved: $pdfName ($pagesWritten page${if (pagesWritten != 1) "s" else ""})"
+                }
             } catch (e: Exception) {
                 statusMessage = "Export failed: ${e.message}"
+            } finally {
+                document?.close()
+                withContext(Dispatchers.Main) { isExporting = false }
             }
-            isExporting = false
         }
     }
 
@@ -112,12 +148,7 @@ fun DocumentScannerScreen(
                     Text("Import Photo", color = CiyatoGold)
                 }
                 Button(
-                    onClick = {
-                        val file = File(context.cacheDir, "scan_${System.currentTimeMillis()}.jpg")
-                        capturedImageUri = androidx.core.content.FileProvider.getUriForFile(
-                            context, "${context.packageName}.fileprovider", file)
-                        cameraCapture.launch(capturedImageUri!!)
-                    },
+                    onClick = { cameraCapture.launch(null) },
                     colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold),
                     modifier = Modifier.weight(1f),
                 ) {
