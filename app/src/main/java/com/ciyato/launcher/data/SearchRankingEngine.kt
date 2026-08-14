@@ -89,4 +89,47 @@ object SearchRankingEngine {
         return if (docsContaining == 0) 0f else
             Math.log((documents.size.toDouble() / docsContaining)).toFloat()
     }
+
+    private val labelWordSplit = Regex("[\\s\\-_]+")
+
+    /**
+     * Ranks installed apps against a free-text query by the label the user can
+     * actually SEE, not the package id — matching packageName let "u" surface
+     * apps like com.samsung.* whose visible label has no "u" in it at all, and
+     * matching without ranking let alphabetically-early apps ("A…") outrank a
+     * much better match just because results were sorted A→Z instead of by
+     * relevance. Both defects produced the same user-visible symptom: typing a
+     * letter returned apps that don't look related to what was typed.
+     *
+     * Tiers (best first), alphabetical by label within a tier:
+     *   0 — exact label match
+     *   1 — label starts with the query
+     *   2 — any whitespace/hyphen/underscore-separated word in the label starts
+     *       with the query (so "exp" finds "Adobe Express")
+     *   3 — label contains the query anywhere
+     *   4 — package name contains the query (weak, last-resort fallback — can
+     *       never outrank a real label match)
+     *
+     * With a blank query, apps are simply returned alphabetically by label —
+     * the natural order for browsing a full list.
+     */
+    fun rankAppsByLabel(apps: List<InstalledApp>, query: String): List<InstalledApp> {
+        val q = query.trim().lowercase()
+        if (q.isBlank()) return apps.sortedBy { it.label.lowercase() }
+        return apps
+            .mapNotNull { app ->
+                val label = app.label.trim().lowercase()
+                val tier = when {
+                    label == q -> 0
+                    label.startsWith(q) -> 1
+                    label.split(labelWordSplit).any { it.startsWith(q) } -> 2
+                    label.contains(q) -> 3
+                    app.packageName.lowercase().contains(q) -> 4
+                    else -> null
+                }
+                tier?.let { it to app }
+            }
+            .sortedWith(compareBy({ it.first }, { it.second.label.lowercase() }))
+            .map { it.second }
+    }
 }

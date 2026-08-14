@@ -208,15 +208,27 @@ class LauncherRepository(private val context: Context) {
 
     // ── Query helpers ─────────────────────────────────────────────────────────
 
-    /** Standard substring search. */
+    /**
+     * Relevance-ranked app search — this backs the app drawer's search box.
+     *
+     * It used to be an unranked `contains` over label + packageName + category
+     * name, which made results look random: typing "u" matched com.samsung.* and
+     * "Utilities", surfacing apps whose visible name contains no "u" at all, and
+     * callers then re-sorted alphabetically so "A…" apps led regardless of how
+     * well they matched. Ranking now comes from [SearchRankingEngine.rankAppsByLabel]
+     * (exact > label prefix > word prefix > contains > package), with a
+     * category-name match appended last so searching "Social" still works
+     * without letting it outrank a real name match.
+     */
     fun search(query: String): List<InstalledApp> {
         if (query.isBlank()) return _apps.value
+        val ranked = SearchRankingEngine.rankAppsByLabel(_apps.value, query)
         val q = query.trim().lowercase()
-        return _apps.value.filter {
-            it.label.lowercase().contains(q) ||
-            it.packageName.lowercase().contains(q) ||
-            it.category.displayName.lowercase().contains(q)
-        }
+        val matched = ranked.mapTo(HashSet()) { it.packageName }
+        val byCategory = _apps.value.filter {
+            it.packageName !in matched && it.category.displayName.lowercase().contains(q)
+        }.sortedBy { it.label.lowercase() }
+        return ranked + byCategory
     }
 
     /**

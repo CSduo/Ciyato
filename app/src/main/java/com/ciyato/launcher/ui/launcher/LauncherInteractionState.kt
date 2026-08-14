@@ -66,6 +66,12 @@ sealed interface LauncherConfirmation {
         val isCustom: Boolean,
         val workspaceIndex: Int? = null,
     ) : LauncherConfirmation
+
+    /** Unpinning a dock icon — the app stays installed, only the dock slot is cleared. */
+    data class RemoveAppFromDock(
+        val packageName: String,
+        val label: String,
+    ) : LauncherConfirmation
 }
 
 fun LauncherInteractionState.afterBack(): LauncherInteractionState = when (this) {

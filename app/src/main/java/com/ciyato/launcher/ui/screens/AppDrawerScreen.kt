@@ -154,7 +154,9 @@ fun AppDrawerScreen(
             }
             query.isNotBlank() -> SearchResultsGrid(
                 query = query,
-                results = searchResults.sortedBy { it.label.lowercase() },
+                // Already relevance-ranked by the repository; re-sorting A→Z here
+                // threw that ranking away and put "A…" apps ahead of better matches.
+                results = searchResults,
                 onAppTap = viewModel::launchApp,
                 onAppLongTap = { contextMenuApp = it },
             )

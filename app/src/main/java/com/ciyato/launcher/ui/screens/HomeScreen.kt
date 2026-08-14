@@ -74,6 +74,7 @@ import com.ciyato.launcher.data.AppCategory
 import com.ciyato.launcher.data.CustomCategoryPresentation
 import com.ciyato.launcher.data.FocusSessionManager
 import com.ciyato.launcher.data.InstalledApp
+import com.ciyato.launcher.data.SearchRankingEngine
 import com.ciyato.launcher.data.WorkspaceRecord
 import com.ciyato.launcher.ui.components.*
 import com.ciyato.launcher.ui.launcher.*
@@ -255,6 +256,8 @@ fun HomeScreen(
     val pendingCategoryRemoval = (interactionState as? LauncherInteractionState.Confirmation)
         ?.action as? LauncherConfirmation.RemoveCategory
     val categoryPendingDelete = pendingCategoryRemoval?.categoryKey
+    val pendingAppRemovalFromDock = (interactionState as? LauncherInteractionState.Confirmation)
+        ?.action as? LauncherConfirmation.RemoveAppFromDock
     var draggingCategory by remember { mutableStateOf<String?>(null) }
     var categoryDragOffset by remember { mutableStateOf(Offset.Zero) }
     var workspaceDraggingCategory by remember { mutableStateOf<String?>(null) }
@@ -350,6 +353,17 @@ fun HomeScreen(
     fun requestCategoryRemoval(categoryKey: String, isCustom: Boolean, workspaceIndex: Int? = null) {
         interactionState = LauncherInteractionState.Confirmation(
             action = LauncherConfirmation.RemoveCategory(categoryKey, isCustom, workspaceIndex),
+            returnState = interactionState,
+        )
+    }
+
+    // Removing a dock icon is a single tap on a small "x" badge — easy to hit
+    // by accident — and used to unpin instantly with no way back (offerLayoutUndo
+    // no-ops). Route it through the same confirm-before-destroy pattern as
+    // category removal instead of unpinning directly.
+    fun requestAppRemovalFromDock(app: InstalledApp) {
+        interactionState = LauncherInteractionState.Confirmation(
+            action = LauncherConfirmation.RemoveAppFromDock(app.packageName, app.label),
             returnState = interactionState,
         )
     }
@@ -1624,9 +1638,7 @@ fun HomeScreen(
                         },
                         onRemoveApp = { unpinApp ->
                             if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            val snapshot = currentLayoutSnapshot()
-                            viewModel.unpinFromDock(unpinApp.packageName)
-                            offerLayoutUndo("Unpinned from dock", snapshot)
+                            requestAppRemovalFromDock(unpinApp)
                         },
                         isEditMode = isEditMode,
                         isDragActive = dragController.isActive,
@@ -1941,11 +1953,8 @@ fun HomeScreen(
             val categoryName = selectedCustomCategory
             val selected = categoryName?.let(viewModel::byCustomCategory).orEmpty().mapTo(mutableSetOf()) { it.packageName }
             val matches = remember(allInstalledApps, categoryAppPickerQuery, selected) {
-                val query = categoryAppPickerQuery.trim().lowercase()
-                allInstalledApps.filter { app ->
-                    app.packageName !in selected &&
-                        (query.isBlank() || app.label.lowercase().contains(query) || app.packageName.lowercase().contains(query))
-                }.sortedBy { it.label.lowercase() }
+                val available = allInstalledApps.filter { it.packageName !in selected }
+                SearchRankingEngine.rankAppsByLabel(available, categoryAppPickerQuery)
             }
             AlertDialog(
                 onDismissRequest = { showCategoryAppPicker = false },
@@ -2116,12 +2125,42 @@ fun HomeScreen(
             )
         }
 
+        pendingAppRemovalFromDock?.let { removal ->
+            AlertDialog(
+                onDismissRequest = { interactionState = interactionState.afterBack() },
+                containerColor = CiyatoBgEl,
+                title = {
+                    Text("Remove ${removal.label} from Dock?", color = CiyatoWhite, fontWeight = FontWeight.Bold)
+                },
+                text = {
+                    Text(
+                        "${removal.label} will be removed from the dock only. It stays installed and remains available in the App Library.",
+                        color = CiyatoSec,
+                    )
+                },
+                dismissButton = {
+                    TextButton(onClick = { interactionState = interactionState.afterBack() }) {
+                        Text("Cancel", color = CiyatoSec)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val snapshot = currentLayoutSnapshot()
+                        viewModel.unpinFromDock(removal.packageName)
+                        offerLayoutUndo("Unpinned from dock", snapshot)
+                        interactionState = interactionState.afterBack()
+                    }) {
+                        Text("Remove", color = CiyatoRed)
+                    }
+                },
+            )
+        }
+
         // Custom Category Dialog
         if (showCreateCategoryDialog) {
             val allInstalledApps by viewModel.allApps.collectAsState()
             val categoryMatches = remember(allInstalledApps, newCategoryAppQuery) {
-                val q = newCategoryAppQuery.trim().lowercase()
-                allInstalledApps.filter { q.isBlank() || it.label.lowercase().contains(q) || it.packageName.lowercase().contains(q) }
+                SearchRankingEngine.rankAppsByLabel(allInstalledApps, newCategoryAppQuery)
             }
             AlertDialog(
                 onDismissRequest = { showCreateCategoryDialog = false },
@@ -2311,13 +2350,8 @@ fun HomeScreen(
                 viewModel.cellAppsForPage(pickerPageIndex).values.map { it.packageName }.toSet()
             }
             val matchingApps = remember(allInstalledApps, existingPackages, pageAppPickerQuery) {
-                val query = pageAppPickerQuery.trim().lowercase()
-                allInstalledApps
-                    .asSequence()
-                    .filterNot { it.packageName in existingPackages }
-                    .filter { query.isBlank() || it.label.lowercase().contains(query) || it.packageName.lowercase().contains(query) }
-                    .sortedBy { it.label.lowercase() }
-                    .toList()
+                val available = allInstalledApps.filterNot { it.packageName in existingPackages }
+                SearchRankingEngine.rankAppsByLabel(available, pageAppPickerQuery)
             }
             AlertDialog(
                 onDismissRequest = {

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.data.AppCategory
 import com.ciyato.launcher.data.AppCategorizer
+import com.ciyato.launcher.data.SearchRankingEngine
 import com.ciyato.launcher.ui.components.*
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
@@ -42,7 +43,6 @@ fun SearchScreen(
     onCategoryFilter: ((AppCategory) -> Unit)? = null,
 ) {
     val searchQuery     by viewModel.searchQuery.collectAsState()
-    val searchResults   by viewModel.searchResults.collectAsState()
     val isLoading       by viewModel.isLoading.collectAsState()
     val apps            by viewModel.apps.collectAsState()
     val recentSearches  by viewModel.recentSearches.collectAsState()
@@ -58,6 +58,15 @@ fun SearchScreen(
     }
 
     val frequentApps = remember(apps) { viewModel.byUsageFrequency().take(8) }
+
+    // Ranked by visible label relevance (SearchRankingEngine.rankAppsByLabel),
+    // not by the package id — the same fix applied to the Home app pickers so
+    // every search surface in the app behaves consistently. Computed locally
+    // rather than through viewModel.searchResults so this screen shows pure
+    // label matches, without the category-name matches the repository appends.
+    val searchResults = remember(apps, searchQuery) {
+        if (searchQuery.isBlank()) emptyList() else SearchRankingEngine.rankAppsByLabel(apps, searchQuery)
+    }
     val groups = remember(searchResults) {
         searchResults.groupBy { it.category.displayName }
             .filter { it.value.size >= 2 && it.key != "Other" }

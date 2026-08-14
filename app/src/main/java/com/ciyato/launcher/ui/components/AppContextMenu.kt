@@ -67,6 +67,7 @@ fun AppContextMenu(
     var showCategorySelector by remember { mutableStateOf(false) }
     var showAppearanceEditor by remember { mutableStateOf(false) }
     var confirmRemoveFromDisplay by remember { mutableStateOf(false) }
+    var confirmUnpinFromDock by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -129,8 +130,16 @@ fun AppContextMenu(
                         label = if (isPinned) "Unpin from Dock" else "Pin to Dock",
                         color = CiyatoGold,
                         action = {
-                            if (isPinned) viewModel.unpinApp(app) else viewModel.pinApp(app)
-                            onDismiss()
+                            if (isPinned) {
+                                // Destructive-feeling (the icon disappears from the
+                                // dock) — confirm first, same as "Remove from
+                                // display" below. Pinning stays instant; it's purely
+                                // additive.
+                                confirmUnpinFromDock = true
+                            } else {
+                                viewModel.pinApp(app)
+                                onDismiss()
+                            }
                         },
                     ))
                     add(ContextMenuItem(
@@ -230,6 +239,34 @@ fun AppContextMenu(
                     viewModel.removeAppFromDisplay(app.packageName)
                     onAction(ContextAction.RemoveFromDisplay)
                     confirmRemoveFromDisplay = false
+                    onDismiss()
+                }) {
+                    Text("Remove", color = CiyatoRed)
+                }
+            },
+        )
+    }
+
+    if (confirmUnpinFromDock) {
+        AlertDialog(
+            onDismissRequest = { confirmUnpinFromDock = false },
+            containerColor = CiyatoBgEl,
+            title = { Text("Remove ${app.label} from Dock?", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
+            text = {
+                Text(
+                    "${app.label} will be removed from the dock only. It stays installed and remains available in the App Library.",
+                    color = CiyatoSec,
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmUnpinFromDock = false }) {
+                    Text("Cancel", color = CiyatoSec)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.unpinApp(app)
+                    confirmUnpinFromDock = false
                     onDismiss()
                 }) {
                     Text("Remove", color = CiyatoRed)

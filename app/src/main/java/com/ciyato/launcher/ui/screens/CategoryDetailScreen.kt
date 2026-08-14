@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.data.AppCategory
 import com.ciyato.launcher.data.InstalledApp
+import com.ciyato.launcher.data.SearchRankingEngine
 import com.ciyato.launcher.ui.components.RealAppIcon
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.ui.components.*
@@ -243,9 +244,11 @@ fun CategoryDetailScreen(
         }
 
         if (showAppPicker) {
+            // Rank by the visible label, not the package id — an unranked
+            // `contains` over packageName made typing "u" surface com.samsung.*
+            // apps whose name has no "u" in it, ahead of real name matches.
             val matchingApps = remember(allApps, appPickerQuery) {
-                val q = appPickerQuery.trim().lowercase()
-                allApps.filter { q.isBlank() || it.label.lowercase().contains(q) || it.packageName.lowercase().contains(q) }
+                SearchRankingEngine.rankAppsByLabel(allApps, appPickerQuery)
             }
             val currentCategoryPackages = categoryApps.mapTo(mutableSetOf()) { it.packageName }
 

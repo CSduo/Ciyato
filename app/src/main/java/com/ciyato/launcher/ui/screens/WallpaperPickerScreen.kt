@@ -19,6 +19,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +37,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.ui.components.CiyatoBadge
+import com.ciyato.launcher.ui.components.CiyatoListCard
 import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
@@ -54,6 +59,12 @@ data class GradientWallpaper(
     val colors: List<Color>,
 )
 
+/** Which surface currently supplies Ciyato's own in-app background. Mutually exclusive:
+ *  the click handlers below always clear the other two when one is set. */
+private enum class CiyatoBackgroundKind { SYSTEM, IMAGE, VIDEO }
+
+private val ActiveBadge: @Composable () -> Unit = { CiyatoBadge("Active") }
+
 private val GRADIENT_PRESETS = listOf(
     GradientWallpaper("midnight", "Midnight", listOf(Color(0xFF050607), Color(0xFF14181D), Color(0xFF050607))),
     GradientWallpaper("graphite", "Graphite", listOf(Color(0xFF08090A), Color(0xFF282C31), Color(0xFF0D0F11))),
@@ -71,6 +82,8 @@ fun WallpaperPickerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val ciyatoImageWallpaper by viewModel.ciyatoImageWallpaper.collectAsState()
+    val ciyatoVideoWallpaper by viewModel.ciyatoVideoWallpaper.collectAsState()
+    val useSystemWallpaper by viewModel.useSystemWallpaper.collectAsState()
     val wallpaperDim by viewModel.wallpaperDim.collectAsState()
     val wallpaperImageScale by viewModel.wallpaperImageScale.collectAsState()
     val wallpaperImageOffset by viewModel.wallpaperImageOffset.collectAsState()
@@ -135,74 +148,86 @@ fun WallpaperPickerScreen(
         ) {
             Spacer(Modifier.height(8.dp))
 
-            TextButton(
-                onClick = {
-                    viewModel.setCiyatoImageWallpaper("")
-                    viewModel.setCiyatoVideoWallpaper("")
-                    viewModel.setUseSystemWallpaper(true)
-                    imageStatus = "Ciyato now follows the current Android system wallpaper."
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Follow current system wallpaper", color = CiyatoGold)
+            // Ciyato only ever shows one background at a time. useSystemWallpaper is the
+            // authoritative flag (every option below keeps it in sync); the media URIs are
+            // read only once that flag says a Ciyato-owned background is active, so a stale
+            // leftover URI can never masquerade as the active choice.
+            val backgroundKind = when {
+                !useSystemWallpaper && ciyatoVideoWallpaper.isNotBlank() -> CiyatoBackgroundKind.VIDEO
+                !useSystemWallpaper && ciyatoImageWallpaper.isNotBlank() -> CiyatoBackgroundKind.IMAGE
+                else -> CiyatoBackgroundKind.SYSTEM
             }
 
-            Card(
-                colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth().clickable {
-                    personalImagePicker.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                    )
-                },
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Default.Wallpaper, null, tint = CiyatoGold, modifier = Modifier.size(24.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Choose personal image", color = CiyatoWhite, fontWeight = FontWeight.SemiBold)
-                        Text("Uses Android Photo Picker - no broad photo access", color = CiyatoMuted, fontSize = 12.sp)
-                    }
-                    Text("→", color = CiyatoSec, fontSize = 18.sp)
-                }
+            val followSystemWallpaper: () -> Unit = {
+                viewModel.setCiyatoImageWallpaper("")
+                viewModel.setCiyatoVideoWallpaper("")
+                viewModel.setUseSystemWallpaper(true)
+                imageStatus = "Ciyato now follows the current Android system wallpaper."
             }
 
-            Card(
-                colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth().clickable {
-                    personalVideoPicker.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly),
-                    )
-                },
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Default.Wallpaper, null, tint = CiyatoGold, modifier = Modifier.size(24.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Choose short video", color = CiyatoWhite, fontWeight = FontWeight.SemiBold)
-                        Text("Ciyato-only background, silent, up to 15 seconds", color = CiyatoMuted, fontSize = 12.sp)
-                    }
-                    Text("->", color = CiyatoSec, fontSize = 18.sp)
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Ciyato background", color = CiyatoWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "What Ciyato draws behind your home and apps. Pick one.",
+                    color = CiyatoMuted,
+                    fontSize = 12.sp,
+                )
             }
 
-            TextButton(
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                CiyatoListCard(
+                    title = "Follow system wallpaper",
+                    subtitle = "Ciyato stops drawing its own background and shows whatever wallpaper Android is currently using.",
+                    icon = Icons.Default.Wallpaper,
+                    trailing = if (backgroundKind == CiyatoBackgroundKind.SYSTEM) ActiveBadge else null,
+                    onClick = followSystemWallpaper,
+                )
+                CiyatoListCard(
+                    title = "Your image",
+                    subtitle = "A personal photo for Ciyato only. Uses the Android Photo Picker - no broad photo access.",
+                    icon = Icons.Default.Image,
+                    trailing = if (backgroundKind == CiyatoBackgroundKind.IMAGE) ActiveBadge else null,
+                    onClick = {
+                        personalImagePicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                        )
+                    },
+                )
+                CiyatoListCard(
+                    title = "Your video",
+                    subtitle = "A short looping clip for Ciyato only, silent, up to 60 seconds. It can't become the Android system wallpaper - Android has no API for that outside a full live-wallpaper service.",
+                    icon = Icons.Default.Movie,
+                    trailing = if (backgroundKind == CiyatoBackgroundKind.VIDEO) ActiveBadge else null,
+                    onClick = {
+                        personalVideoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly),
+                        )
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Android wallpaper", color = CiyatoWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "A separate, phone-wide setting - not what Ciyato shows above.",
+                    color = CiyatoMuted,
+                    fontSize = 12.sp,
+                )
+            }
+
+            CiyatoListCard(
+                title = "Open system wallpaper picker",
+                subtitle = "Hands off to Android's own picker, including live wallpapers and other apps' wallpaper options.",
+                icon = Icons.Default.OpenInNew,
+                iconColor = CiyatoMuted,
                 onClick = {
                     runCatching {
                         context.startActivity(Intent(Intent.ACTION_SET_WALLPAPER))
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Open system wallpaper picker", color = CiyatoGold)
-            }
+            )
 
             imageStatus?.let { status ->
                 Text(
@@ -224,11 +249,7 @@ fun WallpaperPickerScreen(
                     onOffsetChanged = viewModel::setWallpaperImageOffset,
                     onDimChanged = viewModel::setWallpaperDim,
                     onBlurChanged = viewModel::setWallpaperBlur,
-                    onRemove = {
-                        viewModel.setCiyatoImageWallpaper("")
-                        viewModel.setUseSystemWallpaper(true)
-                        imageStatus = "Ciyato now follows the current Android system wallpaper."
-                    },
+                    onRemove = followSystemWallpaper,
                 )
             }
 
