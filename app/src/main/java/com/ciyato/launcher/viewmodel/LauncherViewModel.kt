@@ -660,7 +660,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun addAppsToPage(pageIndex: Int, packages: Collection<String>) = viewModelScope.launch {
         unhidePackages(packages)
         updateLayout { layout ->
-            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
             WorkspaceStore.addAppsAtFreeCells(layout, workspace.id, packages)
         }
@@ -670,7 +670,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeAppFromPage(pageIndex: Int, pkg: String) = viewModelScope.launch {
         updateLayout { layout ->
-            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
             WorkspaceStore.removeApp(layout, workspace.id, pkg)
         }
@@ -679,7 +679,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** Places an app at a specific grid cell (used by free drag). */
     fun placeAppAtCell(pageIndex: Int, pkg: String, cell: Int) = viewModelScope.launch {
         updateLayout { layout ->
-            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
             WorkspaceStore.placeApp(layout, workspace.id, pkg, cell)
         }
@@ -696,7 +696,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun resizeAppTile(pageIndex: Int, pkg: String, spanX: Int, spanY: Int) = viewModelScope.launch {
         updateLayout { layout ->
-            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
             WorkspaceStore.resizeApp(layout, workspace.id, pkg, spanX, spanY)
         }
@@ -705,17 +705,18 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** Moves an app to a specific cell on another workspace (used by cross-page drag). */
     fun moveAppToCell(fromPage: Int, toPage: Int, pkg: String, cell: Int) = viewModelScope.launch {
         updateLayout { layout ->
-            val from = layout.workspaceAt(workspaceIndexForPage(fromPage) ?: return@updateLayout null)
+            val from = layout.workspaceById(workspaceIdForPage(layout, fromPage) ?: return@updateLayout null)
                 ?: return@updateLayout null
-            val to = layout.workspaceAt(workspaceIndexForPage(toPage) ?: return@updateLayout null)
+            val to = layout.workspaceById(workspaceIdForPage(layout, toPage) ?: return@updateLayout null)
                 ?: return@updateLayout null
             WorkspaceStore.moveApp(layout, from.id, to.id, pkg, cell)
         }
     }
 
     fun getAppsForPage(pageIndex: Int): List<InstalledApp> {
-        val workspaceIndex = workspaceIndexForPage(pageIndex) ?: return emptyList()
-        val packages = currentWorkspaceLayout().workspaceAt(workspaceIndex)?.appPackages.orEmpty()
+        val layout = currentWorkspaceLayout()
+        val workspaceId = workspaceIdForPage(layout, pageIndex) ?: return emptyList()
+        val packages = layout.workspaceById(workspaceId)?.appPackages.orEmpty()
         val byPkg = apps.value.associateBy { it.packageName }
         return packages.mapNotNull { byPkg[it] }
     }
@@ -756,8 +757,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     /** cell index → installed app, for one workspace page. Missing apps drop out. */
     fun cellAppsForPage(pageIndex: Int): Map<Int, InstalledApp> {
-        val workspaceIndex = workspaceIndexForPage(pageIndex) ?: return emptyMap()
-        val cells = currentWorkspaceLayout().workspaceAt(workspaceIndex)?.cells.orEmpty()
+        val layout = currentWorkspaceLayout()
+        val workspaceId = workspaceIdForPage(layout, pageIndex) ?: return emptyMap()
+        val cells = layout.workspaceById(workspaceId)?.cells.orEmpty()
         val byPkg = apps.value.associateBy { it.packageName }
         return cells.mapNotNull { c -> byPkg[c.packageName]?.let { c.cell to it } }.toMap()
     }
@@ -766,19 +768,26 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      *  [cellAppsForPage]'s keys — WorkspaceGrid needs both maps to render and
      *  resize spanning tiles, since [cellAppsForPage] alone loses span. */
     fun cellSpansForPage(pageIndex: Int): Map<Int, Pair<Int, Int>> {
-        val workspaceIndex = workspaceIndexForPage(pageIndex) ?: return emptyMap()
-        val cells = currentWorkspaceLayout().workspaceAt(workspaceIndex)?.cells.orEmpty()
+        val layout = currentWorkspaceLayout()
+        val workspaceId = workspaceIdForPage(layout, pageIndex) ?: return emptyMap()
+        val cells = layout.workspaceById(workspaceId)?.cells.orEmpty()
         return cells.associate { it.cell to (it.spanX to it.spanY) }
     }
 
-    fun getCategoriesForWorkspace(pageIndex: Int): List<String> = workspaceIndexForPage(pageIndex)
-        ?.let { currentWorkspaceLayout().workspaceAt(it)?.categoryKeys }
-        .orEmpty()
+    fun getCategoriesForWorkspace(pageIndex: Int): List<String> {
+        val layout = currentWorkspaceLayout()
+        return workspaceIdForPage(layout, pageIndex)
+            ?.let { layout.workspaceById(it)?.categoryKeys }
+            .orEmpty()
+    }
 
-    fun workspaceName(pageIndex: Int): String = workspaceIndexForPage(pageIndex)
-        ?.let { currentWorkspaceLayout().workspaceAt(it) }
-        ?.name
-        ?: "Workspace"
+    fun workspaceName(pageIndex: Int): String {
+        val layout = currentWorkspaceLayout()
+        return workspaceIdForPage(layout, pageIndex)
+            ?.let { layout.workspaceById(it) }
+            ?.name
+            ?: "Workspace"
+    }
 
     fun workspaceOverview(): List<WorkspaceRecord> {
         val layout = currentWorkspaceLayout()
@@ -789,14 +798,17 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         ?.let(WorkspaceStore::serialize)
         ?: WorkspaceStore.serialize(legacyWorkspaceLayout())
 
-    fun isDefaultWorkspace(pageIndex: Int): Boolean = workspaceIndexForPage(pageIndex)
-        ?.let { currentWorkspaceLayout().workspaceAt(it)?.id }
-        ?.let { it == currentWorkspaceLayout().defaultWorkspaceId }
-        ?: false
+    fun isDefaultWorkspace(pageIndex: Int): Boolean {
+        val layout = currentWorkspaceLayout()
+        return workspaceIdForPage(layout, pageIndex)
+            ?.let { layout.workspaceById(it)?.id }
+            ?.let { it == layout.defaultWorkspaceId }
+            ?: false
+    }
 
     fun addCategoryToWorkspace(pageIndex: Int, categoryKey: String) = viewModelScope.launch {
         updateLayout { layout ->
-            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
             if (categoryKey in workspace.categoryKeys) return@updateLayout null
             WorkspaceStore.withWorkspace(layout, workspace.copy(categoryKeys = workspace.categoryKeys + categoryKey))
@@ -805,7 +817,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeCategoryFromWorkspace(pageIndex: Int, categoryKey: String) = viewModelScope.launch {
         updateLayout { layout ->
-            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
             if (categoryKey !in workspace.categoryKeys) return@updateLayout null
             WorkspaceStore.withWorkspace(layout, workspace.copy(categoryKeys = workspace.categoryKeys - categoryKey))
@@ -814,7 +826,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun moveCategoryInWorkspace(pageIndex: Int, categoryKey: String, shift: Int) = viewModelScope.launch {
         updateLayout { layout ->
-            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
             val categories = workspace.categoryKeys.toMutableList()
             val from = categories.indexOf(categoryKey)
@@ -830,9 +842,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun moveCategoryBetweenWorkspaces(fromPage: Int, toPage: Int, categoryKey: String) = viewModelScope.launch {
         updateLayout { layout ->
             if (fromPage == toPage) return@updateLayout null
-            val from = layout.workspaceAt(workspaceIndexForPage(fromPage) ?: return@updateLayout null)
+            val from = layout.workspaceById(workspaceIdForPage(layout, fromPage) ?: return@updateLayout null)
                 ?: return@updateLayout null
-            val to = layout.workspaceAt(workspaceIndexForPage(toPage) ?: return@updateLayout null)
+            val to = layout.workspaceById(workspaceIdForPage(layout, toPage) ?: return@updateLayout null)
                 ?: return@updateLayout null
             if (categoryKey !in from.categoryKeys) return@updateLayout null
             val without = WorkspaceStore.withWorkspace(layout, from.copy(categoryKeys = from.categoryKeys - categoryKey))
@@ -845,7 +857,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** Accessible alternative to drag-and-drop for placing a collection in one workspace. */
     fun moveCategoryToWorkspace(categoryKey: String, destinationPage: Int) = viewModelScope.launch {
         updateLayout { layout ->
-            val destination = layout.workspaceAt(workspaceIndexForPage(destinationPage) ?: return@updateLayout null)
+            val destination = layout.workspaceById(workspaceIdForPage(layout, destinationPage) ?: return@updateLayout null)
                 ?: return@updateLayout null
             layout.copy(workspaces = layout.workspaces.map { workspace ->
                 val withoutCategory = workspace.categoryKeys.filterNot { it == categoryKey }
@@ -861,9 +873,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun moveAppBetweenWorkspaces(fromPage: Int, toPage: Int, packageName: String) = viewModelScope.launch {
         updateLayout { layout ->
             if (fromPage == toPage) return@updateLayout null
-            val from = layout.workspaceAt(workspaceIndexForPage(fromPage) ?: return@updateLayout null)
+            val from = layout.workspaceById(workspaceIdForPage(layout, fromPage) ?: return@updateLayout null)
                 ?: return@updateLayout null
-            val to = layout.workspaceAt(workspaceIndexForPage(toPage) ?: return@updateLayout null)
+            val to = layout.workspaceById(workspaceIdForPage(layout, toPage) ?: return@updateLayout null)
                 ?: return@updateLayout null
             WorkspaceStore.moveApp(layout, from.id, to.id, packageName, WorkspaceStore.firstFreeCell(to.cells, layout.authorColumns))
         }
@@ -871,7 +883,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun moveAppWithinWorkspace(pageIndex: Int, packageName: String, destinationIndex: Int) = viewModelScope.launch {
         updateLayout { layout ->
-            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
             WorkspaceStore.moveAppWithinWorkspace(layout, workspace.id, packageName, destinationIndex)
         }
@@ -884,14 +896,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun insertWorkspaceBeforePage(pageIndex: Int) =
-        insertWorkspaceAt(workspaceIndexForPage(pageIndex) ?: 0)
+        insertWorkspaceAt(visualIndexForPage(pageIndex) ?: 0)
 
     fun insertWorkspaceAfterPage(pageIndex: Int) =
-        insertWorkspaceAt((workspaceIndexForPage(pageIndex) ?: currentWorkspaceLayout().visualOrder.lastIndex) + 1)
+        insertWorkspaceAt((visualIndexForPage(pageIndex) ?: currentWorkspaceLayout().visualOrder.lastIndex) + 1)
 
     fun renameWorkspace(pageIndex: Int, name: String) = viewModelScope.launch {
         updateLayout { layout ->
-            val id = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)?.id
+            val id = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)?.id
                 ?: return@updateLayout null
             WorkspaceStore.rename(layout, id, name)
         }
@@ -899,7 +911,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun duplicateWorkspace(pageIndex: Int) = viewModelScope.launch {
         updateLayout { layout ->
-            val id = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)?.id
+            val id = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)?.id
                 ?: return@updateLayout null
             WorkspaceStore.duplicate(layout, id)
         }
@@ -907,7 +919,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setDefaultWorkspace(pageIndex: Int) = viewModelScope.launch {
         updateLayout { layout ->
-            val id = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)?.id
+            val id = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)?.id
                 ?: return@updateLayout null
             WorkspaceStore.setDefault(layout, id)
         }
@@ -915,7 +927,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun dismissWorkspaceStarter(pageIndex: Int) = viewModelScope.launch {
         updateLayout { layout ->
-            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
             if (workspace.starterDismissed) return@updateLayout null
             WorkspaceStore.withWorkspace(layout, workspace.copy(starterDismissed = true))
@@ -924,7 +936,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun applyWorkspaceTemplate(pageIndex: Int, categoryKeys: List<String>) = viewModelScope.launch {
         updateLayout { layout ->
-            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
             val merged = (workspace.categoryKeys + categoryKeys).distinct()
             WorkspaceStore.withWorkspace(layout, workspace.copy(categoryKeys = merged, starterDismissed = true))
@@ -937,19 +949,34 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeWorkspace(pageIndex: Int, moveContentsToPage: Int? = null) = viewModelScope.launch {
         updateLayout { layout ->
-            val workspace = layout.workspaceAt(workspaceIndexForPage(pageIndex) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
-            val destination = moveContentsToPage
-                ?.let(::workspaceIndexForPage)
-                ?.let(layout::workspaceAt)
-                ?.id
+            val destination = moveContentsToPage?.let { workspaceIdForPage(layout, it) }
             WorkspaceStore.remove(layout, workspace.id, destination)
         }
     }
 
     fun removeLastWorkspace() = removeWorkspace(workspaceCount.value - 1)
 
-    private fun workspaceIndexForPage(pageIndex: Int): Int? = when {
+    /** Resolves a pager page to the id of the [WorkspaceRecord] backing it — page 1
+     *  is the fixed Home page, pages 0 and 2+ are movable workspaces addressed by
+     *  their [WorkspaceLayout.visualOrder] position. Giving Home a real, stable id
+     *  here (instead of the old index-based lookup, which had no slot for page 1
+     *  at all) is what lets every grid operation below actually persist on Home. */
+    private fun workspaceIdForPage(layout: WorkspaceLayout, pageIndex: Int): String? = when {
+        pageIndex == 1 -> WorkspaceLayout.HOME_WORKSPACE_ID
+        pageIndex == 0 -> layout.visualOrder.getOrNull(0)
+        pageIndex >= 2 -> layout.visualOrder.getOrNull(pageIndex - 1)
+        else -> null
+    }
+
+    /** Same page→position mapping as [workspaceIdForPage], but as a raw
+     *  [WorkspaceLayout.visualOrder] index for callers that are inserting a new
+     *  workspace rather than looking up an existing one — Home has no visual
+     *  position, so (unlike [workspaceIdForPage]) it has nothing to return for
+     *  page 1; callers never invoke this for page 1 in practice ("+ Workspace"
+     *  only renders on non-Home pages). */
+    private fun visualIndexForPage(pageIndex: Int): Int? = when {
         pageIndex == 0 -> 0
         pageIndex >= 2 -> pageIndex - 1
         else -> null

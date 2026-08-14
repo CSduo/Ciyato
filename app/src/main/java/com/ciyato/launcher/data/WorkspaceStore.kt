@@ -58,6 +58,11 @@ data class WorkspaceLayout(
         const val CURRENT_VERSION = 2
         const val DEFAULT_COLUMNS = 4
         const val DEFAULT_ROWS = 5
+
+        /** Home's fixed record id. Home lives in [workspaces] like any other
+         *  record (so it can hold real cells) but is deliberately never in
+         *  [visualOrder] — it's the fixed centre page, not a swipeable workspace. */
+        const val HOME_WORKSPACE_ID = "home"
     }
 
     fun workspaceAt(index: Int): WorkspaceRecord? = visualOrder
@@ -65,6 +70,10 @@ data class WorkspaceLayout(
         ?.let { id -> workspaces.firstOrNull { it.id == id } }
 
     fun indexOf(id: String): Int = visualOrder.indexOf(id)
+
+    /** Direct id lookup — the only way to reach [HOME_WORKSPACE_ID], since it has
+     *  no [visualOrder] position for [workspaceAt] to resolve. */
+    fun workspaceById(id: String): WorkspaceRecord? = workspaces.firstOrNull { it.id == id }
 }
 
 object WorkspaceStore {
@@ -74,6 +83,10 @@ object WorkspaceStore {
      *  grid dimension, just enough to stop corrupt data or a fat-fingered resize
      *  from producing an absurd or unfittable rectangle. */
     private const val MAX_SPAN = 8
+
+    /** Home's reserved creationOrder — far outside the small counting range every
+     *  movable workspace uses, so it can never collide with one. */
+    private const val HOME_CREATION_ORDER = Int.MAX_VALUE
 
     fun parse(raw: String): WorkspaceLayout? = runCatching {
         val root = JSONObject(raw)
@@ -89,9 +102,24 @@ object WorkspaceStore {
         val visualOrder = stringList(root.optJSONArray("visualOrder"))
         val defaultWorkspaceId = root.optString("defaultWorkspaceId")
         val authorColumns = root.optInt("authorColumns", WorkspaceLayout.DEFAULT_COLUMNS).coerceIn(1, 12)
-        WorkspaceLayout(workspaces, visualOrder, defaultWorkspaceId, authorColumns = authorColumns)
+        WorkspaceLayout(ensureHomeWorkspace(workspaces), visualOrder, defaultWorkspaceId, authorColumns = authorColumns)
             .takeIf(::isValid)
     }.getOrNull()
+
+    /** Every saved layout predates Home having its own backing record (or is a
+     *  brand-new one that never wrote one). Synthesize an empty Home the first
+     *  time it's missing so it round-trips from then on — every other workspace
+     *  and app in [workspaces] is returned untouched. */
+    private fun ensureHomeWorkspace(workspaces: List<WorkspaceRecord>): List<WorkspaceRecord> {
+        if (workspaces.any { it.id == WorkspaceLayout.HOME_WORKSPACE_ID }) return workspaces
+        return workspaces + WorkspaceRecord(
+            id = WorkspaceLayout.HOME_WORKSPACE_ID,
+            // Reserved, not max()+1: Home must never occupy a creationOrder that
+            // insert()/duplicate() could otherwise hand out next — see nextCreationOrder.
+            creationOrder = HOME_CREATION_ORDER,
+            name = "Home",
+        )
+    }
 
     private fun parseRecord(item: JSONObject, version: Int): WorkspaceRecord? {
         val id = item.optString("id")
@@ -204,15 +232,15 @@ object WorkspaceStore {
             )
         }
         return WorkspaceLayout(
-            workspaces = workspaces,
+            workspaces = ensureHomeWorkspace(workspaces),
             visualOrder = workspaces.map(WorkspaceRecord::id),
             defaultWorkspaceId = workspaces.first().id,
         )
     }
 
     fun insert(layout: WorkspaceLayout, visualIndex: Int): WorkspaceLayout? {
-        if (!isValid(layout) || layout.workspaces.size >= MAX_WORKSPACES) return null
-        val creationOrder = (layout.workspaces.maxOfOrNull(WorkspaceRecord::creationOrder) ?: 0) + 1
+        if (!isValid(layout) || layout.visualOrder.size >= MAX_WORKSPACES) return null
+        val creationOrder = nextCreationOrder(layout)
         val workspace = WorkspaceRecord(
             id = "workspace-$creationOrder",
             creationOrder = creationOrder,
@@ -224,7 +252,9 @@ object WorkspaceStore {
     }
 
     fun remove(layout: WorkspaceLayout, workspaceId: String, moveContentsTo: String? = null): WorkspaceLayout? {
-        if (!isValid(layout) || layout.workspaces.size <= 1 || workspaceId !in layout.visualOrder) return null
+        // visualOrder.size, not workspaces.size — Home always adds one to the
+        // latter, and Home never counts as "the last remaining workspace".
+        if (!isValid(layout) || layout.visualOrder.size <= 1 || workspaceId !in layout.visualOrder) return null
         val removed = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
         val remaining = layout.workspaces.filterNot { it.id == workspaceId }.toMutableList()
         val destinationId = moveContentsTo?.takeIf { it != workspaceId && it in layout.visualOrder }
@@ -274,9 +304,11 @@ object WorkspaceStore {
     }
 
     fun duplicate(layout: WorkspaceLayout, workspaceId: String): WorkspaceLayout? {
-        if (!isValid(layout) || layout.workspaces.size >= MAX_WORKSPACES) return null
+        // workspaceId !in visualOrder also rules out Home — it has no visual
+        // position for the new copy to be inserted next to.
+        if (!isValid(layout) || layout.visualOrder.size >= MAX_WORKSPACES || workspaceId !in layout.visualOrder) return null
         val source = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
-        val creationOrder = (layout.workspaces.maxOfOrNull(WorkspaceRecord::creationOrder) ?: 0) + 1
+        val creationOrder = nextCreationOrder(layout)
         val copy = source.copy(
             id = "workspace-$creationOrder",
             creationOrder = creationOrder,
@@ -295,7 +327,9 @@ object WorkspaceStore {
     }
 
     fun withWorkspace(layout: WorkspaceLayout, workspace: WorkspaceRecord): WorkspaceLayout? {
-        if (!isValid(layout) || workspace.id !in layout.visualOrder) return null
+        // Existence in `workspaces`, not visualOrder membership — Home is a real
+        // record but (by design) never appears in visualOrder.
+        if (!isValid(layout) || layout.workspaces.none { it.id == workspace.id }) return null
         return layout.copy(workspaces = layout.workspaces.map { current ->
             if (current.id == workspace.id) workspace.copy(
                 cells = normalizeCells(workspace.cells, layout.authorColumns),
@@ -423,7 +457,9 @@ object WorkspaceStore {
         packageName: String,
         destinationIndex: Int,
     ): WorkspaceLayout? {
-        if (!isValid(layout) || workspaceId !in layout.visualOrder) return null
+        // Existence in `workspaces`, not visualOrder membership — this accessible
+        // reorder path works on Home's grid too.
+        if (!isValid(layout) || layout.workspaces.none { it.id == workspaceId }) return null
         val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
         val apps = workspace.appPackages.toMutableList()
         val sourceIndex = apps.indexOf(packageName)
@@ -464,6 +500,13 @@ object WorkspaceStore {
         return record.copy(cells = cells)
     }
 
+    /** Next creationOrder for a brand-new movable workspace — deliberately
+     *  ignores Home's reserved [HOME_CREATION_ORDER] sentinel so it can never
+     *  get pulled into the normal 1, 2, 3… sequence real workspaces use. */
+    private fun nextCreationOrder(layout: WorkspaceLayout): Int =
+        (layout.workspaces.filterNot { it.id == WorkspaceLayout.HOME_WORKSPACE_ID }
+            .maxOfOrNull(WorkspaceRecord::creationOrder) ?: 0) + 1
+
     // ── Validation & helpers ──────────────────────────────────────────────────
 
     /** De-dupes packages and nudges any cell whose rectangle overlaps an
@@ -486,6 +529,11 @@ object WorkspaceStore {
 
     private fun isValid(layout: WorkspaceLayout): Boolean {
         val ids = layout.workspaces.map(WorkspaceRecord::id)
+        // Home lives in `workspaces` but is deliberately absent from `visualOrder`
+        // — it's the fixed centre page, not a swipeable workspace — so every
+        // visual-order/default-workspace check compares against ids with it
+        // excluded, instead of the raw id set.
+        val movableIds = ids.filterNot { it == WorkspaceLayout.HOME_WORKSPACE_ID }
         val sequences = layout.workspaces.map(WorkspaceRecord::creationOrder)
         val columns = layout.authorColumns
         val cellsValid = layout.workspaces.all { ws ->
@@ -495,12 +543,12 @@ object WorkspaceStore {
                 !hasOverlap(cells, columns)
         }
         return layout.version == WorkspaceLayout.CURRENT_VERSION &&
-            ids.size in 1..MAX_WORKSPACES &&
+            movableIds.size in 1..MAX_WORKSPACES &&
             ids.distinct().size == ids.size &&
             sequences.distinct().size == sequences.size &&
-            layout.visualOrder.size == ids.size &&
-            layout.visualOrder.toSet() == ids.toSet() &&
-            layout.defaultWorkspaceId in ids &&
+            layout.visualOrder.size == movableIds.size &&
+            layout.visualOrder.toSet() == movableIds.toSet() &&
+            layout.defaultWorkspaceId in movableIds &&
             cellsValid
     }
 

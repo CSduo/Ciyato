@@ -1,11 +1,14 @@
 package com.ciyato.launcher
 
 import com.ciyato.launcher.data.AppCell
+import com.ciyato.launcher.data.WorkspaceLayout
 import com.ciyato.launcher.data.WorkspaceStore
 import com.ciyato.launcher.data.coveredCells
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WorkspaceStoreTest {
@@ -21,7 +24,11 @@ class WorkspaceStoreTest {
             ciyatoPackage = "com.ciyato.launcher",
         )
 
-        assertEquals(2, layout.workspaces.size)
+        // 2 movable workspaces, plus the synthesized Home record — Home lives in
+        // `workspaces` but is never one of the movable/swipeable pages, so the
+        // movable count is `visualOrder.size`, not the raw `workspaces.size`.
+        assertEquals(2, layout.visualOrder.size)
+        assertEquals(3, layout.workspaces.size)
         assertEquals("workspace-1", layout.workspaceAt(0)?.id)
         assertEquals(listOf("com.ciyato.launcher", "com.example.left"), layout.workspaceAt(0)?.appPackages)
         assertEquals(listOf("com.example.right"), layout.workspaceAt(1)?.appPackages)
@@ -326,5 +333,89 @@ class WorkspaceStoreTest {
         assertEquals(0, solo.cell) // destination's own tile keeps its original cell
         // The merged workspace must still be internally valid — no overlap, on-grid.
         assertNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(result)))
+    }
+
+    // ── Home workspace (page 1 — the fixed centre page) ──────────────────────
+
+    @Test
+    fun `parsing a saved layout without a home record synthesizes one and preserves everything else`() {
+        // This is exactly what a real user's pre-existing saved layout looks like:
+        // two real workspaces, apps, categories — and no "home" record at all,
+        // because it never existed before this feature.
+        val v2 = """{"version":2,"defaultWorkspaceId":"workspace-1","visualOrder":["workspace-1","workspace-2"],"authorColumns":4,""" +
+            """"workspaces":[""" +
+            """{"id":"workspace-1","creationOrder":1,"name":"W1","cells":[{"pkg":"com.a","cell":0},{"pkg":"com.b","cell":1}],"categoryKeys":["WORK"],"starterDismissed":false},""" +
+            """{"id":"workspace-2","creationOrder":2,"name":"W2","cells":[{"pkg":"com.c","cell":0}],"categoryKeys":[],"starterDismissed":true}""" +
+            """]}"""
+        val layout = requireNotNull(WorkspaceStore.parse(v2))
+
+        // Every existing workspace and app is preserved exactly as-is.
+        assertEquals(listOf("com.a", "com.b"), layout.workspaceAt(0)?.appPackages)
+        assertEquals(listOf("WORK"), layout.workspaceAt(0)?.categoryKeys)
+        assertEquals(listOf("com.c"), layout.workspaceAt(1)?.appPackages)
+        assertTrue(layout.workspaceAt(1)?.starterDismissed == true)
+        assertEquals(listOf("workspace-1", "workspace-2"), layout.visualOrder)
+
+        // Home was gained: it exists, empty, and outside visualOrder.
+        val home = requireNotNull(layout.workspaceById(WorkspaceLayout.HOME_WORKSPACE_ID))
+        assertTrue(home.cells.isEmpty())
+        assertFalse(WorkspaceLayout.HOME_WORKSPACE_ID in layout.visualOrder)
+    }
+
+    @Test
+    fun `the synthesized home record round-trips through serialize then parse`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.a", "com.b", "{}", "{}", "")
+        val withHomeApp = requireNotNull(
+            WorkspaceStore.addAppsAtFreeCells(initial, WorkspaceLayout.HOME_WORKSPACE_ID, listOf("com.home.app")),
+        )
+        val reparsed = requireNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(withHomeApp)))
+        val home = requireNotNull(reparsed.workspaceById(WorkspaceLayout.HOME_WORKSPACE_ID))
+        assertEquals(listOf("com.home.app"), home.appPackages)
+        assertFalse(WorkspaceLayout.HOME_WORKSPACE_ID in reparsed.visualOrder)
+    }
+
+    @Test
+    fun `placeApp, addAppsAtFreeCells, removeApp and resizeApp all operate on the home workspace`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        val homeId = WorkspaceLayout.HOME_WORKSPACE_ID
+
+        val added = requireNotNull(WorkspaceStore.addAppsAtFreeCells(initial, homeId, listOf("com.one", "com.two")))
+        assertEquals(setOf("com.one", "com.two"), added.workspaceById(homeId)?.appPackages?.toSet())
+
+        val placed = requireNotNull(WorkspaceStore.placeApp(added, homeId, "com.two", 5))
+        assertEquals(5, placed.workspaceById(homeId)?.cells?.first { it.packageName == "com.two" }?.cell)
+
+        val resized = requireNotNull(WorkspaceStore.resizeApp(placed, homeId, "com.one", 2, 1))
+        assertEquals(2, resized.workspaceById(homeId)?.cells?.first { it.packageName == "com.one" }?.spanX)
+
+        val removed = requireNotNull(WorkspaceStore.removeApp(resized, homeId, "com.two"))
+        assertEquals(listOf("com.one"), removed.workspaceById(homeId)?.appPackages)
+    }
+
+    @Test
+    fun `home never appears in visualOrder or as a result of workspaceAt`() {
+        var layout = WorkspaceStore.migrateLegacy(3, "com.a", "com.b", "{}", "{}", "")
+        layout = requireNotNull(WorkspaceStore.insert(layout, 0))
+        layout = requireNotNull(WorkspaceStore.insert(layout, layout.visualOrder.size))
+
+        assertFalse(WorkspaceLayout.HOME_WORKSPACE_ID in layout.visualOrder)
+        assertTrue(layout.visualOrder.indices.none { layout.workspaceAt(it)?.id == WorkspaceLayout.HOME_WORKSPACE_ID })
+    }
+
+    @Test
+    fun `home cannot be removed, duplicated, reordered, or set as the default workspace`() {
+        val layout = WorkspaceStore.migrateLegacy(3, "com.a", "com.b", "{}", "{}", "")
+        val homeId = WorkspaceLayout.HOME_WORKSPACE_ID
+
+        assertNull(WorkspaceStore.remove(layout, homeId))
+        assertNull(WorkspaceStore.duplicate(layout, homeId))
+        assertNull(WorkspaceStore.setDefault(layout, homeId))
+
+        // reorder() only ever addresses visualOrder positions, and Home has none
+        // to be moved to or from — it stays outside visualOrder no matter what
+        // the real workspaces do.
+        val reordered = requireNotNull(WorkspaceStore.reorder(layout, 0, 1))
+        assertFalse(homeId in reordered.visualOrder)
+        assertNotNull(reordered.workspaceById(homeId))
     }
 }

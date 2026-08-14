@@ -1331,7 +1331,13 @@ fun HomeScreen(
                                     viewModel.cellSpansForPage(1)
                                 }
                                 WorkspaceGrid(
-                                    columns = columns,
+                                    // The Home grid's cells are placed against the same
+                                    // authorColumns (gridCols, from the grid-size setting) every
+                                    // workspace page uses — NOT `columns`, which is the smart
+                                    // category card column count (2 or 3). Rendering with the
+                                    // wrong column count would make a cell index resolve to a
+                                    // different row/column than the one it was placed at.
+                                    columns = gridCols,
                                     minRows = 2,
                                     cellApps = cellApps1,
                                     cellSpans = cellSpans1,
