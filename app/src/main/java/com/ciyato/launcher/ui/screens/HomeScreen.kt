@@ -87,6 +87,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 // Automatic Home content is limited to the approved six. The remaining
 // classifications are available in the App Library or through manual placement.
@@ -159,6 +160,20 @@ private data class WorkspaceStarterTemplate(
     val categoryKeys: List<String>,
 )
 
+/** The long-press menu currently open for one canvas object (see
+ *  [com.ciyato.launcher.ui.components.HomeCanvasItem]/CanvasObjectMenu) —
+ *  [onRemove] is supplied by the call site that knows which hide/Undo path
+ *  this particular object uses (a legacy global toggle for the five
+ *  pre-existing sections, [WorkspaceStore] hiddenObjects for everything
+ *  else), so the menu/dialog UI itself stays completely generic. */
+private data class ObjectMenuTarget(
+    val objectId: String,
+    val label: String,
+    val canReset: Boolean,
+    val onReset: () -> Unit,
+    val onRemove: () -> Unit,
+)
+
 private data class LayoutEditSnapshot(
     val categoryOrder: String,
     val tileSizes: String,
@@ -209,6 +224,12 @@ fun HomeScreen(
     val (gridCols, gridRows) = remember(gridSizePref) { viewModel.gridColsRows() }
     val workspaceCount by viewModel.workspaceCount.collectAsState()
     val workspaceLayoutV2 by viewModel.workspaceLayoutV2.collectAsState()
+    // Home's canvas-object state: which ids are free-positioned (else they
+    // keep flowing in visibleHomeSections order) and which have no dedicated
+    // global setting of their own so rely on WorkspaceStore.hiddenObjects
+    // (currently just "datetime" — see ObjectMenuTarget / CanvasObject).
+    val homeObjectPositions = remember(workspaceLayoutV2) { viewModel.objectPositionsForPage(1) }
+    val homeHiddenObjects = remember(workspaceLayoutV2) { viewModel.hiddenObjectsForPage(1) }
     val toastEvent        by viewModel.toastEvent.collectAsState()
     val weatherState      by viewModel.weatherState.collectAsState()
     val tempUnitPref      by viewModel.tempUnit.collectAsState()
@@ -282,6 +303,21 @@ fun HomeScreen(
     // the real rendered canvas size/position, never a guessed screen size.
     // Free-canvas drop math (see commitGridDrop) reads this directly.
     var activeGridBounds by remember { mutableStateOf<Rect?>(null) }
+
+    // Root-coordinate SAFE canvas bounds for the visible page's non-app
+    // objects (greeting, weather, category cards…) — the same raw page area
+    // WorkspaceGrid uses for apps, minus the status bar and the dock/gesture
+    // strip, so a dropped object can never land somewhere it couldn't be
+    // grabbed again (see requirement #6). Recomputed by each page's own
+    // onGloballyPositioned and cleared on page flip, same lifecycle as
+    // [activeGridBounds].
+    var activeObjectCanvasBounds by remember { mutableStateOf<Rect?>(null) }
+
+    // The long-press menu / remove-confirmation currently open for a canvas
+    // object — shared by every object on every page (see CanvasObject below
+    // and RemoveObjectDialog.kt).
+    var objectMenuTarget by remember { mutableStateOf<ObjectMenuTarget?>(null) }
+    var pendingObjectRemoval by remember { mutableStateOf<ObjectMenuTarget?>(null) }
 
     // Package that just landed from a drag, for WorkspaceGrid's brief settle
     // animation — cleared automatically a moment later.
@@ -574,21 +610,29 @@ fun HomeScreen(
     // ── Recently launched ─────────────────────────────────────────────────────
     val recentApps = remember(apps) { viewModel.getRecentlyLaunchedApps() }
 
-    // ── Movable Home sections (greeting, search, weather, recent, categories) ──
-    // Every top-level Home section can be long-pressed and dragged to any
-    // position among the others; order persists the same way category order
-    // does. Sections currently hidden by their own toggle are simply absent —
-    // re-enabling one re-inserts it at its last remembered slot (or the end).
+    // ── Movable Home sections (greeting, date/time, search, weather, today,
+    // recent, categories) — THE PRINCIPLE: Home is a persistent, freeform
+    // canvas of independent objects, not a stack of sections. Every id below
+    // renders through CanvasObject/HomeCanvasItem (see further down this
+    // file): flow order here is only the DEFAULT arrangement — a section the
+    // person has actually dragged carries its own WorkspaceRecord.CanvasPos
+    // and renders absolutely instead, on top of everything else, exactly
+    // like an app icon. Sections currently hidden by their own toggle are
+    // simply absent — re-enabling one re-inserts it at its remembered flow
+    // slot (or its last free position, if it had one).
     val visibleHomeSections = remember(
         showHomeGreeting, showHomeSearch, showHomeWeather, showHomeAgenda,
         showRecentLaunched, recentApps, privacyMode, showSmartCategories, homeSectionOrderVal,
+        homeHiddenObjects,
     ) {
         val present = buildList {
             if (showHomeGreeting) add("greeting")
+            if (showHomeGreeting && "datetime" !in homeHiddenObjects) add("datetime")
             if (showHomeSearch) add("search")
-            if (showHomeWeather || showHomeAgenda) add("weather")
+            if (showHomeWeather) add("weather")
+            if (showHomeAgenda) add("today")
             if (showRecentLaunched && recentApps.isNotEmpty() && !privacyMode) add("recent")
-            if (showSmartCategories) add("categories")
+            if (showSmartCategories) add("categories-heading")
         }
         val order = homeSectionOrderVal.split(",").map(String::trim).filter(String::isNotEmpty)
         if (order.isEmpty()) {
@@ -597,74 +641,6 @@ fun HomeScreen(
             val sorted = present.filter { it in order }.sortedBy { order.indexOf(it) }
             val remaining = present.filter { it !in order }
             sorted + remaining
-        }
-    }
-    var draggingHomeSection by remember { mutableStateOf<String?>(null) }
-    var homeSectionDragOffsetY by remember { mutableFloatStateOf(0f) }
-    val homeSectionMoveThresholdPx = with(LocalDensity.current) { 56.dp.toPx() }
-
-    @Composable
-    fun DraggableHomeSection(sectionKey: String, content: @Composable () -> Unit) {
-        val latestSections by rememberUpdatedState(visibleHomeSections)
-        val isDragging = draggingHomeSection == sectionKey
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .graphicsLayer {
-                    if (isDragging) {
-                        translationY = homeSectionDragOffsetY
-                        alpha = 0.92f
-                        scaleX = 1.02f
-                        scaleY = 1.02f
-                    }
-                }
-                .editableOutline(isEditMode, RoundedCornerShape(16.dp))
-                .then(
-                    if (isEditMode) {
-                        Modifier.pointerInput(sectionKey) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    draggingHomeSection = sectionKey
-                                    homeSectionDragOffsetY = 0f
-                                },
-                                onDragCancel = {
-                                    draggingHomeSection = null
-                                    homeSectionDragOffsetY = 0f
-                                },
-                                onDragEnd = {
-                                    draggingHomeSection = null
-                                    homeSectionDragOffsetY = 0f
-                                },
-                                onDrag = { change, dragAmount ->
-                                    change.consume()
-                                    homeSectionDragOffsetY += dragAmount.y
-                                    val shift = when {
-                                        homeSectionDragOffsetY > homeSectionMoveThresholdPx -> 1
-                                        homeSectionDragOffsetY < -homeSectionMoveThresholdPx -> -1
-                                        else -> 0
-                                    }
-                                    if (shift != 0) {
-                                        val list = latestSections
-                                        val from = list.indexOf(sectionKey)
-                                        val to = (from + shift).coerceIn(0, list.lastIndex)
-                                        if (from != to) {
-                                            val updated = list.toMutableList()
-                                            updated.removeAt(from)
-                                            updated.add(to, sectionKey)
-                                            viewModel.setHomeSectionOrder(updated.joinToString(","))
-                                        }
-                                        homeSectionDragOffsetY = 0f
-                                    }
-                                },
-                            )
-                        }
-                    } else {
-                        Modifier
-                    },
-                ),
-        ) {
-            content()
         }
     }
 
@@ -914,6 +890,318 @@ fun HomeScreen(
     LaunchedEffect(pagerState.currentPage) {
         dragController.cellZones.clear()
         activeGridBounds = null
+        activeObjectCanvasBounds = null
+    }
+
+    /**
+     * Wraps [content] as one freeform canvas object on [pageIndex]: shared
+     * drag engine (HomeCanvasItem), safe-bounds clamped free positioning,
+     * and the long-press menu (Reset position / Remove). [onRemove] is the
+     * one thing every call site supplies itself, since the right hide/Undo
+     * path differs per object (see [ObjectMenuTarget]).
+     */
+    @Composable
+    fun CanvasObject(
+        pageIndex: Int,
+        objectId: String,
+        label: String,
+        hasPosition: Boolean,
+        onRemove: () -> Unit,
+        modifier: Modifier = Modifier,
+        content: @Composable () -> Unit,
+    ) {
+        HomeCanvasItem(
+            objectId = "$pageIndex:$objectId",
+            isEditMode = isEditMode,
+            reduceMotion = reduceMotion,
+            hapticEnabled = hapticEnabled,
+            canvasBounds = activeObjectCanvasBounds,
+            onMoved = { x, y -> viewModel.moveObjectToCanvasPos(pageIndex, objectId, x, y) },
+            onTapHold = {
+                objectMenuTarget = ObjectMenuTarget(
+                    objectId = objectId,
+                    label = label,
+                    canReset = hasPosition,
+                    onReset = { viewModel.resetObjectToFlowPos(pageIndex, objectId) },
+                    onRemove = onRemove,
+                )
+            },
+            modifier = modifier,
+            content = content,
+        )
+    }
+
+    /**
+     * One category card (standard or custom) as a canvas object — shares
+     * the same [CanvasObject] wrapper, and therefore the same drag engine,
+     * safe-bounds clamping, and long-press menu as every other Home object.
+     * [hasPosition] mirrors [HomeSectionBody]'s: false renders inline in the
+     * default chunked-grid flow, true renders standalone in the free-object
+     * overlay. Removal reuses [LauncherViewModel.removeCategoryFromHome] /
+     * `restoreCategoryToHome` — the exact same hide-on-Home mechanism the
+     * category editor's own "Remove from Home" action already used, now
+     * additionally reachable via long-press → Remove with the shared
+     * confirmation dialog.
+     */
+    @Composable
+    fun CategoryCardObject(catKey: String, hasPosition: Boolean, pageIndex: Int = 1, cardModifier: Modifier = Modifier) {
+        val standardCat = remember(catKey) { runCatching { AppCategory.valueOf(catKey) }.getOrNull() }
+        val displayName = if (standardCat != null) viewModel.getCategoryDisplayName(standardCat) else catKey
+        val catApps = if (standardCat != null) viewModel.byCategory(standardCat) else viewModel.byCustomCategory(catKey)
+        val tileSize = viewModel.getCategoryTileSize(catKey)
+        val isCustom = standardCat == null
+        CanvasObject(
+            pageIndex = pageIndex,
+            objectId = "category:$catKey",
+            label = displayName,
+            hasPosition = hasPosition,
+            onRemove = {
+                // Home hides via hiddenHomeCategories (its long-standing
+                // mechanism); a real workspace has no such list — removing
+                // there means taking it out of that workspace's categoryKeys,
+                // and Undo puts it right back.
+                if (pageIndex == 1) {
+                    hideHomeSection(displayName,
+                        hide = { viewModel.removeCategoryFromHome(catKey) },
+                        restore = { viewModel.restoreCategoryToHome(catKey) })
+                } else {
+                    hideHomeSection(displayName,
+                        hide = { viewModel.removeCategoryFromWorkspace(pageIndex, catKey) },
+                        restore = { viewModel.addCategoryToWorkspace(pageIndex, catKey) })
+                }
+            },
+            modifier = cardModifier,
+        ) {
+            SmartCategoryCard(
+                category = standardCat ?: AppCategory.CUSTOM,
+                displayName = displayName,
+                apps = catApps,
+                onTap = {
+                    if (isEditMode) {
+                        openCategoryEditor(catKey)
+                    } else if (standardCat != null) {
+                        if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onCategoryTap(standardCat)
+                    } else {
+                        browsingCustomCategory = catKey
+                    }
+                },
+                customIcon = if (isCustom) {
+                    remember(catKey, customCategoryIcons) { viewModel.getCustomCategoryIcon(catKey) }
+                } else "folder",
+                customPresentation = if (isCustom) {
+                    remember(catKey, customCategoryPresentations) { viewModel.getCustomCategoryPresentation(catKey) }
+                } else CustomCategoryPresentation.CARD,
+                tileSize = tileSize,
+                isEditMode = isEditMode,
+                onResize = { newSize -> viewModel.setCategoryTileSize(catKey, newSize) },
+                onAppTap = { tappedApp -> viewModel.launchApp(tappedApp) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+
+    /**
+     * Dispatches one Home section id to its content — the SAME content
+     * whether it's rendering in the flow LazyColumn (default arrangement) or
+     * in the free-positioned overlay (see the "1 ->" page branch below).
+     * Each branch supplies its own [CanvasObject] wiring (label + the right
+     * hide/Undo path for that section) so removal, positioning, and the
+     * long-press menu are identical everywhere.
+     */
+    @Composable
+    fun HomeSectionBody(sectionKey: String, hasPosition: Boolean) {
+        when (sectionKey) {
+            "greeting" -> CanvasObject(
+                pageIndex = 1, objectId = "greeting", label = "Greeting", hasPosition = hasPosition,
+                onRemove = {
+                    hideHomeSection("Greeting",
+                        hide = { viewModel.setShowHomeGreeting(false) },
+                        restore = { viewModel.setShowHomeGreeting(true) })
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    // maxLines + ellipsis: an arbitrarily long custom greeting
+                    // (see CustomGreetingScreen) used to wrap onto a second line
+                    // with zero spacing before the date/time row directly under
+                    // it — at larger font scales that second line could crowd or
+                    // visually run into it. Greeting is now also a fully
+                    // independent object with real spacing on every side, but
+                    // this clamp is the real, permanent fix: unbounded text
+                    // should never be able to grow into a neighbour at all.
+                    Text(
+                        if (!privacyMode) viewModel.greeting else "Welcome back",
+                        color = CiyatoWhite,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = greetingSize,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (focusSession != null) {
+                        Spacer(Modifier.width(12.dp))
+                        FocusBadge(focusSession!!, reduceMotion = reduceMotion)
+                    }
+                }
+            }
+
+            "datetime" -> CanvasObject(
+                pageIndex = 1, objectId = "datetime", label = "Date & time", hasPosition = hasPosition,
+                onRemove = {
+                    hideHomeSection("Date & time",
+                        hide = { viewModel.hideObjectOnPage(1, "datetime") },
+                        restore = { viewModel.showObjectOnPage(1, "datetime") })
+                },
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(dateStr, color = CiyatoSec, fontSize = if (denseLayout) 12.sp else 13.sp)
+                    AnimatedContent(
+                        targetState = liveClock,
+                        transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
+                        label = "clock",
+                    ) { time ->
+                        Text("· $time", color = CiyatoMuted, fontSize = if (denseLayout) 12.sp else 13.sp)
+                    }
+                }
+            }
+
+            "search" -> CanvasObject(
+                pageIndex = 1, objectId = "search", label = "Search", hasPosition = hasPosition,
+                onRemove = {
+                    hideHomeSection("Search",
+                        hide = { viewModel.setShowHomeSearch(false) },
+                        restore = { viewModel.setShowHomeSearch(true) })
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                HomeSearchBar(isDense = denseLayout, onClick = onOpenSearch, modifier = Modifier.fillMaxWidth())
+            }
+
+            "weather" -> CanvasObject(
+                pageIndex = 1, objectId = "weather", label = "Weather", hasPosition = hasPosition,
+                onRemove = {
+                    hideHomeSection("Weather",
+                        hide = { viewModel.setShowHomeWeather(false) },
+                        restore = { viewModel.setShowHomeWeather(true) })
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                WeatherCard(
+                    isDense = denseLayout,
+                    weatherState = if (privacyMode) null else weatherState,
+                    useFahrenheit = tempUnitPref == "F",
+                    onTap = {
+                        if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onWeatherTap()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(if (denseLayout) 160.dp else 190.dp),
+                )
+            }
+
+            "today" -> CanvasObject(
+                pageIndex = 1, objectId = "today", label = "Today", hasPosition = hasPosition,
+                onRemove = {
+                    hideHomeSection("Agenda",
+                        hide = { viewModel.setShowHomeAgenda(false) },
+                        restore = { viewModel.setShowHomeAgenda(true) })
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                AgendaCard(
+                    isDense = denseLayout,
+                    events = if (privacyMode) emptyList() else agendaEvents,
+                    onTap = onAgendaTap,
+                    modifier = Modifier.fillMaxWidth().height(if (denseLayout) 160.dp else 190.dp),
+                )
+            }
+
+            "recent" -> CanvasObject(
+                pageIndex = 1, objectId = "recent", label = "Recent", hasPosition = hasPosition,
+                onRemove = {
+                    hideHomeSection("Recent",
+                        hide = { viewModel.setShowRecentlyLaunched(false) },
+                        restore = { viewModel.setShowRecentlyLaunched(true) })
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Recent", color = CiyatoWhite, fontWeight = FontWeight.SemiBold,
+                        fontSize = if (denseLayout) 14.sp else 16.sp)
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        items(recentApps.take(8), key = { it.packageName }) { app ->
+                            AppIconTile(app = app, iconSize = if (denseLayout) 44.dp else 50.dp,
+                                onClick = {
+                                    if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    viewModel.launchApp(app)
+                                },
+                                onLongClick = {
+                                    if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    interactionState = LauncherInteractionState.ItemSelected(app.packageName)
+                                },
+                                modifier = Modifier.width(if (denseLayout) 56.dp else 62.dp))
+                        }
+                    }
+                }
+            }
+
+            "categories-heading" -> CanvasObject(
+                pageIndex = 1, objectId = "categories-heading", label = "Categories", hasPosition = hasPosition,
+                onRemove = {
+                    hideHomeSection("Categories",
+                        hide = { viewModel.setSmartCategories(false) },
+                        restore = { viewModel.setSmartCategories(true) })
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Categories",
+                            color = CiyatoWhite, fontWeight = FontWeight.SemiBold,
+                            fontSize = if (denseLayout) 17.sp else 20.sp,
+                        )
+                        if (focusSession != null) {
+                            Box(Modifier.clip(RoundedCornerShape(6.dp))
+                                .background(CiyatoGold.copy(0.15f)).padding(horizontal = 8.dp, vertical = 3.dp)) {
+                                Text("Focus", color = CiyatoGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    if (isEditMode) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(
+                                onClick = { showCreateCategoryDialog = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            ) {
+                                Text("+ New Category", color = CiyatoGold, fontSize = 13.sp)
+                            }
+                            TextButton(
+                                onClick = { showHomeCategoryPicker = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            ) {
+                                Text("+ Category", color = CiyatoSec, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            else -> if (sectionKey.startsWith("category:")) {
+                CategoryCardObject(catKey = sectionKey.removePrefix("category:"), hasPosition = hasPosition)
+            }
+        }
     }
 
     Scaffold(
@@ -1005,7 +1293,32 @@ fun HomeScreen(
                 }
                 when (page) {
                     1 -> {
-                        // Main home screen
+                        // Main home screen — a Box wraps the flow LazyColumn
+                        // (default arrangement) and the free-positioned
+                        // canvas-object overlay, sharing one measured safe
+                        // canvas rect (activeObjectCanvasBounds, inset from
+                        // the status bar and the dock/gesture strip below —
+                        // requirement #6) so a dragged object's fraction
+                        // position means the same thing whether it's read or
+                        // written.
+                        val topInsetPx = with(density) { scaffoldPadding.calculateTopPadding().toPx() }
+                        val bottomInsetPx = with(density) { 140.dp.toPx() }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(workspaceTransitionModifier)
+                                .onGloballyPositioned { coords ->
+                                    if (pagerState.currentPage == 1) {
+                                        val raw = coords.boundsInRoot()
+                                        activeObjectCanvasBounds = Rect(
+                                            raw.left,
+                                            raw.top + topInsetPx,
+                                            raw.right,
+                                            (raw.bottom - bottomInsetPx).coerceAtLeast(raw.top + topInsetPx),
+                                        )
+                                    }
+                                },
+                        ) {
                         LazyColumn(
                             contentPadding = PaddingValues(
                                 start  = 16.dp, end = 16.dp,
@@ -1015,7 +1328,6 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(spacing),
                             modifier = Modifier
                                 .fillMaxSize()
-                                .then(workspaceTransitionModifier)
                                 .combinedClickable(
                                     onClick = {},
                                     onLongClick = {
@@ -1037,341 +1349,66 @@ fun HomeScreen(
                                 }
                             }
 
-                            // Every top-level Home section (greeting, search, weather, recent,
-                            // categories) renders here in the user's chosen order — see
-                            // DraggableHomeSection for the long-press-drag-to-reorder gesture.
+                            // Every top-level Home section (greeting, date/time, search,
+                            // weather, today, recent, categories) renders here in flow
+                            // order by default — see HomeSectionBody for the content and
+                            // CanvasObject for the shared long-press-drag-to-freeform
+                            // gesture. A section already free-positioned (hasPosition)
+                            // is skipped here entirely — it renders once, in the overlay
+                            // below the grid — never both, and never a reserved gap.
                             visibleHomeSections.forEach { sectionKey ->
-                            when (sectionKey) {
-                            "greeting" -> item(key = "home_section_greeting") {
-                                DraggableHomeSection(sectionKey) {
-                                Box(modifier = Modifier.fillMaxWidth()) {
-                                Row(modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            if (!privacyMode) viewModel.greeting else "Welcome back",
-                                            color = CiyatoWhite,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = greetingSize,
-                                        )
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text(dateStr, color = CiyatoSec, fontSize = if (denseLayout) 12.sp else 13.sp)
-                                            AnimatedContent(
-                                                targetState = liveClock,
-                                                transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
-                                                label = "clock",
-                                            ) { time ->
-                                                Text("· $time", color = CiyatoMuted, fontSize = if (denseLayout) 12.sp else 13.sp)
-                                            }
-                                        }
-                                    }
-                                    if (focusSession != null) {
-                                        FocusBadge(focusSession!!, reduceMotion = reduceMotion)
+                                if (sectionKey !in homeObjectPositions) {
+                                    item(key = "home_section_$sectionKey") {
+                                        HomeSectionBody(sectionKey, hasPosition = false)
                                     }
                                 }
-                                if (isEditMode) HomeSectionRemoveButton(
-                                    modifier = Modifier.align(Alignment.TopEnd),
-                                    onClick = {
-                                        hideHomeSection("Greeting",
-                                            hide = { viewModel.setShowHomeGreeting(false) },
-                                            restore = { viewModel.setShowHomeGreeting(true) })
-                                    },
-                                )
-                                }
-                                }
-                            }
-
-                            "search" -> item(key = "home_section_search") {
-                                DraggableHomeSection(sectionKey) {
-                                Box(modifier = Modifier.fillMaxWidth()) {
-                                    HomeSearchBar(
-                                        isDense = denseLayout,
-                                        onClick = onOpenSearch,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                    if (isEditMode) HomeSectionRemoveButton(
-                                        modifier = Modifier.align(Alignment.TopEnd),
-                                        onClick = {
-                                            hideHomeSection("Search",
-                                                hide = { viewModel.setShowHomeSearch(false) },
-                                                restore = { viewModel.setShowHomeSearch(true) })
-                                        },
-                                    )
-                                }
-                                }
-                            }
-
-                            "weather" -> item(key = "home_section_weather") {
-                                DraggableHomeSection(sectionKey) {
-                                WeatherAgendaRow(
-                                    isDense      = denseLayout,
-                                    weatherState = if (privacyMode) null else weatherState,
-                                    useFahrenheit = tempUnitPref == "F",
-                                    agendaEvents = if (privacyMode) emptyList() else agendaEvents,
-                                    showWeather  = showHomeWeather,
-                                    showAgenda   = showHomeAgenda,
-                                    isEditMode   = isEditMode,
-                                    onWeatherTap = {
-                                        if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onWeatherTap()
-                                    },
-                                    onAgendaTap  = onAgendaTap,
-                                    onRemoveWeather = {
-                                        hideHomeSection("Weather",
-                                            hide = { viewModel.setShowHomeWeather(false) },
-                                            restore = { viewModel.setShowHomeWeather(true) })
-                                    },
-                                    onRemoveAgenda = {
-                                        hideHomeSection("Agenda",
-                                            hide = { viewModel.setShowHomeAgenda(false) },
-                                            restore = { viewModel.setShowHomeAgenda(true) })
-                                    },
-                                    modifier     = Modifier.fillMaxWidth(),
-                                )
-                                }
-                            }
-
-                            "recent" -> item(key = "home_section_recent") {
-                                DraggableHomeSection(sectionKey) {
-                                Box(modifier = Modifier.fillMaxWidth()) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                "Recent",
-                                                color = CiyatoWhite,
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontSize = if (denseLayout) 14.sp else 16.sp,
-                                            )
-                                        }
-                                        LazyRow(
-                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            items(recentApps.take(8), key = { it.packageName }) { app ->
-                                                AppIconTile(app = app, iconSize = if (denseLayout) 44.dp else 50.dp,
-                                                    onClick = {
-                                                        if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                        viewModel.launchApp(app)
-                                                    },
-                                                    onLongClick = {
-                                                        if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                        interactionState = LauncherInteractionState.ItemSelected(app.packageName)
-                                                    },
-                                                    modifier = Modifier.width(if (denseLayout) 56.dp else 62.dp))
-                                            }
-                                        }
-                                    }
-                                    if (isEditMode) {
-                                        HomeSectionRemoveButton(
-                                            modifier = Modifier.align(Alignment.TopEnd),
-                                            onClick = {
-                                                hideHomeSection("Recent",
-                                                    hide = { viewModel.setShowRecentlyLaunched(false) },
-                                                    restore = { viewModel.setShowRecentlyLaunched(true) })
-                                            },
-                                        )
-                                    }
-                                }
-                                }
-                            }
-
-                            "categories" -> item(key = "home_section_categories") {
-                                DraggableHomeSection(sectionKey) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    Row(modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically) {
-                                        Row(verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text(
-                                                "Categories",
-                                                color = CiyatoWhite, fontWeight = FontWeight.SemiBold,
-                                                fontSize = if (denseLayout) 17.sp else 20.sp,
-                                            )
-                                            if (focusSession != null) {
-                                                Box(Modifier.clip(RoundedCornerShape(6.dp))
-                                                    .background(CiyatoGold.copy(0.15f)).padding(horizontal = 8.dp, vertical = 3.dp)) {
-                                                    Text("Focus", color = CiyatoGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-                                        // Edit controls only visible when in edit mode (entered via long-press)
-                                        if (isEditMode) {
-                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                TextButton(
-                                                    onClick = { showCreateCategoryDialog = true },
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                                ) {
-                                                    Text("+ New Category", color = CiyatoGold, fontSize = 13.sp)
-                                                }
-                                                TextButton(
-                                                    onClick = { showHomeCategoryPicker = true },
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                                ) {
-                                                    Text("+ Category", color = CiyatoSec, fontSize = 13.sp)
-                                                }
-                                                TextButton(
-                                                    onClick = {
-                                                        hideHomeSection("Categories",
-                                                            hide = { viewModel.setSmartCategories(false) },
-                                                            restore = { viewModel.setSmartCategories(true) })
-                                                    },
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                                ) {
-                                                    Text("Hide", color = CiyatoMuted, fontSize = 13.sp)
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Spacer(Modifier.height(12.dp))
-                                    if (isLoading) {
+                                if (sectionKey == "categories-heading" && isLoading) {
+                                    item(key = "home_categories_skeleton") {
                                         SkeletonCategoryGrid(columns = columns, rows = 2, cardHeight = cardHeight)
-                                    } else if (orderedCategories.isEmpty()) {
-                                        Text("No apps found", color = CiyatoMuted, modifier = Modifier.padding(16.dp))
-                                    } else {
-                                        val rows = (orderedCategories.size + columns - 1) / columns
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                                        ) {
-                                            val latestOrderedCategories by rememberUpdatedState(orderedCategories)
-                                            orderedCategories.chunked(columns).forEach { rowCats ->
-                                                Row(modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                                    rowCats.forEach { catKey -> key(catKey) {
-                                                        // Resolve if standard enum or custom category
-                                                        val standardCat = runCatching { AppCategory.valueOf(catKey) }.getOrNull()
-                                                        val displayName = if (standardCat != null) {
-                                                            viewModel.getCategoryDisplayName(standardCat)
-                                                        } else {
-                                                            catKey
-                                                        }
-                                                        val catApps = if (standardCat != null) {
-                                                            viewModel.byCategory(standardCat)
-                                                        } else {
-                                                            viewModel.byCustomCategory(catKey)
-                                                        }
-
-                                                        val tileSize = viewModel.getCategoryTileSize(catKey)
-                                                        val cardWeight = when (tileSize) {
-                                                            "large" -> 2f
-                                                            else -> 1f
-                                                        }
-                                                        var categoryCardWidth by remember(catKey) { mutableFloatStateOf(0f) }
-                                                        val isCategoryDragging = draggingCategory == catKey
-
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .weight(cardWeight)
-                                                                .onSizeChanged { categoryCardWidth = it.width.toFloat() }
-                                                                .graphicsLayer {
-                                                                    if (isCategoryDragging) {
-                                                                        translationX = categoryDragOffset.x
-                                                                        translationY = categoryDragOffset.y
-                                                                        alpha = 0.9f
-                                                                        scaleX = 1.03f
-                                                                        scaleY = 1.03f
-                                                                    }
-                                                                }
-                                                                .pointerInput(catKey, isEditMode, columns, categoryCardWidth) {
-                                                                    if (isEditMode) {
-                                                                        detectDragGesturesAfterLongPress(
-                                                                            onDragStart = {
-                                                                                draggingCategory = catKey
-                                                                                categoryDragOffset = Offset.Zero
-                                                                                interactionState = LauncherInteractionState.Dragging(
-                                                                                    itemKey = catKey,
-                                                                                    source = DragSource.HOME_CATEGORY,
-                                                                                )
-                                                                            },
-                                                                            onDragCancel = {
-                                                                                draggingCategory = null
-                                                                                categoryDragOffset = Offset.Zero
-                                                                                interactionState = LauncherInteractionState.LayoutEditing(isControlSheetVisible = false)
-                                                                            },
-                                                                            onDragEnd = {
-                                                                                draggingCategory = null
-                                                                                categoryDragOffset = Offset.Zero
-                                                                                interactionState = LauncherInteractionState.LayoutEditing(isControlSheetVisible = false)
-                                                                            },
-                                                                            onDrag = { _, dragAmount ->
-                                                                                categoryDragOffset += dragAmount
-                                                                                val horizontalThreshold = maxOf(categoryCardWidth * 0.45f, categoryMoveThresholdPx * 0.7f)
-                                                                                val shift = when {
-                                                                                    categoryDragOffset.x > horizontalThreshold -> 1
-                                                                                    categoryDragOffset.x < -horizontalThreshold -> -1
-                                                                                    categoryDragOffset.y > categoryMoveThresholdPx -> columns
-                                                                                    categoryDragOffset.y < -categoryMoveThresholdPx -> -columns
-                                                                                    else -> 0
-                                                                                }
-                                                                                if (shift != 0) {
-                                                                                    val from = latestOrderedCategories.indexOf(catKey)
-                                                                                    val to = (from + shift).coerceIn(0, latestOrderedCategories.lastIndex)
-                                                                                    if (from != to) {
-                                                                                        val updated = latestOrderedCategories.toMutableList()
-                                                                                        updated.removeAt(from)
-                                                                                        updated.add(to, catKey)
-                                                                                        val undoSnapshot = currentLayoutSnapshot()
-                                                                                        viewModel.setCategoryOrder(updated.joinToString(","))
-                                                                                        offerLayoutUndo("Category order changed", undoSnapshot)
-                                                                                    }
-                                                                                    categoryDragOffset = Offset.Zero
-                                                                                }
-                                                                            },
-                                                                        )
-                                                                    }
-                                                                },
-                                                        ) {
-                                                        SmartCategoryCard(
-                                                            category = standardCat ?: AppCategory.CUSTOM,
-                                                            displayName = displayName,
-                                                            apps     = catApps,
-                                                            onTap    = {
-                                                                if (isEditMode) {
-                                                                    openCategoryEditor(catKey)
-                                                                } else if (standardCat != null) {
-                                                                    if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                                    onCategoryTap(standardCat)
-                                                                } else {
-                                                                    browsingCustomCategory = catKey
-                                                                }
-                                                            },
-                                                            customIcon = if (standardCat == null) {
-                                                                remember(catKey, customCategoryIcons) {
-                                                                    viewModel.getCustomCategoryIcon(catKey)
-                                                                }
-                                                            } else {
-                                                                "folder"
-                                                            },
-                                                            customPresentation = if (standardCat == null) {
-                                                                remember(catKey, customCategoryPresentations) {
-                                                                    viewModel.getCustomCategoryPresentation(catKey)
-                                                                }
-                                                            } else {
-                                                                CustomCategoryPresentation.CARD
-                                                            },
-                                                            tileSize = tileSize,
-                                                            isEditMode = isEditMode,
-                                                            onResize = { newSize -> viewModel.setCategoryTileSize(catKey, newSize) },
-                                                            onAppTap = { tappedApp -> viewModel.launchApp(tappedApp) },
-                                                            modifier = Modifier.fillMaxWidth(),
-                                                        )
+                                    }
+                                } else if (sectionKey == "categories-heading") {
+                                    item(key = "home_categories_grid") {
+                                        // Categories are independent canvas objects too — a
+                                        // category with no free position falls back to this
+                                        // default chunked-grid flow (THE PRINCIPLE: the grid
+                                        // generates the default layout, never a runtime
+                                        // constraint); one that's been dragged is pulled out
+                                        // of this flow entirely and rendered in the overlay
+                                        // below instead, at its own free position.
+                                        val freeCategoryKeys = remember(homeObjectPositions) {
+                                            homeObjectPositions.keys
+                                                .filter { it.startsWith("category:") }
+                                                .map { it.removePrefix("category:") }
+                                                .toSet()
+                                        }
+                                        val flowCategories = remember(orderedCategories, freeCategoryKeys) {
+                                            orderedCategories.filterNot { it in freeCategoryKeys }
+                                        }
+                                        if (orderedCategories.isEmpty()) {
+                                            Text("No apps found", color = CiyatoMuted, modifier = Modifier.padding(16.dp))
+                                        } else if (flowCategories.isNotEmpty()) {
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                            ) {
+                                                flowCategories.chunked(columns).forEach { rowCats ->
+                                                    Row(modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                        rowCats.forEach { catKey -> key(catKey) {
+                                                            val cardWeight = if (viewModel.getCategoryTileSize(catKey) == "large") 2f else 1f
+                                                            CategoryCardObject(
+                                                                catKey = catKey,
+                                                                hasPosition = false,
+                                                                cardModifier = Modifier.weight(cardWeight),
+                                                            )
                                                         } }
+                                                        repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
                                                     }
-                                                    repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                                }
-                            }
-                            }
                             }
                             // 8. Main Home Screen Workspace Grid (Page 1 Apps)
                             item {
@@ -1441,6 +1478,40 @@ fun HomeScreen(
 
                             item { Spacer(Modifier.height(16.dp)) }
                         }
+
+                        // Free-positioned canvas objects: pulled OUT of the
+                        // flow list above entirely (never a reserved gap —
+                        // requirement #3) and drawn here instead, absolutely
+                        // placed within the same safe canvas rect, ascending
+                        // by z so whatever was moved most recently paints on
+                        // top. Category cards share the app icons' own
+                        // per-key id scheme ("category:<key>") but a
+                        // DIFFERENT canvas — apps still free-position only
+                        // within WorkspaceGrid's own rendered area; see the
+                        // shipped report for why these are two coordinate
+                        // frames rather than one.
+                        homeObjectPositions.entries
+                            .sortedBy { it.value.z }
+                            .forEach { (objectId, pos) ->
+                                val bounds = activeObjectCanvasBounds
+                                if (bounds != null && bounds.width > 0f && bounds.height > 0f) {
+                                    key(objectId) {
+                                        Box(
+                                            modifier = Modifier
+                                                .offset {
+                                                    androidx.compose.ui.unit.IntOffset(
+                                                        (pos.x * bounds.width).roundToInt(),
+                                                        (topInsetPx + pos.y * bounds.height).roundToInt(),
+                                                    )
+                                                }
+                                                .widthIn(max = with(density) { bounds.width.toDp() }),
+                                        ) {
+                                            HomeSectionBody(objectId, hasPosition = true)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     else -> {
                         val pageIndex = page
@@ -1450,7 +1521,32 @@ fun HomeScreen(
                         val pageCategoryKeys = remember(pageIndex, workspaceLayoutV2) {
                             viewModel.getCategoriesForWorkspace(pageIndex)
                         }
+                        // Same freeform-canvas treatment as Home (page 1): every
+                        // category card on a real workspace is an independent,
+                        // freely positionable object too (requirement #1 — "on
+                        // Home AND every workspace page").
+                        val pageObjectPositions = remember(pageIndex, workspaceLayoutV2) {
+                            viewModel.objectPositionsForPage(pageIndex)
+                        }
+                        val pageTopInsetPx = with(density) { (scaffoldPadding.calculateTopPadding() + topPad + 20.dp).toPx() }
+                        val pageBottomInsetPx = with(density) { 140.dp.toPx() }
 
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(workspaceTransitionModifier)
+                                .onGloballyPositioned { coords ->
+                                    if (pageIndex == pagerState.currentPage) {
+                                        val raw = coords.boundsInRoot()
+                                        activeObjectCanvasBounds = Rect(
+                                            raw.left,
+                                            raw.top + pageTopInsetPx,
+                                            raw.right,
+                                            (raw.bottom - pageBottomInsetPx).coerceAtLeast(raw.top + pageTopInsetPx),
+                                        )
+                                    }
+                                },
+                        ) {
                         LazyColumn(
                             contentPadding = PaddingValues(
                                 start = 20.dp, end = 20.dp,
@@ -1460,7 +1556,6 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier
                                 .fillMaxSize()
-                                .then(workspaceTransitionModifier)
                                 .then(
                                     if ((workspaceDraggingCategory?.startsWith("$pageIndex:") == true ||
                                             workspaceDraggingApp?.startsWith("$pageIndex:") == true) &&
@@ -1537,44 +1632,36 @@ fun HomeScreen(
 
                             if (pageCategoryKeys.isNotEmpty()) {
                                 item {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        pageCategoryKeys.chunked(2).forEach { rowCats ->
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                rowCats.forEach { categoryKey ->
-                                                    val standardCategory = runCatching { AppCategory.valueOf(categoryKey) }.getOrNull()
-                                                    val categoryApps = if (standardCategory != null) {
-                                                        viewModel.byCategory(standardCategory)
-                                                    } else {
-                                                        viewModel.byCustomCategory(categoryKey)
-                                                    }
-                                                    Box(modifier = Modifier.weight(1f)) {
-                                                        SmartCategoryCard(
-                                                            category = standardCategory ?: AppCategory.CUSTOM,
-                                                            displayName = standardCategory?.let(viewModel::getCategoryDisplayName) ?: categoryKey,
-                                                            apps = categoryApps,
-                                                            onTap = {
-                                                                if (isEditMode) openCategoryEditor(categoryKey)
-                                                                else if (standardCategory != null) onCategoryTap(standardCategory)
-                                                                else browsingCustomCategory = categoryKey
-                                                            },
-                                                            customIcon = if (standardCategory == null) viewModel.getCustomCategoryIcon(categoryKey) else "folder",
-                                                            customPresentation = if (standardCategory == null) viewModel.getCustomCategoryPresentation(categoryKey) else CustomCategoryPresentation.CARD,
-                                                            tileSize = viewModel.getCategoryTileSize(categoryKey),
-                                                            isEditMode = isEditMode,
-                                                            onResize = { newSize -> viewModel.setCategoryTileSize(categoryKey, newSize) },
-                                                            onAppTap = { tappedApp -> viewModel.launchApp(tappedApp) },
-                                                            modifier = Modifier.fillMaxWidth(),
+                                    val freeCategoryKeys = remember(pageObjectPositions) {
+                                        pageObjectPositions.keys
+                                            .filter { it.startsWith("category:") }
+                                            .map { it.removePrefix("category:") }
+                                            .toSet()
+                                    }
+                                    val flowCategoryKeys = remember(pageCategoryKeys, freeCategoryKeys) {
+                                        pageCategoryKeys.filterNot { it in freeCategoryKeys }
+                                    }
+                                    if (flowCategoryKeys.isNotEmpty()) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            flowCategoryKeys.chunked(2).forEach { rowCats ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    rowCats.forEach { categoryKey -> key(categoryKey) {
+                                                        CategoryCardObject(
+                                                            catKey = categoryKey,
+                                                            hasPosition = false,
+                                                            pageIndex = pageIndex,
+                                                            cardModifier = Modifier.weight(1f),
                                                         )
+                                                    } }
+                                                    if (rowCats.size == 1) {
+                                                        Spacer(modifier = Modifier.weight(1f))
                                                     }
-                                                }
-                                                if (rowCats.size == 1) {
-                                                    Spacer(modifier = Modifier.weight(1f))
                                                 }
                                             }
                                         }
@@ -1660,8 +1747,38 @@ fun HomeScreen(
                                 }
                             }
                         }
+
+                        // Free-positioned category cards on this workspace —
+                        // same overlay treatment as Home's (see the "1 ->" branch).
+                        pageObjectPositions.entries
+                            .filter { it.key.startsWith("category:") }
+                            .sortedBy { it.value.z }
+                            .forEach { (objectId, pos) ->
+                                val bounds = activeObjectCanvasBounds
+                                if (bounds != null && bounds.width > 0f && bounds.height > 0f) {
+                                    key(objectId) {
+                                        Box(
+                                            modifier = Modifier
+                                                .offset {
+                                                    androidx.compose.ui.unit.IntOffset(
+                                                        (pos.x * bounds.width).roundToInt(),
+                                                        (pageTopInsetPx + pos.y * bounds.height).roundToInt(),
+                                                    )
+                                                }
+                                                .widthIn(max = with(density) { bounds.width.toDp() }),
+                                        ) {
+                                            CategoryCardObject(
+                                                catKey = objectId.removePrefix("category:"),
+                                                hasPosition = true,
+                                                pageIndex = pageIndex,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                     }
                 }
+            }
             }
 
             Column(
@@ -1745,6 +1862,32 @@ fun HomeScreen(
 
             // Floating drag icon — paints above the pager and the dock.
             DragOverlay(dragController)
+        }
+
+        objectMenuTarget?.let { target ->
+            CanvasObjectMenu(
+                label = target.label,
+                canReset = target.canReset,
+                onDismiss = { objectMenuTarget = null },
+                onReset = target.onReset,
+                onRemove = {
+                    objectMenuTarget = null
+                    pendingObjectRemoval = target
+                },
+            )
+        }
+
+        pendingObjectRemoval?.let { target ->
+            RemoveObjectDialog(
+                title = "Remove ${target.label}?",
+                body = "This card will be removed from your Home Screen. You can add it again later.",
+                reduceMotion = reduceMotion,
+                onCancel = { pendingObjectRemoval = null },
+                onConfirm = {
+                    target.onRemove()
+                    pendingObjectRemoval = null
+                },
+            )
         }
 
         if (contextMenuApp != null) {
@@ -2732,6 +2875,14 @@ fun HomeScreen(
             LauncherControlSheet(
                 isEditMode = isEditMode,
                 showGreeting = showHomeGreeting,
+                // Date/time is the one canvas object with no global setting of its
+                // own — its visibility lives in the workspace's hiddenObjects set,
+                // so removing it needs a matching re-add path here or it's gone for good.
+                showDateTime = "datetime" !in homeHiddenObjects,
+                onShowDateTimeChanged = { visible ->
+                    if (visible) viewModel.showObjectOnPage(1, "datetime")
+                    else viewModel.hideObjectOnPage(1, "datetime")
+                },
                 showSearch = showHomeSearch,
                 showWeather = showHomeWeather,
                 showAgenda = showHomeAgenda,
@@ -2792,6 +2943,8 @@ fun HomeScreen(
 private fun LauncherControlSheet(
     isEditMode: Boolean,
     showGreeting: Boolean,
+    showDateTime: Boolean,
+    onShowDateTimeChanged: (Boolean) -> Unit,
     showSearch: Boolean,
     showWeather: Boolean,
     showAgenda: Boolean,
@@ -2871,7 +3024,8 @@ private fun LauncherControlSheet(
             }
 
             Text("Home sections", color = CiyatoSec, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            HomeControlToggle("Greeting and clock", showGreeting, onShowGreetingChanged)
+            HomeControlToggle("Greeting", showGreeting, onShowGreetingChanged)
+            HomeControlToggle("Date and time", showDateTime, onShowDateTimeChanged)
             HomeControlToggle("Search", showSearch, onShowSearchChanged)
             HomeControlToggle("Weather", showWeather, onShowWeatherChanged)
             HomeControlToggle("Agenda", showAgenda, onShowAgendaChanged)

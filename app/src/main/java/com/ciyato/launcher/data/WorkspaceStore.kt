@@ -71,6 +71,26 @@ data class WorkspaceRecord(
     val cells: List<AppCell> = emptyList(),
     val categoryKeys: List<String> = emptyList(),
     val starterDismissed: Boolean = false,
+    // Free canvas placement for non-app Home objects (greeting, search, weather,
+    // category cards…), keyed by a stable object id — e.g. "greeting",
+    // "datetime", "search", "weather", "today", "categories-heading",
+    // "category:Work". Additive sibling to [AppCell.pos]/[CanvasPos]: an id
+    // absent here has no free placement and keeps its ordinary flow position
+    // (see WorkspaceStore.moveObjectToCanvas / resetObjectToFlow). Defaults
+    // empty so every layout saved before this feature — including the user's
+    // real one — parses back with an untouched, byte-identical round trip.
+    val objectPositions: Map<String, CanvasPos> = emptyMap(),
+    // Object ids explicitly removed from this workspace's canvas (see
+    // WorkspaceStore.hideObject/showObject) — additive, defaults empty so
+    // every layout saved before this feature keeps every object visible,
+    // byte-identical to before. This is the hide/show mechanism for canvas
+    // objects that have no dedicated global setting of their own (e.g.
+    // "datetime"); the pre-existing sections that already had one (greeting,
+    // search, weather, today, the categories heading, individual category
+    // cards) keep using that instead, so their history, Settings entry, and
+    // Undo snackbar wiring are untouched — see HomeScreen's per-object
+    // visibility resolution.
+    val hiddenObjects: Set<String> = emptySet(),
 ) {
     /** Package names in cell (reading) order — read-compat for every legacy caller. */
     val appPackages: List<String> get() = cells.sortedBy { it.cell }.map { it.packageName }
@@ -175,7 +195,31 @@ object WorkspaceStore {
             cells = cells,
             categoryKeys = stringList(item.optJSONArray("categoryKeys")),
             starterDismissed = item.optBoolean("starterDismissed", false),
+            // Missing "objectPositions" (every pre-canvas-objects saved layout —
+            // including the user's real one) parses back to emptyMap(), i.e.
+            // every object stays flow-positioned.
+            objectPositions = parseObjectPositions(item.optJSONObject("objectPositions")),
+            // Missing "hiddenObjects" (every pre-canvas-objects saved layout —
+            // including the user's real one) parses back to emptySet(), i.e.
+            // every object stays visible.
+            hiddenObjects = stringList(item.optJSONArray("hiddenObjects")).toSet(),
         )
+    }
+
+    private fun parseObjectPositions(obj: JSONObject?): Map<String, CanvasPos> {
+        if (obj == null) return emptyMap()
+        val result = LinkedHashMap<String, CanvasPos>()
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val id = keys.next() as String
+            val p = obj.optJSONObject(id) ?: continue
+            result[id] = CanvasPos(
+                x = p.optDouble("x", 0.0).toFloat().coerceIn(0f, 1f),
+                y = p.optDouble("y", 0.0).toFloat().coerceIn(0f, 1f),
+                z = p.optInt("z", 0),
+            )
+        }
+        return result
     }
 
     private fun parseCells(array: JSONArray?): List<AppCell> = buildList {
@@ -249,6 +293,33 @@ object WorkspaceStore {
                         put("appPackages", JSONArray(workspace.appPackages))
                         put("categoryKeys", JSONArray(workspace.categoryKeys.distinct()))
                         put("starterDismissed", workspace.starterDismissed)
+                        // Only written when at least one object is free-positioned, so a
+                        // layout with none (every layout before this feature, including
+                        // the user's real saved one) serializes byte-identical to before.
+                        if (workspace.objectPositions.isNotEmpty()) {
+                            put(
+                                "objectPositions",
+                                JSONObject().apply {
+                                    workspace.objectPositions.forEach { (id, p) ->
+                                        put(
+                                            id,
+                                            JSONObject().apply {
+                                                put("x", p.x.toDouble())
+                                                put("y", p.y.toDouble())
+                                                if (p.z != 0) put("z", p.z)
+                                            },
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                        // Only written when at least one object is hidden, so a
+                        // layout with none (every layout before this feature,
+                        // including the user's real saved one) serializes
+                        // byte-identical to before.
+                        if (workspace.hiddenObjects.isNotEmpty()) {
+                            put("hiddenObjects", JSONArray(workspace.hiddenObjects.toList()))
+                        }
                     },
                 )
             }
@@ -637,13 +708,74 @@ object WorkspaceStore {
         layout.workspaces.firstOrNull { it.id == workspaceId }
             ?.cells?.firstOrNull { it.packageName == packageName }?.pos
 
-    /** Next z-index above every free-positioned tile already in [workspaceId] —
-     *  pass this into [moveAppToCanvas] so "whatever you move comes to the
-     *  front" (desktop-window stacking). Grid-only tiles have no z and don't
-     *  count; an all-grid or empty workspace starts at 0. */
+    /** Next z-index above every free-positioned app tile OR object already in
+     *  [workspaceId] — pass this into [moveAppToCanvas] or [moveObjectToCanvas]
+     *  so "whatever you move comes to the front" (desktop-window stacking)
+     *  holds across BOTH: apps and objects share this one z space, so an
+     *  object dragged after an app always outranks it, and vice versa.
+     *  Grid-only tiles and flow-only objects have no z and don't count; a
+     *  workspace with nothing free-positioned at all starts at 0. */
     fun nextZ(layout: WorkspaceLayout, workspaceId: String): Int {
         val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return 0
-        return (workspace.cells.mapNotNull { it.pos?.z }.maxOrNull() ?: -1) + 1
+        val appZ = workspace.cells.mapNotNull { it.pos?.z }
+        val objectZ = workspace.objectPositions.values.map { it.z }
+        return ((appZ + objectZ).maxOrNull() ?: -1) + 1
+    }
+
+    // ── Canvas placement — non-app objects ─────────────────────────────────────
+    // Mirrors the app canvas overlay above (see AppCell.pos / CanvasPos), but for
+    // whole Home sections (greeting, search, weather…) and category cards, keyed
+    // by a stable object id instead of a package name. Additive: [objectPositions]
+    // is a sibling map on WorkspaceRecord that never touches [cells], so an
+    // object always has a flow fallback (its ordinary stacked position) when
+    // absent here — same "grid/flow generates the default layout only, never a
+    // runtime constraint" rule the app canvas already follows.
+
+    /**
+     * Sets (or updates) [objectId]'s free canvas placement within [workspaceId].
+     * [x]/[y] are clamped into 0f..1f — an object must never be persisted
+     * somewhere it can no longer be grabbed again. Pass [nextZ] as [z] to bring
+     * the moved object to the front, desktop-window style, in the SAME z space
+     * apps use. Never fails for overlap (free placement has no collision rule
+     * by design) — only if [workspaceId] doesn't exist.
+     */
+    fun moveObjectToCanvas(layout: WorkspaceLayout, workspaceId: String, objectId: String, x: Float, y: Float, z: Int): WorkspaceLayout? {
+        val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
+        val pos = CanvasPos(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f), z)
+        return withWorkspace(layout, workspace.copy(objectPositions = workspace.objectPositions + (objectId to pos)))
+    }
+
+    /** Clears [objectId]'s free canvas placement so it returns to ordinary
+     *  document flow. Null (no-op) if it was never free-positioned, matching
+     *  this file's usual not-applicable convention. */
+    fun resetObjectToFlow(layout: WorkspaceLayout, workspaceId: String, objectId: String): WorkspaceLayout? {
+        val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
+        if (objectId !in workspace.objectPositions) return null
+        return withWorkspace(layout, workspace.copy(objectPositions = workspace.objectPositions - objectId))
+    }
+
+    /** [objectId]'s free canvas position within [workspaceId], or null if it's
+     *  still flow-positioned — the UI keeps its ordinary stacked position in
+     *  that case. This store stays pure/JVM-only; callers convert the
+     *  normalized fraction to pixels at render time. */
+    fun objectCanvasPosition(layout: WorkspaceLayout, workspaceId: String, objectId: String): CanvasPos? =
+        layout.workspaces.firstOrNull { it.id == workspaceId }?.objectPositions?.get(objectId)
+
+    /** Hides [objectId] on [workspaceId] — see [WorkspaceRecord.hiddenObjects].
+     *  Null (no-op) if it's already hidden. */
+    fun hideObject(layout: WorkspaceLayout, workspaceId: String, objectId: String): WorkspaceLayout? {
+        val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
+        if (objectId in workspace.hiddenObjects) return null
+        return withWorkspace(layout, workspace.copy(hiddenObjects = workspace.hiddenObjects + objectId))
+    }
+
+    /** Reveals a previously hidden [objectId] on [workspaceId]. Its free
+     *  canvas position (if it had one) is untouched — it reappears exactly
+     *  where it was left. Null (no-op) if it wasn't hidden. */
+    fun showObject(layout: WorkspaceLayout, workspaceId: String, objectId: String): WorkspaceLayout? {
+        val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
+        if (objectId !in workspace.hiddenObjects) return null
+        return withWorkspace(layout, workspace.copy(hiddenObjects = workspace.hiddenObjects - objectId))
     }
 
     /** Next creationOrder for a brand-new movable workspace — deliberately
@@ -702,6 +834,11 @@ object WorkspaceStore {
                 gridCells.all { onGrid(it, columns) } &&
                 !hasOverlap(gridCells, columns)
         }
+        // Objects carry no grid/overlap rule at all (they're never anything but
+        // free-positioned or flow) — only the same in-bounds fraction check.
+        val objectPositionsValid = layout.workspaces.all { ws ->
+            ws.objectPositions.values.all { it.x in 0f..1f && it.y in 0f..1f }
+        }
         return layout.version == WorkspaceLayout.CURRENT_VERSION &&
             movableIds.size in 1..MAX_WORKSPACES &&
             ids.distinct().size == ids.size &&
@@ -709,7 +846,8 @@ object WorkspaceStore {
             layout.visualOrder.size == movableIds.size &&
             layout.visualOrder.toSet() == movableIds.toSet() &&
             layout.defaultWorkspaceId in movableIds &&
-            cellsValid
+            cellsValid &&
+            objectPositionsValid
     }
 
     /** True if [cell]'s rectangle stays within [columns] on its right edge. */

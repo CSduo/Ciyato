@@ -605,4 +605,176 @@ class WorkspaceStoreTest {
         assertNull(cell.pos)
         assertEquals(3, cell.cell)
     }
+
+    // ── Canvas placement — non-app objects (greeting, weather, categories…) ──
+
+    @Test
+    fun `moveObjectToCanvas sets a free position readable back via objectCanvasPosition`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        val result = requireNotNull(WorkspaceStore.moveObjectToCanvas(initial, "workspace-1", "greeting", 0.2f, 0.3f, 1))
+        val pos = requireNotNull(WorkspaceStore.objectCanvasPosition(result, "workspace-1", "greeting"))
+        assertEquals(0.2f, pos.x)
+        assertEquals(0.3f, pos.y)
+        assertEquals(1, pos.z)
+    }
+
+    @Test
+    fun `objectCanvasPosition is null for an object that was never free-positioned`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        assertNull(WorkspaceStore.objectCanvasPosition(initial, "workspace-1", "weather"))
+    }
+
+    @Test
+    fun `moveObjectToCanvas clamps x and y into the 0 to 1 range`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        val result = requireNotNull(WorkspaceStore.moveObjectToCanvas(initial, "workspace-1", "search", -0.4f, 1.9f, 0))
+        val pos = requireNotNull(WorkspaceStore.objectCanvasPosition(result, "workspace-1", "search"))
+        assertEquals(0f, pos.x)
+        assertEquals(1f, pos.y)
+    }
+
+    @Test
+    fun `resetObjectToFlow clears a free position and is a no-op when already flow-positioned`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveObjectToCanvas(initial, "workspace-1", "today", 0.5f, 0.5f, 0))
+        val reset = requireNotNull(WorkspaceStore.resetObjectToFlow(moved, "workspace-1", "today"))
+        assertNull(WorkspaceStore.objectCanvasPosition(reset, "workspace-1", "today"))
+        assertNull(WorkspaceStore.resetObjectToFlow(reset, "workspace-1", "today"))
+    }
+
+    @Test
+    fun `multiple objects on the same workspace keep independent positions`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        val withGreeting = requireNotNull(WorkspaceStore.moveObjectToCanvas(initial, "workspace-1", "greeting", 0.1f, 0.1f, 0))
+        val withBoth = requireNotNull(WorkspaceStore.moveObjectToCanvas(withGreeting, "workspace-1", "weather", 0.6f, 0.6f, 1))
+        val greeting = requireNotNull(WorkspaceStore.objectCanvasPosition(withBoth, "workspace-1", "greeting"))
+        val weather = requireNotNull(WorkspaceStore.objectCanvasPosition(withBoth, "workspace-1", "weather"))
+        assertEquals(0.1f, greeting.x)
+        assertEquals(0.6f, weather.x)
+    }
+
+    @Test
+    fun `serialize then parse round-trips an object's free position including z`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveObjectToCanvas(initial, "workspace-1", "categories-heading", 0.125f, 0.875f, 6))
+        val reparsed = requireNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(moved)))
+        val pos = requireNotNull(WorkspaceStore.objectCanvasPosition(reparsed, "workspace-1", "categories-heading"))
+        assertEquals(0.125f, pos.x)
+        assertEquals(0.875f, pos.y)
+        assertEquals(6, pos.z)
+    }
+
+    @Test
+    fun `a category card's object id round-trips distinctly per category key`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveObjectToCanvas(initial, "workspace-1", "category:Work", 0.3f, 0.4f, 0))
+        val reparsed = requireNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(moved)))
+        val pos = requireNotNull(WorkspaceStore.objectCanvasPosition(reparsed, "workspace-1", "category:Work"))
+        assertEquals(0.3f, pos.x)
+        assertNull(WorkspaceStore.objectCanvasPosition(reparsed, "workspace-1", "category:Social"))
+    }
+
+    @Test
+    fun `a layout saved without any objectPositions field still parses and loads unchanged`() {
+        // This is exactly the user's real existing saved layout — no
+        // "objectPositions" key has ever been written before this feature, on
+        // any record, including the ones with real apps and categories.
+        val v2 = """{"version":2,"defaultWorkspaceId":"workspace-1","visualOrder":["workspace-1"],"authorColumns":4,""" +
+            """"workspaces":[{"id":"workspace-1","creationOrder":1,"name":"W1",""" +
+            """"cells":[{"pkg":"com.a","cell":0},{"pkg":"com.b","cell":1}],""" +
+            """"categoryKeys":["WORK"],"starterDismissed":false}]}"""
+        val layout = requireNotNull(WorkspaceStore.parse(v2))
+        val workspace = requireNotNull(layout.workspaceAt(0))
+        assertTrue(workspace.objectPositions.isEmpty())
+        assertEquals(listOf("com.a", "com.b"), workspace.appPackages)
+        assertEquals(listOf("WORK"), workspace.categoryKeys)
+        // And it stays that way after a full round trip.
+        val reparsed = requireNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(layout)))
+        assertTrue(reparsed.workspaceAt(0)!!.objectPositions.isEmpty())
+    }
+
+    @Test
+    fun `a layout with no free-positioned objects serializes with no objectPositions key at all`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.a", "", "{}", "{}", "")
+        assertFalse(WorkspaceStore.serialize(initial).contains("objectPositions"))
+    }
+
+    @Test
+    fun `nextZ is one shared space across app tiles and objects on the same workspace`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.a", "", "{}", "{}", "")
+        assertEquals(0, WorkspaceStore.nextZ(initial, "workspace-1"))
+
+        // An app takes z=0 first.
+        val withApp = requireNotNull(
+            WorkspaceStore.moveAppToCanvas(initial, "workspace-1", "com.a", 0.1f, 0.1f, WorkspaceStore.nextZ(initial, "workspace-1")),
+        )
+        assertEquals(1, WorkspaceStore.nextZ(withApp, "workspace-1"))
+
+        // An object dragged next must outrank that app's z, not restart at 0.
+        val withObject = requireNotNull(
+            WorkspaceStore.moveObjectToCanvas(withApp, "workspace-1", "weather", 0.2f, 0.2f, WorkspaceStore.nextZ(withApp, "workspace-1")),
+        )
+        val objectZ = requireNotNull(WorkspaceStore.objectCanvasPosition(withObject, "workspace-1", "weather")).z
+        assertEquals(1, objectZ)
+        assertEquals(2, WorkspaceStore.nextZ(withObject, "workspace-1"))
+    }
+
+    @Test
+    fun `objects work on the home workspace exactly like a real workspace`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        val homeId = WorkspaceLayout.HOME_WORKSPACE_ID
+        val moved = requireNotNull(WorkspaceStore.moveObjectToCanvas(initial, homeId, "datetime", 0.5f, 0.05f, 0))
+        val pos = requireNotNull(WorkspaceStore.objectCanvasPosition(moved, homeId, "datetime"))
+        assertEquals(0.5f, pos.x)
+        assertNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(moved)))
+    }
+
+    @Test
+    fun `moveObjectToCanvas and resetObjectToFlow return null for a workspace that does not exist`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        assertNull(WorkspaceStore.moveObjectToCanvas(initial, "workspace-nope", "greeting", 0.1f, 0.1f, 0))
+        assertNull(WorkspaceStore.resetObjectToFlow(initial, "workspace-nope", "greeting"))
+    }
+
+    // ── Object hide/show (objects with no dedicated global setting) ──────────
+
+    @Test
+    fun `hideObject then showObject round-trips visibility and is idempotent`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        val hidden = requireNotNull(WorkspaceStore.hideObject(initial, "workspace-1", "datetime"))
+        assertTrue("datetime" in hidden.workspaceAt(0)!!.hiddenObjects)
+        assertNull(WorkspaceStore.hideObject(hidden, "workspace-1", "datetime")) // already hidden
+
+        val shown = requireNotNull(WorkspaceStore.showObject(hidden, "workspace-1", "datetime"))
+        assertFalse("datetime" in shown.workspaceAt(0)!!.hiddenObjects)
+        assertNull(WorkspaceStore.showObject(shown, "workspace-1", "datetime")) // already shown
+    }
+
+    @Test
+    fun `hiding an object preserves its free canvas position for when it is shown again`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveObjectToCanvas(initial, "workspace-1", "datetime", 0.4f, 0.1f, 0))
+        val hidden = requireNotNull(WorkspaceStore.hideObject(moved, "workspace-1", "datetime"))
+        val pos = requireNotNull(WorkspaceStore.objectCanvasPosition(hidden, "workspace-1", "datetime"))
+        assertEquals(0.4f, pos.x)
+    }
+
+    @Test
+    fun `a layout saved without any hiddenObjects field still parses with every object visible`() {
+        val v2 = """{"version":2,"defaultWorkspaceId":"workspace-1","visualOrder":["workspace-1"],"authorColumns":4,""" +
+            """"workspaces":[{"id":"workspace-1","creationOrder":1,"name":"W1",""" +
+            """"cells":[{"pkg":"com.a","cell":0}],"categoryKeys":[],"starterDismissed":false}]}"""
+        val layout = requireNotNull(WorkspaceStore.parse(v2))
+        assertTrue(layout.workspaceAt(0)!!.hiddenObjects.isEmpty())
+    }
+
+    @Test
+    fun `serialize then parse round-trips hidden objects, and an all-visible layout omits the key`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "", "", "{}", "{}", "")
+        assertFalse(WorkspaceStore.serialize(initial).contains("hiddenObjects"))
+
+        val hidden = requireNotNull(WorkspaceStore.hideObject(initial, "workspace-1", "datetime"))
+        val reparsed = requireNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(hidden)))
+        assertEquals(setOf("datetime"), reparsed.workspaceAt(0)!!.hiddenObjects)
+    }
 }

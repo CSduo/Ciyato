@@ -729,6 +729,68 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Moves a non-app Home object (greeting, search, weather, a category
+     * card…) to a free canvas position on [pageIndex] — same coordinate
+     * contract as [moveAppToCanvasPos]: [x]/[y] are normalized fractions of
+     * the page's own canvas area. [objectId] is a stable id (see
+     * [WorkspaceRecord.objectPositions]), e.g. "greeting", "datetime",
+     * "category:Work". z comes from [WorkspaceStore.nextZ] — the SAME shared
+     * counter [moveAppToCanvasPos] uses — so an object dragged after an app
+     * outranks it, and vice versa.
+     */
+    fun moveObjectToCanvasPos(pageIndex: Int, objectId: String, x: Float, y: Float) = viewModelScope.launch {
+        updateLayout { layout ->
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
+                ?: return@updateLayout null
+            WorkspaceStore.moveObjectToCanvas(layout, workspace.id, objectId, x, y, WorkspaceStore.nextZ(layout, workspace.id))
+        }
+    }
+
+    /** Clears a Home object's free canvas position on [pageIndex] so it
+     *  returns to ordinary document flow. */
+    fun resetObjectToFlowPos(pageIndex: Int, objectId: String) = viewModelScope.launch {
+        updateLayout { layout ->
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
+                ?: return@updateLayout null
+            WorkspaceStore.resetObjectToFlow(layout, workspace.id, objectId)
+        }
+    }
+
+    /** objectId -> free canvas position, for one page. Mirrors [canvasPosForPage]
+     *  for apps; an id absent here is still flow-positioned. */
+    fun objectPositionsForPage(pageIndex: Int): Map<String, CanvasPos> {
+        val layout = currentWorkspaceLayout()
+        val workspaceId = workspaceIdForPage(layout, pageIndex) ?: return emptyMap()
+        return layout.workspaceById(workspaceId)?.objectPositions.orEmpty()
+    }
+
+    /** Hides a Home object with no dedicated global setting of its own (e.g.
+     *  "datetime") on [pageIndex]. See [WorkspaceRecord.hiddenObjects]. */
+    fun hideObjectOnPage(pageIndex: Int, objectId: String) = viewModelScope.launch {
+        updateLayout { layout ->
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
+                ?: return@updateLayout null
+            WorkspaceStore.hideObject(layout, workspace.id, objectId)
+        }
+    }
+
+    /** Reverses [hideObjectOnPage]. */
+    fun showObjectOnPage(pageIndex: Int, objectId: String) = viewModelScope.launch {
+        updateLayout { layout ->
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
+                ?: return@updateLayout null
+            WorkspaceStore.showObject(layout, workspace.id, objectId)
+        }
+    }
+
+    /** Object ids explicitly hidden on [pageIndex]. */
+    fun hiddenObjectsForPage(pageIndex: Int): Set<String> {
+        val layout = currentWorkspaceLayout()
+        val workspaceId = workspaceIdForPage(layout, pageIndex) ?: return emptySet()
+        return layout.workspaceById(workspaceId)?.hiddenObjects.orEmpty()
+    }
+
     fun getAppsForPage(pageIndex: Int): List<InstalledApp> {
         val layout = currentWorkspaceLayout()
         val workspaceId = workspaceIdForPage(layout, pageIndex) ?: return emptyList()
