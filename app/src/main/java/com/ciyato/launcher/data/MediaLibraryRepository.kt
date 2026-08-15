@@ -69,8 +69,17 @@ class MediaLibraryRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Whether MANAGE_EXTERNAL_STORAGE is held.
+     *
+     * Narrower than [FileAccess.hasAllFiles], which also answers true on API
+     * 29 and below where plain READ_EXTERNAL_STORAGE already reaches
+     * everything. Kept separate on purpose — this one gates the "grant All
+     * files access" prompts, and those must not appear on versions that have
+     * no such toggle. The shared check still backs it so the two cannot drift.
+     */
     fun hasAllFilesAccess(): Boolean =
-        Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()
+        Build.VERSION.SDK_INT >= 30 && FileAccess.hasAllFiles(context)
 
     suspend fun categorySummaries(): Map<CategoryKey, CategorySummary> = withContext(Dispatchers.IO) {
         CategoryKey.entries.associateWith { key ->
