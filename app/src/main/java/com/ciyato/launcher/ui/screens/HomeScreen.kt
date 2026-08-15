@@ -52,7 +52,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -62,7 +64,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -77,6 +81,8 @@ import com.ciyato.launcher.data.FocusSessionManager
 import com.ciyato.launcher.data.InstalledApp
 import com.ciyato.launcher.data.SearchRankingEngine
 import com.ciyato.launcher.data.WorkspaceRecord
+import com.ciyato.launcher.ui.canvas.CanvasEngine
+import com.ciyato.launcher.ui.canvas.CanvasItem
 import com.ciyato.launcher.ui.components.*
 import com.ciyato.launcher.ui.launcher.*
 import com.ciyato.launcher.ui.theme.*
@@ -184,6 +190,156 @@ private data class LayoutEditSnapshot(
     val appCategoryOverrides: String,
     val hiddenHomeCategories: String,
 )
+
+// ── THE single canvas layout (Home + every workspace page) ─────────────────
+// Replaces the old "flow LazyColumn with an absolute overlay drawn on top of
+// it" hybrid — the root cause of the shipped defect (weather across
+// Categories, greeting over the date/clock, no displacement). Every visible
+// object, default-arranged or freely dragged, is measured and placed by ONE
+// [Layout] pass in [HomeCanvasSurface]; there is no second container that
+// can independently reflow around a gap the first one already accounted for.
+
+/** One child of [HomeCanvasSurface]'s DEFAULT (never-moved) arrangement — see
+ *  [HomeCanvasSurface.flowRows]. [rowIndex] groups objects that share one
+ *  visual row (category cards sit side by side; every other object is alone
+ *  in its row), [colIndex]/[colsInRow] split that row's width evenly. */
+private data class CanvasFlowSlot(val id: String, val rowIndex: Int, val colIndex: Int, val colsInRow: Int)
+
+/** A freely-positioned child — [xFrac]/[yFrac] use the exact same
+ *  normalized-fraction convention as [CanvasPos], resolved to pixels only
+ *  here against this pass's own measured canvas size. */
+private data class CanvasFreeSlot(val id: String, val xFrac: Float, val yFrac: Float)
+
+private sealed interface CanvasSlot
+private data class FlowSlotId(val slot: CanvasFlowSlot) : CanvasSlot
+private data class FreeSlotId(val slot: CanvasFreeSlot) : CanvasSlot
+
+/**
+ * THE single canvas layout for one Home/workspace page. [flowRows] is the
+ * DEFAULT arrangement generator only (THE PRINCIPLE: a grid computes
+ * defaults, never a runtime constraint) — each inner list is one visual row
+ * (size 1 = a full-width section or the app grid, size N = N category cards
+ * sharing that row), stacked top-to-bottom using each row's REAL measured
+ * height, never a guess. A caller must never put an id that's also a key of
+ * [freePositions] into [flowRows] — it renders exactly once, from whichever
+ * list it's actually in, so removing/moving something never leaves a
+ * reserved gap.
+ *
+ * [freePositions] renders after every flow row (Compose siblings paint in
+ * declaration order, so free objects draw on top of the default stack — and
+ * a higher-z free object draws on top of a lower-z one), each placed at its
+ * persisted fraction of [canvasWidthPx] / [canvasHeightPx] — the SAME fixed
+ * rect the object's own drag gesture measures a drop against (see
+ * HomeCanvasItem/CanvasObject), so writing and reading a position always
+ * agree.
+ *
+ * Reports its own natural content height (the flow stack's bottom, or the
+ * lowest free object, whichever is greater) plus [bottomPaddingPx]. Callers
+ * wrap this in `Modifier.verticalScroll` so a page that genuinely needs more
+ * than one screen scrolls — as ONE rigid surface whose children never
+ * reflow, just translate together with the scroll offset.
+ */
+@Composable
+private fun HomeCanvasSurface(
+    flowRows: List<List<String>>,
+    freePositions: Map<String, CanvasPos>,
+    canvasWidthPx: Float,
+    canvasHeightPx: Float,
+    flowStartYPx: Float,
+    freeStartYPx: Float,
+    horizontalPaddingPx: Float,
+    rowSpacingPx: Float,
+    columnSpacingPx: Float,
+    bottomPaddingPx: Float,
+    modifier: Modifier = Modifier,
+    content: @Composable (String) -> Unit,
+) {
+    Layout(
+        modifier = modifier.fillMaxWidth(),
+        content = {
+            flowRows.forEachIndexed { rowIndex, row ->
+                row.forEachIndexed { colIndex, id ->
+                    key("flow_$id") {
+                        Box(Modifier.layoutId(FlowSlotId(CanvasFlowSlot(id, rowIndex, colIndex, row.size)))) {
+                            content(id)
+                        }
+                    }
+                }
+            }
+            freePositions.entries.sortedBy { it.value.z }.forEach { (id, pos) ->
+                key("free_$id") {
+                    Box(Modifier.layoutId(FreeSlotId(CanvasFreeSlot(id, pos.x, pos.y)))) {
+                        content(id)
+                    }
+                }
+            }
+        },
+    ) { measurables, constraints ->
+        // The externally-tracked [canvasWidthPx] (from onGloballyPositioned,
+        // ~one frame behind) is what free-position fractions are read/written
+        // against, so free slots must use it for correctness. Flow content has
+        // no such constraint — falling back to this pass's OWN constraints
+        // when the tracked value isn't ready yet (composition's very first
+        // frame) avoids a one-frame flash of zero-width content.
+        val flowWidthPx = if (canvasWidthPx > 0f) canvasWidthPx else constraints.maxWidth.toFloat()
+        val widthPx = canvasWidthPx.roundToInt().coerceAtLeast(0)
+        val contentWidthPx = (flowWidthPx - horizontalPaddingPx * 2f).coerceAtLeast(0f)
+        val hPaddingPx = horizontalPaddingPx.roundToInt()
+        val colSpacingPx = columnSpacingPx.roundToInt()
+
+        val measured = measurables.map { m ->
+            when (val wrapped = m.layoutId as CanvasSlot) {
+                is FlowSlotId -> {
+                    val cols = wrapped.slot.colsInRow.coerceAtLeast(1)
+                    val colWidth = ((contentWidthPx - columnSpacingPx * (cols - 1)) / cols).roundToInt().coerceAtLeast(0)
+                    wrapped to m.measure(Constraints(maxWidth = colWidth))
+                }
+                is FreeSlotId -> wrapped to m.measure(Constraints(maxWidth = widthPx))
+            }
+        }
+
+        val flowByRow = measured
+            .mapNotNull { (wrapped, placeable) -> (wrapped as? FlowSlotId)?.let { it.slot to placeable } }
+            .groupBy { (slot, _) -> slot.rowIndex }
+
+        var runningY = flowStartYPx
+        val rowTops = HashMap<Int, Float>()
+        flowByRow.keys.sorted().forEach { rowIndex ->
+            rowTops[rowIndex] = runningY
+            val rowHeight = flowByRow.getValue(rowIndex).maxOf { (_, placeable) -> placeable.height }
+            runningY += rowHeight + rowSpacingPx
+        }
+        val flowBottomPx = if (flowByRow.isEmpty()) flowStartYPx else runningY - rowSpacingPx
+
+        val freeBottomPx = measured
+            .mapNotNull { (wrapped, placeable) -> (wrapped as? FreeSlotId)?.let { it.slot to placeable } }
+            .maxOfOrNull { (slot, placeable) -> freeStartYPx + slot.yFrac * canvasHeightPx + placeable.height }
+            ?: 0f
+
+        val totalHeightPx = (maxOf(flowBottomPx, freeBottomPx) + bottomPaddingPx).roundToInt().coerceAtLeast(0)
+
+        layout(constraints.maxWidth, totalHeightPx) {
+            measured.forEach { (wrapped, placeable) ->
+                when (wrapped) {
+                    is FlowSlotId -> {
+                        val slot = wrapped.slot
+                        val cols = slot.colsInRow.coerceAtLeast(1)
+                        val colWidth = ((contentWidthPx - columnSpacingPx * (cols - 1)) / cols).roundToInt().coerceAtLeast(0)
+                        val x = hPaddingPx + slot.colIndex * (colWidth + colSpacingPx)
+                        val y = rowTops.getValue(slot.rowIndex).roundToInt()
+                        placeable.placeRelative(x, y)
+                    }
+                    is FreeSlotId -> {
+                        val slot = wrapped.slot
+                        val x = (slot.xFrac * canvasWidthPx).roundToInt()
+                        val y = (freeStartYPx + slot.yFrac * canvasHeightPx).roundToInt()
+                        placeable.placeRelative(x, y)
+                    }
+                }
+            }
+        }
+    }
+}
 
 private val WORKSPACE_STARTER_TEMPLATES = listOf(
     WorkspaceStarterTemplate(
@@ -775,6 +931,116 @@ fun HomeScreen(
         }
     }
 
+    // ── Displacement on drop (CanvasEngine.settle) ────────────────────────────
+    // Last-measured ROOT rect of every top-level canvas object (section,
+    // category card) and every FREE-positioned app tile, keyed "$pageIndex:$id" —
+    // fed by CanvasObject's/WorkspaceGrid's onGloballyPositioned below, read
+    // only from the settle-and-persist helpers right after. mutableStateMapOf
+    // matches LauncherDragController.cellZones' own convention; nothing reads
+    // these maps during composition, so writing them doesn't cost a
+    // recomposition anyone would notice.
+    val objectScreenRects = remember { mutableStateMapOf<String, Rect>() }
+    val freeAppScreenRects = remember { mutableStateMapOf<String, Rect>() }
+
+    /**
+     * Runs a just-dropped canvas OBJECT (section or category card) through
+     * [CanvasEngine.settle] against every other object currently visible on
+     * [pageIndex] — default-arranged or already free, from [objectScreenRects]
+     * — then persists every position [settle] actually moved. This is what
+     * turns overlap from a silent bug into the shipped requirement: "if
+     * there is already something, ... it should move itself away". An object
+     * nudged aside by someone else's drop becomes explicitly free-positioned
+     * itself (there's no other way to record "not at its default slot
+     * anymore") — consistent with THE PRINCIPLE that a grid only ever
+     * generates the default, never governs runtime layout.
+     */
+    fun settleAndPersistObject(pageIndex: Int, draggedId: String, fx: Float, fy: Float) {
+        val bounds = activeObjectCanvasBounds
+        if (bounds == null || bounds.width <= 0f || bounds.height <= 0f) {
+            viewModel.moveObjectToCanvasPos(pageIndex, draggedId, fx, fy)
+            return
+        }
+        val prefix = "$pageIndex:"
+        val fallbackPx = with(density) { 48.dp.toPx() }
+        val items = objectScreenRects.entries
+            .filter { it.key.startsWith(prefix) }
+            .associate { (key, rect) ->
+                val id = key.removePrefix(prefix)
+                id to CanvasItem(
+                    id = id,
+                    x = ((rect.left - bounds.left) / bounds.width).coerceIn(0f, 1f),
+                    y = ((rect.top - bounds.top) / bounds.height).coerceIn(0f, 1f),
+                    w = (rect.width / bounds.width).coerceIn(0.01f, 1f),
+                    h = (rect.height / bounds.height).coerceIn(0.01f, 1f),
+                )
+            }
+            .toMutableMap()
+        val draggedKnownSize = items[draggedId]
+        items[draggedId] = CanvasItem(
+            id = draggedId,
+            x = fx.coerceIn(0f, 1f),
+            y = fy.coerceIn(0f, 1f),
+            w = draggedKnownSize?.w ?: (fallbackPx / bounds.width).coerceIn(0.01f, 1f),
+            h = draggedKnownSize?.h ?: (fallbackPx / bounds.height).coerceIn(0.01f, 1f),
+        )
+        val before = items.toMap()
+        CanvasEngine.settle(items.values.toList(), draggedId).forEach { item ->
+            val prior = before[item.id]
+            val moved = prior == null || abs(prior.x - item.x) > 0.001f || abs(prior.y - item.y) > 0.001f
+            if (item.id == draggedId || moved) {
+                viewModel.moveObjectToCanvasPos(pageIndex, item.id, item.x, item.y)
+            }
+        }
+    }
+
+    /** Same displacement contract as [settleAndPersistObject], for a FREE-
+     *  positioned app tile dropped on [pageIndex]'s canvas — see
+     *  [freeAppScreenRects] (fed by WorkspaceGrid's onFreeAppBounds) and
+     *  [activeGridBounds], the exact rect [canvasFraction] already measures
+     *  drops against. Grid-flowed apps aren't included: their own
+     *  onGrid/no-overlap rules already prevent collision. */
+    fun settleAndPersistApp(pageIndex: Int, draggedPkg: String, fx: Float, fy: Float) {
+        val bounds = activeGridBounds
+        if (bounds == null || bounds.width <= 0f || bounds.height <= 0f) {
+            viewModel.moveAppToCanvasPos(pageIndex, draggedPkg, fx, fy)
+            return
+        }
+        val prefix = "$pageIndex:"
+        val cols = gridCols.coerceAtLeast(1)
+        val aspect = when { cols >= 6 -> 0.70f; cols == 5 -> 0.74f; else -> 0.78f }
+        val fallbackW = (1f / cols).coerceIn(0.01f, 1f)
+        val fallbackH = ((fallbackW * bounds.width / aspect) / bounds.height).coerceIn(0.01f, 1f)
+        val items = freeAppScreenRects.entries
+            .filter { it.key.startsWith(prefix) }
+            .associate { (key, rect) ->
+                val id = key.removePrefix(prefix)
+                id to CanvasItem(
+                    id = id,
+                    x = ((rect.left - bounds.left) / bounds.width).coerceIn(0f, 1f),
+                    y = ((rect.top - bounds.top) / bounds.height).coerceIn(0f, 1f),
+                    w = (rect.width / bounds.width).coerceIn(0.01f, 1f),
+                    h = (rect.height / bounds.height).coerceIn(0.01f, 1f),
+                )
+            }
+            .toMutableMap()
+        val draggedKnownSize = items[draggedPkg]
+        items[draggedPkg] = CanvasItem(
+            id = draggedPkg,
+            x = fx.coerceIn(0f, 1f),
+            y = fy.coerceIn(0f, 1f),
+            w = draggedKnownSize?.w ?: fallbackW,
+            h = draggedKnownSize?.h ?: fallbackH,
+        )
+        val before = items.toMap()
+        CanvasEngine.settle(items.values.toList(), draggedPkg).forEach { item ->
+            val prior = before[item.id]
+            val moved = prior == null || abs(prior.x - item.x) > 0.001f || abs(prior.y - item.y) > 0.001f
+            if (item.id == draggedPkg || moved) {
+                viewModel.moveAppToCanvasPos(pageIndex, item.id, item.x, item.y)
+            }
+        }
+    }
+
     /**
      * Root-coordinate finger position converted to a 0f..1f fraction of the
      * currently visible page's own WorkspaceGrid — the exact same rectangle
@@ -818,7 +1084,7 @@ fun HomeScreen(
                 // workspace page, not just Home.
                 val (x, y) = canvasFraction(dragController.fingerRoot)
                 if (currentPage != sourcePage) viewModel.moveAppBetweenWorkspaces(sourcePage, currentPage, pkg)
-                viewModel.moveAppToCanvasPos(currentPage, pkg, x, y)
+                settleAndPersistApp(currentPage, pkg, x, y)
                 if (!reduceMotion) settlingPackage = pkg
                 offerLayoutUndo(
                     if (currentPage != sourcePage) "Shortcut moved to workspace" else "Shortcut moved",
@@ -893,6 +1159,7 @@ fun HomeScreen(
         activeObjectCanvasBounds = null
     }
 
+
     /**
      * Wraps [content] as one freeform canvas object on [pageIndex]: shared
      * drag engine (HomeCanvasItem), safe-bounds clamped free positioning,
@@ -916,7 +1183,7 @@ fun HomeScreen(
             reduceMotion = reduceMotion,
             hapticEnabled = hapticEnabled,
             canvasBounds = activeObjectCanvasBounds,
-            onMoved = { x, y -> viewModel.moveObjectToCanvasPos(pageIndex, objectId, x, y) },
+            onMoved = { x, y -> settleAndPersistObject(pageIndex, objectId, x, y) },
             onTapHold = {
                 objectMenuTarget = ObjectMenuTarget(
                     objectId = objectId,
@@ -926,7 +1193,11 @@ fun HomeScreen(
                     onRemove = onRemove,
                 )
             },
-            modifier = modifier,
+            modifier = modifier.onGloballyPositioned {
+                if (pageIndex == pagerState.currentPage) {
+                    objectScreenRects["$pageIndex:$objectId"] = it.boundsInRoot()
+                }
+            },
             content = content,
         )
     }
@@ -1293,16 +1564,57 @@ fun HomeScreen(
                 }
                 when (page) {
                     1 -> {
-                        // Main home screen — a Box wraps the flow LazyColumn
-                        // (default arrangement) and the free-positioned
-                        // canvas-object overlay, sharing one measured safe
-                        // canvas rect (activeObjectCanvasBounds, inset from
-                        // the status bar and the dock/gesture strip below —
-                        // requirement #6) so a dragged object's fraction
-                        // position means the same thing whether it's read or
-                        // written.
+                        // Main home screen — ONE canvas surface (HomeCanvasSurface):
+                        // every object, default-arranged or freely dragged, is
+                        // measured and placed by the SAME Layout pass. There is no
+                        // second (flow) container that can independently reflow
+                        // around a gap this one already accounted for — see the
+                        // shipped defect report this replaced (weather across
+                        // Categories, greeting over the date/clock).
                         val topInsetPx = with(density) { scaffoldPadding.calculateTopPadding().toPx() }
                         val bottomInsetPx = with(density) { 140.dp.toPx() }
+                        val topPadPx = with(density) { topPad.toPx() }
+                        val horizontalPaddingPx = with(density) { 16.dp.toPx() }
+                        val rowSpacingPx = with(density) { spacing.toPx() }
+                        val columnSpacingPx = with(density) { 10.dp.toPx() }
+
+                        // Categories are independent canvas objects too — a
+                        // category with no free position falls back to this
+                        // default chunked-row flow (THE PRINCIPLE: the grid
+                        // generates the default layout, never a runtime
+                        // constraint); one that's been dragged is pulled out of
+                        // this flow entirely and rendered free instead.
+                        val freeCategoryKeysHome = remember(homeObjectPositions) {
+                            homeObjectPositions.keys
+                                .filter { it.startsWith("category:") }
+                                .map { it.removePrefix("category:") }
+                                .toSet()
+                        }
+                        val flowCategoriesHome = remember(orderedCategories, freeCategoryKeysHome) {
+                            orderedCategories.filterNot { it in freeCategoryKeysHome }
+                        }
+                        val homeFlowRows = remember(
+                            homeTipDismissed, isEditMode, visibleHomeSections, homeObjectPositions,
+                            isLoading, orderedCategories, flowCategoriesHome, columns,
+                        ) {
+                            buildList {
+                                if (!homeTipDismissed && !isEditMode) add(listOf("tip-banner"))
+                                visibleHomeSections.forEach { sectionKey ->
+                                    if (sectionKey in homeObjectPositions) return@forEach
+                                    add(listOf(sectionKey))
+                                    if (sectionKey == "categories-heading") {
+                                        when {
+                                            isLoading -> add(listOf("categories-skeleton"))
+                                            orderedCategories.isEmpty() -> add(listOf("categories-empty"))
+                                            else -> flowCategoriesHome.chunked(columns)
+                                                .forEach { rowCats -> add(rowCats.map { "category:$it" }) }
+                                        }
+                                    }
+                                }
+                                add(listOf("app-grid"))
+                            }
+                        }
+
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -1319,195 +1631,116 @@ fun HomeScreen(
                                     }
                                 },
                         ) {
-                        LazyColumn(
-                            contentPadding = PaddingValues(
-                                start  = 16.dp, end = 16.dp,
-                                top    = scaffoldPadding.calculateTopPadding() + topPad,
-                                bottom = 140.dp,
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(spacing),
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .combinedClickable(
-                                    onClick = {},
-                                    onLongClick = {
-                                        if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        enterLayoutEditing(showControls = true)
-                                    }
-                                ),
-                        ) {
-
-                            if (!homeTipDismissed && !isEditMode) {
-                                item {
-                                    CiyatoTipBanner(
-                                        text = "Swipe up for Apps. Long-press empty space to enter Edit mode and arrange your layout. Long-press any section to drag it to a new spot.",
-                                        onDismiss = viewModel::dismissHomeTip,
-                                        actionLabel = "Got it",
-                                        onAction = viewModel::dismissHomeTip,
-                                        accentColor = activeAccent
-                                    )
-                                }
-                            }
-
-                            // Every top-level Home section (greeting, date/time, search,
-                            // weather, today, recent, categories) renders here in flow
-                            // order by default — see HomeSectionBody for the content and
-                            // CanvasObject for the shared long-press-drag-to-freeform
-                            // gesture. A section already free-positioned (hasPosition)
-                            // is skipped here entirely — it renders once, in the overlay
-                            // below the grid — never both, and never a reserved gap.
-                            visibleHomeSections.forEach { sectionKey ->
-                                if (sectionKey !in homeObjectPositions) {
-                                    item(key = "home_section_$sectionKey") {
-                                        HomeSectionBody(sectionKey, hasPosition = false)
-                                    }
-                                }
-                                if (sectionKey == "categories-heading" && isLoading) {
-                                    item(key = "home_categories_skeleton") {
-                                        SkeletonCategoryGrid(columns = columns, rows = 2, cardHeight = cardHeight)
-                                    }
-                                } else if (sectionKey == "categories-heading") {
-                                    item(key = "home_categories_grid") {
-                                        // Categories are independent canvas objects too — a
-                                        // category with no free position falls back to this
-                                        // default chunked-grid flow (THE PRINCIPLE: the grid
-                                        // generates the default layout, never a runtime
-                                        // constraint); one that's been dragged is pulled out
-                                        // of this flow entirely and rendered in the overlay
-                                        // below instead, at its own free position.
-                                        val freeCategoryKeys = remember(homeObjectPositions) {
-                                            homeObjectPositions.keys
-                                                .filter { it.startsWith("category:") }
-                                                .map { it.removePrefix("category:") }
-                                                .toSet()
-                                        }
-                                        val flowCategories = remember(orderedCategories, freeCategoryKeys) {
-                                            orderedCategories.filterNot { it in freeCategoryKeys }
-                                        }
-                                        if (orderedCategories.isEmpty()) {
+                            val bounds = activeObjectCanvasBounds
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                                    .combinedClickable(
+                                        onClick = {},
+                                        onLongClick = {
+                                            if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            enterLayoutEditing(showControls = true)
+                                        },
+                                    ),
+                            ) {
+                                HomeCanvasSurface(
+                                    flowRows = homeFlowRows,
+                                    freePositions = homeObjectPositions,
+                                    canvasWidthPx = bounds?.width ?: 0f,
+                                    canvasHeightPx = bounds?.height ?: 0f,
+                                    flowStartYPx = topInsetPx + topPadPx,
+                                    freeStartYPx = topInsetPx,
+                                    horizontalPaddingPx = horizontalPaddingPx,
+                                    rowSpacingPx = rowSpacingPx,
+                                    columnSpacingPx = columnSpacingPx,
+                                    bottomPaddingPx = bottomInsetPx,
+                                ) { id ->
+                                    when {
+                                        id == "tip-banner" -> CiyatoTipBanner(
+                                            text = "Swipe up for Apps. Long-press empty space to enter Edit mode and arrange your layout. Long-press any section to drag it to a new spot.",
+                                            onDismiss = viewModel::dismissHomeTip,
+                                            actionLabel = "Got it",
+                                            onAction = viewModel::dismissHomeTip,
+                                            accentColor = activeAccent,
+                                        )
+                                        id == "categories-skeleton" ->
+                                            SkeletonCategoryGrid(columns = columns, rows = 2, cardHeight = cardHeight)
+                                        id == "categories-empty" ->
                                             Text("No apps found", color = CiyatoMuted, modifier = Modifier.padding(16.dp))
-                                        } else if (flowCategories.isNotEmpty()) {
-                                            Column(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                                            ) {
-                                                flowCategories.chunked(columns).forEach { rowCats ->
-                                                    Row(modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                                        rowCats.forEach { catKey -> key(catKey) {
-                                                            val cardWeight = if (viewModel.getCategoryTileSize(catKey) == "large") 2f else 1f
-                                                            CategoryCardObject(
-                                                                catKey = catKey,
-                                                                hasPosition = false,
-                                                                cardModifier = Modifier.weight(cardWeight),
-                                                            )
-                                                        } }
-                                                        repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
-                                                    }
-                                                }
+                                        id == "app-grid" -> {
+                                            val cellApps1 = remember(apps, workspaceLayoutV2, gridSizePref) {
+                                                viewModel.cellAppsForPage(1)
                                             }
-                                        }
-                                    }
-                                }
-                            }
-                            // 8. Main Home Screen Workspace Grid (Page 1 Apps)
-                            item {
-                                val cellApps1 = remember(apps, workspaceLayoutV2, gridSizePref) {
-                                    viewModel.cellAppsForPage(1)
-                                }
-                                val cellSpans1 = remember(apps, workspaceLayoutV2, gridSizePref) {
-                                    viewModel.cellSpansForPage(1)
-                                }
-                                val canvasPos1 = remember(apps, workspaceLayoutV2, gridSizePref) {
-                                    viewModel.canvasPosForPage(1)
-                                }
-                                WorkspaceGrid(
-                                    // The Home grid's cells are placed against the same
-                                    // authorColumns (gridCols, from the grid-size setting) every
-                                    // workspace page uses — NOT `columns`, which is the smart
-                                    // category card column count (2 or 3). Rendering with the
-                                    // wrong column count would make a cell index resolve to a
-                                    // different row/column than the one it was placed at.
-                                    columns = gridCols,
-                                    minRows = 2,
-                                    cellApps = cellApps1,
-                                    cellSpans = cellSpans1,
-                                    canvasPositions = canvasPos1,
-                                    settlingPackage = settlingPackage.takeIf { pagerState.currentPage == 1 },
-                                    expandedPackages = expandedAppsSet,
-                                    isEditMode = isEditMode,
-                                    onAppTap = { app -> viewModel.launchApp(app) },
-                                    onResize = { pkg, spanX, spanY -> viewModel.resizeAppTile(1, pkg, spanX, spanY) },
-                                    hiddenPackage = dragController.activePackage,
-                                    highlightCell = dragController.targetCell.takeIf {
-                                        dragController.isActive && !dragController.overDock && pagerState.currentPage == 1
-                                    },
-                                    modifier = Modifier.onGloballyPositioned {
-                                        if (pagerState.currentPage == 1) activeGridBounds = it.boundsInRoot()
-                                    },
-                                    onCellBounds = { cell, bounds ->
-                                        if (pagerState.currentPage == 1) {
-                                            dragController.cellZones[cell] = bounds
-                                        }
-                                    },
-                                    tileGesture = { tileModifier, cell, gridApp ->
-                                        tileModifier.pointerInput(1, cell, gridApp.packageName) {
-                                            detectDragGesturesAfterLongPress(
-                                                onDragStart = { touch ->
-                                                    if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                    val origin = dragController.cellZones[cell]?.topLeft ?: Offset.Zero
-                                                    dragController.begin(
-                                                        pkg = gridApp.packageName,
-                                                        icon = gridApp.icon,
-                                                        fromPage = 1,
-                                                        fromDockIndex = null,
-                                                        start = origin + touch,
-                                                    )
+                                            val cellSpans1 = remember(apps, workspaceLayoutV2, gridSizePref) {
+                                                viewModel.cellSpansForPage(1)
+                                            }
+                                            val canvasPos1 = remember(apps, workspaceLayoutV2, gridSizePref) {
+                                                viewModel.canvasPosForPage(1)
+                                            }
+                                            WorkspaceGrid(
+                                                // The Home grid's cells are placed against the same
+                                                // authorColumns (gridCols, from the grid-size setting) every
+                                                // workspace page uses — NOT `columns`, which is the smart
+                                                // category card column count (2 or 3). Rendering with the
+                                                // wrong column count would make a cell index resolve to a
+                                                // different row/column than the one it was placed at.
+                                                columns = gridCols,
+                                                minRows = 2,
+                                                cellApps = cellApps1,
+                                                cellSpans = cellSpans1,
+                                                canvasPositions = canvasPos1,
+                                                settlingPackage = settlingPackage.takeIf { pagerState.currentPage == 1 },
+                                                expandedPackages = expandedAppsSet,
+                                                isEditMode = isEditMode,
+                                                onAppTap = { app -> viewModel.launchApp(app) },
+                                                onResize = { pkg, spanX, spanY -> viewModel.resizeAppTile(1, pkg, spanX, spanY) },
+                                                hiddenPackage = dragController.activePackage,
+                                                highlightCell = dragController.targetCell.takeIf {
+                                                    dragController.isActive && !dragController.overDock && pagerState.currentPage == 1
                                                 },
-                                                onDrag = { change, amount ->
-                                                    change.consume()
-                                                    onDragMove(amount)
+                                                modifier = Modifier.onGloballyPositioned {
+                                                    if (pagerState.currentPage == 1) activeGridBounds = it.boundsInRoot()
                                                 },
-                                                onDragEnd = { commitGridDrop(1) },
-                                                onDragCancel = { endDrag() },
+                                                onCellBounds = { cell, cellBounds ->
+                                                    if (pagerState.currentPage == 1) {
+                                                        dragController.cellZones[cell] = cellBounds
+                                                    }
+                                                },
+                                                onFreeAppBounds = { pkg, appBounds ->
+                                                    if (pagerState.currentPage == 1) freeAppScreenRects["1:$pkg"] = appBounds
+                                                },
+                                                tileGesture = { tileModifier, cell, gridApp ->
+                                                    tileModifier.pointerInput(1, cell, gridApp.packageName) {
+                                                        detectDragGesturesAfterLongPress(
+                                                            onDragStart = { touch ->
+                                                                if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                                val origin = dragController.cellZones[cell]?.topLeft ?: Offset.Zero
+                                                                dragController.begin(
+                                                                    pkg = gridApp.packageName,
+                                                                    icon = gridApp.icon,
+                                                                    fromPage = 1,
+                                                                    fromDockIndex = null,
+                                                                    start = origin + touch,
+                                                                )
+                                                            },
+                                                            onDrag = { change, amount ->
+                                                                change.consume()
+                                                                onDragMove(amount)
+                                                            },
+                                                            onDragEnd = { commitGridDrop(1) },
+                                                            onDragCancel = { endDrag() },
+                                                        )
+                                                    }
+                                                },
                                             )
                                         }
-                                    },
-                                )
-                            }
-
-                            item { Spacer(Modifier.height(16.dp)) }
-                        }
-
-                        // Free-positioned canvas objects: pulled OUT of the
-                        // flow list above entirely (never a reserved gap —
-                        // requirement #3) and drawn here instead, absolutely
-                        // placed within the same safe canvas rect, ascending
-                        // by z so whatever was moved most recently paints on
-                        // top. Category cards share the app icons' own
-                        // per-key id scheme ("category:<key>") but a
-                        // DIFFERENT canvas — apps still free-position only
-                        // within WorkspaceGrid's own rendered area; see the
-                        // shipped report for why these are two coordinate
-                        // frames rather than one.
-                        homeObjectPositions.entries
-                            .sortedBy { it.value.z }
-                            .forEach { (objectId, pos) ->
-                                val bounds = activeObjectCanvasBounds
-                                if (bounds != null && bounds.width > 0f && bounds.height > 0f) {
-                                    key(objectId) {
-                                        Box(
-                                            modifier = Modifier
-                                                .offset {
-                                                    androidx.compose.ui.unit.IntOffset(
-                                                        (pos.x * bounds.width).roundToInt(),
-                                                        (topInsetPx + pos.y * bounds.height).roundToInt(),
-                                                    )
-                                                }
-                                                .widthIn(max = with(density) { bounds.width.toDp() }),
-                                        ) {
-                                            HomeSectionBody(objectId, hasPosition = true)
-                                        }
+                                        id.startsWith("category:") -> CategoryCardObject(
+                                            catKey = id.removePrefix("category:"),
+                                            hasPosition = id in homeObjectPositions,
+                                            pageIndex = 1,
+                                        )
+                                        else -> HomeSectionBody(id, hasPosition = id in homeObjectPositions)
                                     }
                                 }
                             }

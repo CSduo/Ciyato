@@ -134,7 +134,15 @@ fun HomeCanvasItem(
     var dragOffset by remember(objectId) { mutableStateOf(Offset.Zero) }
     var isDragging by remember(objectId) { mutableStateOf(false) }
 
-    val liftScale by animateFloatAsState(
+    // Held as State<Float> and read ONLY inside the graphicsLayer draw-phase
+    // lambda below — never unwrapped via `by` up here in the composable
+    // body. Unwrapping here would subscribe THIS composable (and therefore
+    // `content()`, which for something like a category card is not cheap)
+    // to every tick of the lift/settle spring, forcing a full recomposition
+    // twice per drag (pick-up and release) for a value that only ever
+    // touches a draw-phase transform. Deferring the read keeps those ticks
+    // scoped to the graphics layer alone, same as dragOffset already was.
+    val liftScaleState = animateFloatAsState(
         targetValue = if (isDragging) 1.08f else 1f,
         animationSpec = if (reduceMotion) snap() else spring(
             dampingRatio = if (isDragging) 0.7f else 0.55f,
@@ -142,7 +150,7 @@ fun HomeCanvasItem(
         ),
         label = "canvas_item_scale",
     )
-    val liftAlpha by animateFloatAsState(
+    val liftAlphaState = animateFloatAsState(
         targetValue = if (isDragging) 0.94f else 1f,
         animationSpec = if (reduceMotion) snap() else spring(stiffness = 500f),
         label = "canvas_item_alpha",
@@ -154,9 +162,9 @@ fun HomeCanvasItem(
             .graphicsLayer {
                 translationX = dragOffset.x
                 translationY = dragOffset.y
-                scaleX = liftScale
-                scaleY = liftScale
-                alpha = liftAlpha
+                scaleX = liftScaleState.value
+                scaleY = liftScaleState.value
+                alpha = liftAlphaState.value
                 shadowElevation = if (isDragging) 16f else 0f
             }
             .then(if (isEditMode) Modifier.editableOutline(true) else Modifier)

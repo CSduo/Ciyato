@@ -101,6 +101,12 @@ fun WorkspaceGrid(
     // Package that just landed from a drag, for a brief settle animation.
     // Null (default) means no tile animates — existing callers are unaffected.
     settlingPackage: String? = null,
+    // Root-coordinate bounds of a FREE-positioned app tile, reported every
+    // layout pass — lets a caller build a CanvasEngine.CanvasItem for
+    // displacement-on-drop (see HomeScreen's settleAndPersistApp) without this
+    // file needing to know anything about CanvasEngine itself. No-op default,
+    // so every existing call site is unaffected.
+    onFreeAppBounds: (packageName: String, bounds: Rect) -> Unit = { _, _ -> },
 ) {
     val cols = columns.coerceIn(3, 8)
 
@@ -236,7 +242,9 @@ fun WorkspaceGrid(
                     val (spanX, spanY) = resizePreview[app.packageName] ?: cellSpans[cellIndex] ?: (1 to 1)
                     key(app.packageName) {
                         ResizableWorkspaceTile(
-                            modifier = Modifier.layoutId(FreeSlot(pos.x, pos.y, spanX, spanY)),
+                            modifier = Modifier
+                                .layoutId(FreeSlot(pos.x, pos.y, spanX, spanY))
+                                .onGloballyPositioned { onFreeAppBounds(app.packageName, it.boundsInRoot()) },
                             cell = cellIndex,
                             app = app,
                             spanX = spanX,
