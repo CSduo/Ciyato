@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ciyato.launcher.data.DuplicatePhotoDetector
+import com.ciyato.launcher.data.PhotoDeviceLibrary
 import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
@@ -85,8 +86,13 @@ fun DuplicatePhotoCleanupScreen(
             when {
                 toDelete.isEmpty() -> emptyList()
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
-                    val pendingIntent = MediaStore.createDeleteRequest(context.contentResolver, toDelete.map { it.uri })
-                    val granted = withContext(Dispatchers.Main) { requestConsent(pendingIntent.intentSender) }
+                    // Trash rather than destroy. A perceptual-hash match is a
+                    // very good guess, not a certainty — two genuinely different
+                    // photos can land inside the Hamming threshold — so the one
+                    // thing this has to support is taking a wrong guess back.
+                    val sender = PhotoDeviceLibrary.trashRequest(context, toDelete.map { it.uri })
+                    val granted = sender != null &&
+                        withContext(Dispatchers.Main) { requestConsent(sender) }
                     if (granted) toDelete else emptyList()
                 }
                 Build.VERSION.SDK_INT == Build.VERSION_CODES.Q -> {
@@ -159,8 +165,20 @@ fun DuplicatePhotoCleanupScreen(
                             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Deleted $deletedCount duplicates · Saved ${savedBytes / 1024 / 1024}MB",
-                                    color = Color(0xFF4CAF50), fontWeight = FontWeight.SemiBold)
+                                // Deliberately not "Saved NN MB": on Android 11+
+                                // these went to the trash, so the space isn't
+                                // actually back until it's emptied. Claiming a
+                                // saving that hasn't happened yet is the kind of
+                                // lie that makes a cleanup tool untrustworthy.
+                                Text(
+                                    if (PhotoDeviceLibrary.trashSupported) {
+                                        "$deletedCount moved to trash · ${savedBytes / 1024 / 1024}MB " +
+                                            "frees up when you empty it"
+                                    } else {
+                                        "Deleted $deletedCount duplicates · Saved ${savedBytes / 1024 / 1024}MB"
+                                    },
+                                    color = Color(0xFF4CAF50), fontWeight = FontWeight.SemiBold,
+                                )
                             }
                         }
                     }

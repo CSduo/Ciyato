@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
@@ -157,6 +158,7 @@ private fun mediaAccess(context: Context): MediaAccess {
 fun PhotosLibraryScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
+    onOpenDuplicates: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -496,6 +498,9 @@ fun PhotosLibraryScreen(
                             },
                         )
                     }
+                    item(span = { GridItemSpan(2) }) {
+                        DuplicateScanEntry(onClick = onOpenDuplicates)
+                    }
                     items(
                         aiCollections.entries.sortedByDescending { it.value.size },
                         key = { "ai:${it.key}" },
@@ -827,6 +832,32 @@ private fun PhotoSelectionBar(
                 if (inTrash) Icons.Default.DeleteForever else Icons.Default.Delete,
                 if (inTrash) "Delete permanently" else "Move to trash",
                 tint = if (inTrash) CiyatoRed else CiyatoSec,
+            )
+        }
+    }
+}
+
+/** Way in to the perceptual-hash duplicate finder. */
+@Composable
+private fun DuplicateScanEntry(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(CiyatoBgEl)
+            .border(1.dp, CiyatoSubtleBorder, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.ContentCopy, null, tint = CiyatoGold, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Find duplicates", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(
+                "Compares photos by how they look, not by file name",
+                color = CiyatoMuted,
+                fontSize = 12.sp,
             )
         }
     }

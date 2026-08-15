@@ -216,7 +216,22 @@ class MainActivity : FragmentActivity() {
                     }
 
                     composable("files")   { FilesScreen(viewModel = viewModel, onBack = { navController.popBackStack() }) }
-                    composable("photos")  { PhotosLibraryScreen(viewModel = viewModel, onBack = { navController.popBackStack() }) }
+                    composable("photos")  {
+                        PhotosLibraryScreen(
+                            viewModel = viewModel,
+                            onBack = { navController.popBackStack() },
+                            onOpenDuplicates = {
+                                navController.navigate("photo_duplicates") { launchSingleTop = true }
+                            },
+                        )
+                    }
+
+                    composable("photo_duplicates") {
+                        DuplicatePhotoCleanupScreen(
+                            viewModel = viewModel,
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
 
                     composable("search") {
                         NlFileSearchScreen(
