@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
+import com.ciyato.launcher.data.FileAccess
 import com.ciyato.launcher.data.MediaLibraryRepository
 import com.ciyato.launcher.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -71,7 +72,11 @@ fun FileCollectionDetailScreen(
 
     var selectedFolderUri by remember(initialFolderUri) { mutableStateOf(initialFolderUri) }
     var files by remember { mutableStateOf<List<CiyatoFile>>(emptyList()) }
-    var isLoading by remember(initialFolderUri) { mutableStateOf(initialFolderUri != null) }
+    // Starts true for the All-files path too, so the first frame is a spinner
+    // rather than an empty state that flashes "no folder" before the scan.
+    var isLoading by remember(initialFolderUri) {
+        mutableStateOf(initialFolderUri != null || FileAccess.hasAllFiles(context))
+    }
     var folderStack by remember(initialFolderUri) { mutableStateOf<List<DocumentFile>>(emptyList()) }
     var pendingDeletion by remember { mutableStateOf<CiyatoFile?>(null) }
     var cacheBytes by remember { mutableStateOf(0L) }
@@ -111,6 +116,28 @@ fun FileCollectionDetailScreen(
                 folderStack = emptyList()
                 files = emptyList()
                 accessMessage = "Folder access is no longer available. Choose the folder again to continue."
+            }
+            isLoading = false
+        } else if (FileAccess.hasAllFiles(context)) {
+            // No SAF folder, but Ciyato can read the disk directly. Offering
+            // the folder picker here would be a dead end — that picker is
+            // exactly what refuses to hand over internal storage. Seed from
+            // the real root instead.
+            //
+            // DocumentFile.fromFile wraps a java.io.File behind the same
+            // interface the rest of this screen already speaks, so browsing,
+            // sorting and navigation work unchanged. Its getUri() returns a
+            // file:// URI, which is why opening goes through
+            // FileAccess.shareableUri below.
+            isLoading = true
+            val root = DocumentFile.fromFile(FileAccess.internalRoot())
+            if (root.canRead()) {
+                folderStack = listOf(root)
+                files = loadFilesFromDocument(root, collectionTitle)
+            } else {
+                folderStack = emptyList()
+                files = emptyList()
+                accessMessage = "Ciyato could not read internal storage."
             }
             isLoading = false
         } else {
@@ -304,7 +331,13 @@ fun FileCollectionDetailScreen(
                                         }
                                     } else {
                                         val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            setDataAndType(file.uri, file.mimeType ?: "*/*")
+                                            // Browsing by real path yields file://
+                                            // URIs, which throw when handed to
+                                            // another app on API 24+.
+                                            setDataAndType(
+                                                FileAccess.shareableUri(context, file.uri),
+                                                file.mimeType ?: "*/*",
+                                            )
                                             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                                         }
                                         // Swallowing this made the tap look like a dead control.

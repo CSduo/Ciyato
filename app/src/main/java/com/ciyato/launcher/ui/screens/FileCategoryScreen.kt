@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
+import com.ciyato.launcher.data.FileAccess
 import com.ciyato.launcher.data.MediaLibraryRepository
 import com.ciyato.launcher.data.MediaLibraryRepository.CategoryKey
 import com.ciyato.launcher.ui.components.CiyatoTopBar
@@ -177,7 +178,7 @@ fun FileCategoryScreen(
                 items(files, key = { it.uri.toString() }) { file ->
                     FileRow(file = file, onOpen = {
                         val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(file.uri, file.mimeType)
+                            setDataAndType(FileAccess.shareableUri(context, file.uri), file.mimeType)
                             addFlags(
                                 Intent.FLAG_ACTIVITY_NEW_TASK or
                                     Intent.FLAG_GRANT_READ_URI_PERMISSION,

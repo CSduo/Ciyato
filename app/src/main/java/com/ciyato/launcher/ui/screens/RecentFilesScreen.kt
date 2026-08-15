@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.ciyato.launcher.data.FileAccess
 import com.ciyato.launcher.data.FileTagStore
 import com.ciyato.launcher.data.LauncherSettingsRepository
 import com.ciyato.launcher.data.MediaLibraryRepository
@@ -377,15 +378,26 @@ private fun recentFileIcon(mimeType: String): Pair<ImageVector, Color> = when {
  */
 private fun launchRecentFileAction(context: Context, file: MediaLibraryRepository.LibraryFile, action: String): Boolean {
     val target = Intent(action)
+    // No-op for the content URIs MediaStore hands back; converts anything
+    // reached by real path, which would otherwise throw on API 24+.
+    val uri = FileAccess.shareableUri(context, file.uri)
     if (action == Intent.ACTION_SEND) {
         target.type = file.mimeType
-        target.putExtra(Intent.EXTRA_STREAM, file.uri)
-        target.clipData = ClipData.newUri(context.contentResolver, file.name, file.uri)
+        target.putExtra(Intent.EXTRA_STREAM, uri)
+        target.clipData = ClipData.newUri(context.contentResolver, file.name, uri)
     } else {
-        target.setDataAndType(file.uri, file.mimeType)
+        target.setDataAndType(uri, file.mimeType)
     }
     target.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     if (target.resolveActivity(context.packageManager) == null) return false
+    target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    // Opening honours whatever app you already made the default;
+    // Intent.createChooser deliberately ignores that setting, which is why
+    // opening a file used to re-ask "open with?" on every single tap. Sharing
+    // keeps the chooser, where picking a different target each time is the point.
+    if (action != Intent.ACTION_SEND) {
+        if (runCatching { context.startActivity(target) }.isSuccess) return true
+    }
     val label = if (action == Intent.ACTION_SEND) "Share file" else "Open with"
     return runCatching {
         context.startActivity(Intent.createChooser(target, label).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
