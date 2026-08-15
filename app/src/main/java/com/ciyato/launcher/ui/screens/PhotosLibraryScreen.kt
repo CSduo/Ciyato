@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Close
@@ -940,6 +941,18 @@ private fun PhotoActionSheet(image: DeviceImage, onDismiss: () -> Unit) {
             Spacer(Modifier.height(16.dp))
             PhotoActionRow(Icons.AutoMirrored.Filled.OpenInNew, "Open", "View it in your gallery app") {
                 runPhotoAction(context, image, Intent.ACTION_VIEW)
+                onDismiss()
+            }
+            PhotoActionRow(Icons.Default.Apps, "Open with…", "Pick a different app just this once") {
+                if (!PhotoDeviceLibrary.launchPhotoAction(
+                        context,
+                        image.uri,
+                        Intent.ACTION_VIEW,
+                        forceChooser = true,
+                    )
+                ) {
+                    Toast.makeText(context, "No app can open this photo", Toast.LENGTH_SHORT).show()
+                }
                 onDismiss()
             }
             PhotoActionRow(Icons.Default.Edit, "Edit", "Crop, filter or mark up in your own editor") {

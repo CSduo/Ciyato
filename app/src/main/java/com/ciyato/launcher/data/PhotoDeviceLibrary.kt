@@ -327,6 +327,7 @@ object PhotoDeviceLibrary {
         uri: Uri,
         action: String,
         mimeType: String? = null,
+        forceChooser: Boolean = false,
     ): Boolean {
         val mime = mimeType?.takeIf { it.contains('/') } ?: "image/*"
         // Built without apply{}: inside an Intent receiver, `type`/`action` would
@@ -350,7 +351,12 @@ object PhotoDeviceLibrary {
         // them through it re-asked "open with?" on every single tap even after
         // the person had chosen a gallery and tapped Always. Launch those
         // directly and let Android honour the default it already recorded.
-        if (action != Intent.ACTION_SEND) {
+        // [forceChooser] is how "Open with…" stays reachable. Honouring the
+        // default is right for a plain tap, but it leaves no way to send one
+        // photo to a different app — so that has to be an explicit choice
+        // rather than something you can only get by clearing defaults in
+        // system settings.
+        if (action != Intent.ACTION_SEND && !forceChooser) {
             if (runCatching { context.startActivity(target) }.isSuccess) return true
         }
         val label = when (action) {
