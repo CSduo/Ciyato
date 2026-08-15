@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Paths Ciyato may hand to other apps through FileProvider.
+
+  Broad on purpose: in All-files mode a file can be anywhere on the shared
+  volume, and a narrower path would mean "open" silently failing for anything
+  outside it. This grants nothing by itself — FileProvider only ever issues a
+  URI for a file the person explicitly chose to open or share, one at a time.
+-->
+<paths>
+    <external-path name="external_storage" path="." />
+    <external-files-path name="app_external" path="." />
+    <cache-path name="app_cache" path="." />
+</paths>

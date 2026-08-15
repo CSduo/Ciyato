@@ -28,6 +28,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
+import com.ciyato.launcher.data.FileAccess
 import com.ciyato.launcher.data.FileSearchHistoryStore
 import com.ciyato.launcher.data.FileSearchIndex
 import com.ciyato.launcher.data.FileSearchIndexEntry
@@ -87,6 +88,10 @@ fun NlFileSearchScreen(
     var hasSearched by remember { mutableStateOf(false) }
     var isSelectedFolderReadable by remember(selectedRoot) { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
+    // With All-files access there is no SAF folder to require, and Files
+    // indexes internal storage instead. Without this the search screen would
+    // keep asking for a folder that the person deliberately stopped using.
+    val allFilesGranted = remember(storedRoot) { FileAccess.hasAllFiles(context) }
 
     val quickQueries = listOf(
         "payment screenshot from yesterday",
@@ -107,12 +112,26 @@ fun NlFileSearchScreen(
     }
 
     suspend fun search(q: String) {
-        if (q.isBlank() || selectedRoot == null) return
+        if (q.isBlank()) return
+        if (selectedRoot == null && !allFilesGranted) return
         isSearching = true
         hasSearched = false
         focusManager.clearFocus()
         try {
             kotlinx.coroutines.delay(400)
+            if (selectedRoot == null) {
+                // All-files mode: the index Files built over internal storage
+                // is the only source — there is no SAF tree to walk as a
+                // fallback, so an unbuilt index means no results rather than
+                // a silent, folder-scoped search that looks like a bug.
+                val parsed = parseNlQuery(q)
+                results = fileSearchIndex
+                    ?.takeIf { index -> index.rootUri == FileAccess.INDEX_KEY_INTERNAL }
+                    ?.let { index -> searchIndexedFiles(index, parsed) }
+                    .orEmpty()
+                viewModel.recordFileSearch(q)
+                return
+            }
             if (!isReadableTree(context, selectedRoot)) {
                 isSelectedFolderReadable = false
                 viewModel.clearFileSearchIndex()
@@ -174,9 +193,9 @@ fun NlFileSearchScreen(
                 )
             }
 
-            if (selectedRoot == null) {
+            if (selectedRoot == null && !allFilesGranted) {
                 item { FileSearchAccessCard() }
-            } else if (isSelectedFolderReadable == false) {
+            } else if (selectedRoot != null && isSelectedFolderReadable == false) {
                 item {
                     FileSearchAccessCard(
                         title = "Folder access needs attention",
@@ -284,7 +303,14 @@ fun NlFileSearchScreen(
                             runCatching {
                                 context.startActivity(
                                     Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(results.first().uri, results.first().mimeType.ifBlank { "*/*" })
+                                        // Indexed results can come from an
+                                        // All-files scan, where the URI is a
+                                        // raw path — handing that straight to
+                                        // another app throws on API 24+.
+                                        setDataAndType(
+                                            FileAccess.shareableUri(context, results.first().uri),
+                                            results.first().mimeType.ifBlank { "*/*" },
+                                        )
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     },
                                 )
@@ -300,7 +326,10 @@ fun NlFileSearchScreen(
                             runCatching {
                                 context.startActivity(
                                     Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(file.uri, file.mimeType.ifBlank { "*/*" })
+                                        setDataAndType(
+                                            FileAccess.shareableUri(context, file.uri),
+                                            file.mimeType.ifBlank { "*/*" },
+                                        )
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     },
                                 )

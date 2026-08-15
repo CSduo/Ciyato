@@ -60,6 +60,22 @@
         android:usesCleartextTraffic="false"
         android:theme="@style/Theme.Ciyato">
 
+        <!--
+          Lets Ciyato hand a file to another app without exposing a file:// URI,
+          which throws FileUriExposedException on API 24+. Only used for files
+          reached by direct path (All-files mode); SAF already returns content
+          URIs. See FileAccess.shareableUri — every hand-off goes through it.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- LauncherHomeActivity is the actual Android HOME screen. -->
         <activity
             android:name=".LauncherHomeActivity"

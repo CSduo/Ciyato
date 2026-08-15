@@ -1,8 +1,10 @@
 package com.ciyato.launcher.ui.screens
 
 import android.content.Context
+import android.widget.Toast
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +42,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,6 +61,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.CiyatoBg
 import com.ciyato.launcher.ui.theme.CiyatoBgEl
@@ -69,7 +75,9 @@ import com.ciyato.launcher.ui.theme.CiyatoMuted
 import com.ciyato.launcher.ui.theme.CiyatoPurple
 import com.ciyato.launcher.ui.theme.CiyatoRed
 import com.ciyato.launcher.ui.theme.CiyatoSec
+import com.ciyato.launcher.ui.theme.CiyatoSubtleBorder
 import com.ciyato.launcher.ui.theme.CiyatoWhite
+import com.ciyato.launcher.data.FileAccess
 import com.ciyato.launcher.data.CleanupAnalysisResult
 import com.ciyato.launcher.data.CleanupFileRef
 import com.ciyato.launcher.data.DuplicateCleanupGroup
@@ -89,6 +97,7 @@ import java.util.Date
 import java.util.UUID
 
 private const val FILE_SCAN_LIMIT = 2_000
+
 private const val LARGE_FILE_THRESHOLD_BYTES = 100L * 1024L * 1024L
 
 private data class AccessibleFile(
@@ -123,6 +132,21 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     val storedRoot by viewModel.filesRootUri.collectAsState()
     val rootUri = remember(storedRoot) { storedRoot.takeIf(String::isNotBlank)?.let(Uri::parse) }
+    // All-files access is granted in system settings, not by a runtime dialog,
+    // so the answer changes while Ciyato is in the background. Re-check on
+    // every resume, otherwise someone flips the toggle, comes back, and finds
+    // the screen still insisting it has no access.
+    var allFilesGranted by remember { mutableStateOf(FileAccess.hasAllFiles(context)) }
+    val filesLifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(filesLifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                allFilesGranted = FileAccess.hasAllFiles(context)
+            }
+        }
+        filesLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { filesLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var scan by remember { mutableStateOf<FileScopeScan?>(null) }
     var isScanning by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
@@ -171,18 +195,28 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
         }
     }
 
-    LaunchedEffect(rootUri, refreshNonce) {
+    LaunchedEffect(rootUri, refreshNonce, allFilesGranted) {
         scan = null
         scanError = null
-        if (rootUri == null) {
+        // A chosen folder always wins. Someone who deliberately scoped Ciyato
+        // to one folder should not silently have the whole phone scanned
+        // instead just because they later granted All-files access.
+        val scanKey = rootUri?.toString() ?: FileAccess.INDEX_KEY_INTERNAL
+        if (rootUri == null && !allFilesGranted) {
             isScanning = false
         } else {
             isScanning = true
-            val result = runCatching { scanAuthorisedFolder(context, rootUri) }
+            val result = runCatching {
+                if (rootUri != null) {
+                    scanAuthorisedFolder(context, rootUri)
+                } else {
+                    scanInternalStorage()
+                }
+            }
             scan = result.getOrNull()
             result.getOrNull()?.let { scopedFiles ->
                 viewModel.updateFileSearchIndex(
-                    rootUri = rootUri.toString(),
+                    rootUri = scanKey,
                     entries = scopedFiles.files.map { file ->
                         FileSearchIndexEntry(
                             uri = file.uri.toString(),
@@ -195,7 +229,13 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
                     reachedLimit = scopedFiles.reachedLimit,
                 )
             }
-            scanError = result.exceptionOrNull()?.let { "Ciyato could not read this folder. Choose it again in Files Browser." }
+            scanError = result.exceptionOrNull()?.let {
+                if (rootUri != null) {
+                    "Ciyato could not read this folder. Choose it again in Files Browser."
+                } else {
+                    "Ciyato could not read internal storage."
+                }
+            }
             isScanning = false
         }
     }
@@ -223,10 +263,28 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
         cleanupError = cleanupError,
         cleanupNotice = cleanupNotice,
         isCleanupScanning = cleanupWorkId != null,
+        allFilesGranted = allFilesGranted,
         onBack = onBack,
         onOpenBrowser = { showBrowser = true },
+        onGrantAllFiles = {
+            val intent = FileAccess.allFilesSettingsIntent(context)
+            if (intent == null) {
+                Toast.makeText(
+                    context,
+                    "This phone has no All files access screen",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } else {
+                runCatching { context.startActivity(intent) }.onFailure {
+                    Toast.makeText(context, "Could not open storage settings", Toast.LENGTH_SHORT).show()
+                }
+            }
+        },
         onRefresh = {
-            if (rootUri != null) refreshNonce += 1
+            // Also refreshable with no folder chosen — that is the All-files
+            // scan, and a Refresh button that quietly does nothing is worse
+            // than no Refresh button.
+            if (rootUri != null || allFilesGranted) refreshNonce += 1
         },
         onScanDuplicates = {
             rootUri?.let { uri ->
@@ -270,8 +328,10 @@ private fun FilesHomeContent(
     cleanupError: String?,
     cleanupNotice: String?,
     isCleanupScanning: Boolean,
+    allFilesGranted: Boolean,
     onBack: () -> Unit,
     onOpenBrowser: () -> Unit,
+    onGrantAllFiles: () -> Unit,
     onRefresh: () -> Unit,
     onScanDuplicates: () -> Unit,
     onReviewDuplicates: () -> Unit,
@@ -315,8 +375,9 @@ private fun FilesHomeContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             when {
-                rootUri == null -> {
+                rootUri == null && !allFilesGranted -> {
                     item { FilesAccessState(onOpenBrowser = onOpenBrowser) }
+                    item { AllFilesOfferCard(onGrant = onGrantAllFiles) }
                 }
 
                 isScanning -> {
@@ -324,7 +385,15 @@ private fun FilesHomeContent(
                         Box(Modifier.fillMaxWidth().padding(vertical = 80.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 CircularProgressIndicator(color = CiyatoGold)
-                                Text("Scanning only your selected folder", color = CiyatoSec, fontSize = 13.sp)
+                                Text(
+                                    if (rootUri == null) {
+                                        "Reading internal storage"
+                                    } else {
+                                        "Scanning only your selected folder"
+                                    },
+                                    color = CiyatoSec,
+                                    fontSize = 13.sp,
+                                )
                             }
                         }
                     }
@@ -405,6 +474,53 @@ private fun FilesErrorState(message: String, onOpenBrowser: () -> Unit) {
             Text(message, color = CiyatoSec, fontSize = 13.sp, lineHeight = 19.sp)
             Text("Choose folder again", color = CiyatoGold, fontWeight = FontWeight.SemiBold)
         }
+    }
+}
+
+/**
+ * Offers the one thing the folder picker cannot give.
+ *
+ * Worded around what the person actually hit — "I picked my phone and it
+ * wouldn't let me" — rather than around the permission's name, and honest that
+ * it still doesn't reach everything.
+ */
+@Composable
+private fun AllFilesOfferCard(onGrant: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(CiyatoBgEl)
+            .border(1.dp, CiyatoSubtleBorder, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "Couldn't select your whole phone?",
+            color = CiyatoWhite,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 15.sp,
+        )
+        Text(
+            "Android stops the folder picker from handing over internal storage, " +
+                "Download, or Android/data — that limit applies to every app, not just " +
+                "Ciyato. All files access lifts it for everything except Android/data, " +
+                "which stays private to the app that owns it.",
+            color = CiyatoSec,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+        )
+        Text(
+            "Turn on All files access",
+            color = CiyatoBg,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp,
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(CiyatoGold)
+                .clickable(onClick = onGrant)
+                .padding(horizontal = 16.dp, vertical = 9.dp),
+        )
     }
 }
 
@@ -796,6 +912,28 @@ private fun isDocument(file: AccessibleFile): Boolean =
     file.mimeType.startsWith("application/") || file.mimeType.startsWith("text/") ||
         file.name.endsWith(".pdf", true) || file.name.endsWith(".doc", true) ||
         file.name.endsWith(".docx", true) || file.name.endsWith(".txt", true)
+
+/**
+ * Whole-of-internal-storage scan, used when All-files access is held and no
+ * SAF folder has been picked. The URIs here are `file://` — identity only,
+ * never handed to another app without [FileAccess.shareableUri] first.
+ */
+private suspend fun scanInternalStorage(): FileScopeScan {
+    val scanned = FileAccess.scanDirectory(FileAccess.internalRoot(), FILE_SCAN_LIMIT)
+    return FileScopeScan(
+        rootName = "Internal storage",
+        files = scanned.files.map { entry ->
+            AccessibleFile(
+                uri = Uri.fromFile(entry.file),
+                name = entry.name,
+                mimeType = entry.mimeType,
+                sizeBytes = entry.sizeBytes,
+                modifiedAt = entry.modifiedAt,
+            )
+        },
+        reachedLimit = scanned.reachedLimit,
+    )
+}
 
 private suspend fun scanAuthorisedFolder(context: Context, treeUri: Uri): FileScopeScan = withContext(Dispatchers.IO) {
     val root = DocumentFile.fromTreeUri(context, treeUri)?.takeIf(DocumentFile::canRead)
