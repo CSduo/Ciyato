@@ -2062,7 +2062,12 @@ fun HomeScreen(
                         },
                         isEditMode = isEditMode,
                         isDragActive = dragController.isActive,
-                        hoverSlotIndex = if (dragController.isActive && dragController.overDock) dragController.dockDropIndex() else null,
+                        // hoverDockSlot, not dockDropIndex(): calling the function here
+                        // reads fingerRoot, which is rewritten on every pointer move, so
+                        // this whole scope recomposed on every frame of every drag — the
+                        // "movement is very slow" report. The derivedStateOf only emits
+                        // when the RESOLVED slot actually changes, which is rare.
+                        hoverSlotIndex = dragController.hoverDockSlot.value,
                         hiddenPackage = dragController.activePackage,
                         onDockBounds = { dragController.dockBounds = it },
                         onSlotBounds = { index, bounds -> dragController.dockSlots[index] = bounds },
