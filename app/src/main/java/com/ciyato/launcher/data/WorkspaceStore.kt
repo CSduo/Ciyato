@@ -15,8 +15,41 @@ import org.json.JSONObject
  * A cell may span more than 1x1 via [AppCell.spanX]/[AppCell.spanY] (default 1,
  * so every pre-span layout and caller is unaffected). Occupancy is therefore a
  * rectangle, not a point — see [coveredCells].
+ *
+ * The grid is the DEFAULT layout generator only, never a runtime constraint:
+ * [AppCell.pos] is an additive free-canvas overlay (default null, so every
+ * pre-canvas layout and caller is unaffected): once an object is deliberately
+ * dragged off the grid it gets a [CanvasPos] and is rendered there instead,
+ * while [AppCell.cell] is kept untouched as the fallback grid slot it returns
+ * to via [WorkspaceStore.resetAppToGrid]. Grid rules (distinct cells, no
+ * rectangle overlap, on-grid) apply only to cells with `pos == null` — a
+ * free-positioned object may overlap anything by design.
  */
-data class AppCell(val packageName: String, val cell: Int, val spanX: Int = 1, val spanY: Int = 1)
+data class AppCell(
+    val packageName: String,
+    val cell: Int,
+    val spanX: Int = 1,
+    val spanY: Int = 1,
+    val pos: CanvasPos? = null,
+)
+
+/**
+ * A free placement on the workspace canvas, additive to [AppCell.cell].
+ *
+ * [x]/[y] are NORMALIZED FRACTIONS of the usable canvas (0f..1f), anchoring
+ * the object's own top-left corner, measured from the canvas's top-left —
+ * never raw pixels. Raw pixels would break on rotation, on a different screen
+ * size, and if dock/status-bar insets change; fractions survive all three and
+ * are converted to pixels only at render time. Always clamped into 0f..1f on
+ * write (see [WorkspaceStore.moveAppToCanvas]) so an object can never be
+ * persisted somewhere it can no longer be grabbed again.
+ *
+ * [z] is stacking order — higher draws on top. See [WorkspaceStore.nextZ] for
+ * "whatever you move comes to the front" (desktop-window) behaviour. Overlap
+ * between free-positioned objects is explicitly allowed; there is no
+ * collision rule for [z] or for (x, y).
+ */
+data class CanvasPos(val x: Float, val y: Float, val z: Int = 0)
 
 /** Linear row-major indices this cell's spanX×spanY rectangle covers on a grid
  *  that is [columns] wide. Span 1x1 always resolves to exactly `{cell}`. */
@@ -43,7 +76,10 @@ data class WorkspaceRecord(
     val appPackages: List<String> get() = cells.sortedBy { it.cell }.map { it.packageName }
 }
 
-/** Rebuild a record's cells from an ordered package list (sequential, no gaps). */
+/** Rebuild a record's cells from an ordered package list (sequential, no gaps).
+ *  Already resets every span to 1x1 by construction; for the same reason it
+ *  also clears any free [CanvasPos] — a bare package list carries no
+ *  positional metadata at all, so there is nothing to preserve. */
 fun WorkspaceRecord.withPackages(packages: List<String>): WorkspaceRecord =
     copy(cells = packages.distinct().mapIndexed { i, pkg -> AppCell(pkg, i) })
 
@@ -155,6 +191,15 @@ object WorkspaceStore {
                     // Missing spanX/spanY (every pre-span saved layout) defaults to 1x1.
                     spanX = obj.optInt("spanX", 1).coerceIn(1, MAX_SPAN),
                     spanY = obj.optInt("spanY", 1).coerceIn(1, MAX_SPAN),
+                    // Missing "pos" (every pre-canvas saved layout — including the
+                    // user's real one) parses back to null, i.e. still grid-positioned.
+                    pos = obj.optJSONObject("pos")?.let { p ->
+                        CanvasPos(
+                            x = p.optDouble("x", 0.0).toFloat().coerceIn(0f, 1f),
+                            y = p.optDouble("y", 0.0).toFloat().coerceIn(0f, 1f),
+                            z = p.optInt("z", 0),
+                        )
+                    },
                 ),
             )
         }
@@ -182,6 +227,20 @@ object WorkspaceStore {
                                         // serializes byte-identical to before this feature.
                                         if (c.spanX != 1) put("spanX", c.spanX)
                                         if (c.spanY != 1) put("spanY", c.spanY)
+                                        // Only written when free-positioned, so a layout with no
+                                        // canvas placements (every layout before this feature,
+                                        // including the user's real saved one) serializes
+                                        // byte-identical to before this feature.
+                                        c.pos?.let { p ->
+                                            put(
+                                                "pos",
+                                                JSONObject().apply {
+                                                    put("x", p.x.toDouble())
+                                                    put("y", p.y.toDouble())
+                                                    if (p.z != 0) put("z", p.z)
+                                                },
+                                            )
+                                        }
                                     },
                                 )
                             }
@@ -271,9 +330,18 @@ object WorkspaceStore {
                 var cells = destination.cells
                 removed.cells.sortedBy { it.cell }.forEach { incoming ->
                     if (existing.add(incoming.packageName)) {
-                        val spanX = incoming.spanX.coerceIn(1, columns.coerceAtLeast(1))
-                        val spanY = incoming.spanY.coerceIn(1, MAX_SPAN)
-                        cells = cells + AppCell(incoming.packageName, firstFreeCell(cells, columns, spanX, spanY), spanX, spanY)
+                        cells = if (incoming.pos != null) {
+                            // Free-positioned tiles carry their (x, y) straight across —
+                            // it's a canvas fraction, not a grid cell, so it means the
+                            // same thing on any workspace's same-sized canvas. No
+                            // grid-fit search needed: overlap is allowed for these.
+                            cells + incoming
+                        } else {
+                            val spanX = incoming.spanX.coerceIn(1, columns.coerceAtLeast(1))
+                            val spanY = incoming.spanY.coerceIn(1, MAX_SPAN)
+                            val onGrid = cells.filter { it.pos == null }
+                            cells + AppCell(incoming.packageName, firstFreeCell(onGrid, columns, spanX, spanY), spanX, spanY)
+                        }
                     }
                 }
                 remaining[destinationIndex] = destination.copy(
@@ -370,7 +438,9 @@ object WorkspaceStore {
         var added = false
         packages.forEach { pkg ->
             if (existing.add(pkg)) {
-                cells = cells + AppCell(pkg, firstFreeCell(cells, layout.authorColumns))
+                // Free-positioned tiles are exempt from grid occupancy, so their
+                // stale `cell` fallback must not block or shift where a new app lands.
+                cells = cells + AppCell(pkg, firstFreeCell(cells.filter { it.pos == null }, layout.authorColumns))
                 added = true
             }
         }
@@ -389,6 +459,13 @@ object WorkspaceStore {
      * occupant. Preserves the app's existing span if it's already on this workspace;
      * [spanX]/[spanY] only seed a brand-new arrival (e.g. from [moveApp]). Fails if
      * the rectangle runs off-grid or would overlap more than one existing tile.
+     *
+     * `placeApp` targets a grid cell, so it is a deliberate grid placement: any
+     * free [CanvasPos] the app previously had is cleared (the freshly built
+     * [moving] cell never carries one over) — same intent as [resetAppToGrid],
+     * just landing at a chosen cell in one step instead of the old one. Existing
+     * free-positioned tiles are likewise exempt from this function's collision
+     * checks; only grid tiles can be swapped or bumped.
      */
     fun placeApp(
         layout: WorkspaceLayout,
@@ -404,23 +481,27 @@ object WorkspaceStore {
         val moving = AppCell(packageName, targetCell.coerceAtLeast(0), current?.spanX ?: spanX, current?.spanY ?: spanY)
         if (!onGrid(moving, columns)) return null
         val without = workspace.cells.filterNot { it.packageName == packageName }
+        val grid = without.filter { it.pos == null } // free-positioned tiles never collide
         val covered = moving.coveredCells(columns)
-        val overlapping = without.filter { it.coveredCells(columns).any(covered::contains) }
+        val overlapping = grid.filter { it.coveredCells(columns).any(covered::contains) }
         if (overlapping.size > 1) return null // mover's rectangle would clobber more than one tile
         var cells = without
         overlapping.singleOrNull()?.let { occupant ->
             val rest = without.filterNot { it.packageName == occupant.packageName }
+            val restGrid = rest.filter { it.pos == null }
             // Swap the sole occupant back to the mover's old spot if it still fits
             // there, else drop it on its own next free cell (matching its span).
-            val backAtSource = current?.let { occupant.copy(cell = it.cell) }?.takeIf { fits(it, rest, columns) }
-            val occupantTarget = backAtSource?.cell ?: firstFreeCell(rest, columns, occupant.spanX, occupant.spanY)
+            val backAtSource = current?.let { occupant.copy(cell = it.cell) }?.takeIf { fits(it, restGrid, columns) }
+            val occupantTarget = backAtSource?.cell ?: firstFreeCell(restGrid, columns, occupant.spanX, occupant.spanY)
             cells = rest + occupant.copy(cell = occupantTarget)
         }
         return withWorkspace(layout, workspace.copy(cells = cells + moving))
     }
 
     /** Moves [packageName] from one workspace to a cell in another (or the same),
-     *  carrying its existing span along. */
+     *  carrying its existing span along. Delegates to [placeApp], so — same as
+     *  that function — any free [CanvasPos] the app had is cleared; it lands
+     *  grid-positioned at the given cell. */
     fun moveApp(layout: WorkspaceLayout, fromWorkspaceId: String, toWorkspaceId: String, packageName: String, targetCell: Int): WorkspaceLayout? {
         if (fromWorkspaceId == toWorkspaceId) return placeApp(layout, toWorkspaceId, packageName, targetCell)
         val from = layout.workspaces.firstOrNull { it.id == fromWorkspaceId } ?: return null
@@ -433,14 +514,17 @@ object WorkspaceStore {
     /**
      * Changes [packageName]'s span within [workspaceId]. Returns null (no-op) if
      * the resized rectangle would run off-grid or overlap another tile — the
-     * caller keeps whatever size last fit.
+     * caller keeps whatever size last fit. Uses `.copy()` on the current cell, so
+     * a free [CanvasPos] (if any) is left exactly as-is; a free-positioned tile
+     * is exempt from the grid fit check below (overlap is allowed for it either
+     * way), so resizing it always succeeds.
      */
     fun resizeApp(layout: WorkspaceLayout, workspaceId: String, packageName: String, spanX: Int, spanY: Int): WorkspaceLayout? {
         val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
         val current = workspace.cells.firstOrNull { it.packageName == packageName } ?: return null
         val resized = current.copy(spanX = spanX.coerceIn(1, MAX_SPAN), spanY = spanY.coerceIn(1, MAX_SPAN))
         val others = workspace.cells.filterNot { it.packageName == packageName }
-        if (!fits(resized, others, layout.authorColumns)) return null
+        if (current.pos == null && !fits(resized, others.filter { it.pos == null }, layout.authorColumns)) return null
         return withWorkspace(layout, workspace.copy(cells = others + resized))
     }
 
@@ -450,6 +534,12 @@ object WorkspaceStore {
      * [WorkspaceRecord.withPackages] (1x1-by-construction), this re-places every
      * tile at its first-fitting cell in the new reading order, so the moved tile
      * and every tile shifted around it keep their existing span.
+     *
+     * Free-positioned tiles aren't grid-bound, so they take no part in this
+     * reading-order reflow: they're left exactly as-is (cell fallback and
+     * [CanvasPos] both untouched) and [packageName] itself must be a grid tile —
+     * there's no "reading order index" for a canvas object, so this returns null
+     * (no-op) if it isn't one.
      */
     fun moveAppWithinWorkspace(
         layout: WorkspaceLayout,
@@ -461,7 +551,8 @@ object WorkspaceStore {
         // reorder path works on Home's grid too.
         if (!isValid(layout) || layout.workspaces.none { it.id == workspaceId }) return null
         val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
-        val apps = workspace.appPackages.toMutableList()
+        val free = workspace.cells.filter { it.pos != null }
+        val apps = workspace.cells.filter { it.pos == null }.sortedBy { it.cell }.map { it.packageName }.toMutableList()
         val sourceIndex = apps.indexOf(packageName)
         if (sourceIndex < 0 || apps.size < 2) return null
         val targetIndex = destinationIndex.coerceIn(0, apps.lastIndex)
@@ -477,7 +568,7 @@ object WorkspaceStore {
             val spanY = (span?.spanY ?: 1).coerceIn(1, MAX_SPAN)
             cells = cells + AppCell(pkg, firstFreeCell(cells, columns, spanX, spanY), spanX, spanY)
         }
-        return withWorkspace(layout, workspace.copy(cells = cells))
+        return withWorkspace(layout, workspace.copy(cells = cells + free))
     }
 
     /**
@@ -486,18 +577,73 @@ object WorkspaceStore {
      * still fits; where it no longer does (columns shrank under it), spanX is
      * clamped down to what fits rather than the app being dropped or reset to
      * 1x1. Every app is always preserved.
+     *
+     * A free-positioned tile isn't grid-bound, so a grid-size change is not a
+     * reason to move it: it's excluded from the repack entirely and carried
+     * through untouched (cell fallback and [CanvasPos] both preserved).
      */
     fun reflow(record: WorkspaceRecord, columns: Int = WorkspaceLayout.DEFAULT_COLUMNS): WorkspaceRecord {
         val cols = columns.coerceAtLeast(1)
+        val free = record.cells.filter { it.pos != null }
         var cells = emptyList<AppCell>()
-        record.cells.sortedBy { it.cell }.forEach { c ->
+        record.cells.filter { it.pos == null }.sortedBy { it.cell }.forEach { c ->
             if (cells.none { it.packageName == c.packageName }) {
                 val spanX = c.spanX.coerceIn(1, cols)
                 val spanY = c.spanY.coerceIn(1, MAX_SPAN)
                 cells = cells + AppCell(c.packageName, firstFreeCell(cells, cols, spanX, spanY), spanX, spanY)
             }
         }
-        return record.copy(cells = cells)
+        return record.copy(cells = cells + free)
+    }
+
+    // ── Canvas placement (free-position overlay) ──────────────────────────────
+    // See [AppCell.pos] / [CanvasPos] for the model. These are additive: they
+    // never touch [AppCell.cell], so an object can always fall back to grid flow.
+
+    /**
+     * Sets (or updates) [packageName]'s free canvas placement within
+     * [workspaceId], overriding [AppCell.cell] for rendering while leaving
+     * `cell` itself untouched as the grid fallback (see [resetAppToGrid]).
+     * [x]/[y] are clamped into 0f..1f — an object must never be persisted
+     * somewhere it can no longer be grabbed again. Free-positioned tiles are
+     * exempt from every grid rule (see [isValid]), so this never fails for
+     * overlap — only if [packageName] isn't on this workspace at all. Pass
+     * [nextZ] as [z] to bring the moved tile to the front, desktop-window style.
+     */
+    fun moveAppToCanvas(layout: WorkspaceLayout, workspaceId: String, packageName: String, x: Float, y: Float, z: Int): WorkspaceLayout? {
+        val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
+        if (workspace.cells.none { it.packageName == packageName }) return null
+        val pos = CanvasPos(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f), z)
+        val cells = workspace.cells.map { if (it.packageName == packageName) it.copy(pos = pos) else it }
+        return withWorkspace(layout, workspace.copy(cells = cells))
+    }
+
+    /** Clears [packageName]'s free canvas placement so it returns to ordinary
+     *  grid flow at its preserved [AppCell.cell]. Null (no-op) if it's already
+     *  grid-positioned, matching this file's usual not-applicable convention. */
+    fun resetAppToGrid(layout: WorkspaceLayout, workspaceId: String, packageName: String): WorkspaceLayout? {
+        val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return null
+        val current = workspace.cells.firstOrNull { it.packageName == packageName } ?: return null
+        if (current.pos == null) return null
+        val cells = workspace.cells.map { if (it.packageName == packageName) it.copy(pos = null) else it }
+        return withWorkspace(layout, workspace.copy(cells = cells))
+    }
+
+    /** [packageName]'s free canvas position within [workspaceId], or null if
+     *  it's still grid-positioned — the UI derives pixels from [AppCell.cell]
+     *  itself in that case. This store stays pure/JVM-only and never computes
+     *  pixels; callers convert the normalized fraction at render time. */
+    fun canvasPosition(layout: WorkspaceLayout, workspaceId: String, packageName: String): CanvasPos? =
+        layout.workspaces.firstOrNull { it.id == workspaceId }
+            ?.cells?.firstOrNull { it.packageName == packageName }?.pos
+
+    /** Next z-index above every free-positioned tile already in [workspaceId] —
+     *  pass this into [moveAppToCanvas] so "whatever you move comes to the
+     *  front" (desktop-window stacking). Grid-only tiles have no z and don't
+     *  count; an all-grid or empty workspace starts at 0. */
+    fun nextZ(layout: WorkspaceLayout, workspaceId: String): Int {
+        val workspace = layout.workspaces.firstOrNull { it.id == workspaceId } ?: return 0
+        return (workspace.cells.mapNotNull { it.pos?.z }.maxOrNull() ?: -1) + 1
     }
 
     /** Next creationOrder for a brand-new movable workspace — deliberately
@@ -510,18 +656,26 @@ object WorkspaceStore {
     // ── Validation & helpers ──────────────────────────────────────────────────
 
     /** De-dupes packages and nudges any cell whose rectangle overlaps an
-     *  already-placed one (or a duplicate index) forward to the next fit. */
+     *  already-placed one (or a duplicate index) forward to the next fit.
+     *  Free-positioned tiles are exempt: they're carried through with their
+     *  `pos` and fallback `cell` exactly as given, and (being exempt from
+     *  overlap themselves) don't block where a grid tile can land either. */
     private fun normalizeCells(cells: List<AppCell>, columns: Int): List<AppCell> {
         val seenPkg = HashSet<String>()
         val result = ArrayList<AppCell>()
         for (c in cells.sortedBy { it.cell }) {
             if (!seenPkg.add(c.packageName)) continue
+            if (c.pos != null) {
+                result.add(c.copy(cell = c.cell.coerceAtLeast(0)))
+                continue
+            }
             // Clamped to columns (not just MAX_SPAN) so the search below is
             // guaranteed to terminate — see firstFreeCell for the same reasoning.
             val spanX = c.spanX.coerceIn(1, columns.coerceAtLeast(1))
             val spanY = c.spanY.coerceIn(1, MAX_SPAN)
             var cell = c.cell.coerceAtLeast(0)
-            while (!fits(AppCell(c.packageName, cell, spanX, spanY), result, columns)) cell++
+            val onGrid = result.filter { it.pos == null }
+            while (!fits(AppCell(c.packageName, cell, spanX, spanY), onGrid, columns)) cell++
             result.add(AppCell(c.packageName, cell, spanX, spanY))
         }
         return result
@@ -538,9 +692,15 @@ object WorkspaceStore {
         val columns = layout.authorColumns
         val cellsValid = layout.workspaces.all { ws ->
             val cells = ws.cells
+            // Grid rules (on-grid, no rectangle overlap) apply only to cells
+            // without a free `pos` — a free-positioned tile is exempt from both
+            // and may overlap anything, by design (see AppCell.pos).
+            val gridCells = cells.filter { it.pos == null }
             cells.map { it.packageName }.distinct().size == cells.size &&
-                cells.all { it.cell >= 0 && it.spanX >= 1 && it.spanY >= 1 && onGrid(it, columns) } &&
-                !hasOverlap(cells, columns)
+                cells.all { it.cell >= 0 && it.spanX >= 1 && it.spanY >= 1 } &&
+                cells.all { it.pos == null || (it.pos.x in 0f..1f && it.pos.y in 0f..1f) } &&
+                gridCells.all { onGrid(it, columns) } &&
+                !hasOverlap(gridCells, columns)
         }
         return layout.version == WorkspaceLayout.CURRENT_VERSION &&
             movableIds.size in 1..MAX_WORKSPACES &&

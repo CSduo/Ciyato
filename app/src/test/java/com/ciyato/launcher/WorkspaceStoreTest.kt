@@ -418,4 +418,191 @@ class WorkspaceStoreTest {
         assertFalse(homeId in reordered.visualOrder)
         assertNotNull(reordered.workspaceById(homeId))
     }
+
+    // ── Canvas placement (free-position overlay) ─────────────────────────────
+
+    @Test
+    fun `moveAppToCanvas sets a free position and leaves the cell intact as a fallback`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.a,com.b", "", "{}", "{}", "")
+        // workspace-1 = [com.a@0, com.b@1] on the default grid.
+        val result = requireNotNull(WorkspaceStore.moveAppToCanvas(initial, "workspace-1", "com.a", 0.25f, 0.75f, 2))
+        val cell = result.workspaceAt(0)!!.cells.single { it.packageName == "com.a" }
+        assertEquals(0, cell.cell) // untouched grid fallback
+        assertTrue(cell.pos?.x == 0.25f)
+        assertTrue(cell.pos?.y == 0.75f)
+        assertEquals(2, cell.pos?.z)
+    }
+
+    @Test
+    fun `moveAppToCanvas clamps x and y into the 0 to 1 range`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.a", "", "{}", "{}", "")
+        val result = requireNotNull(WorkspaceStore.moveAppToCanvas(initial, "workspace-1", "com.a", -0.5f, 1.7f, 0))
+        val pos = requireNotNull(result.workspaceAt(0)!!.cells.single { it.packageName == "com.a" }.pos)
+        assertTrue(pos.x == 0f)
+        assertTrue(pos.y == 1f)
+    }
+
+    @Test
+    fun `two free-positioned tiles on the same workspace may overlap and the layout stays valid`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.a,com.b", "", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveAppToCanvas(initial, "workspace-1", "com.a", 0.5f, 0.5f, 0))
+        val bothMoved = requireNotNull(WorkspaceStore.moveAppToCanvas(moved, "workspace-1", "com.b", 0.5f, 0.5f, 1))
+        // Identical (x, y) — deliberately overlapping. Still a valid layout.
+        assertNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(bothMoved)))
+        val cells = bothMoved.workspaceAt(0)!!.cells.associateBy { it.packageName }
+        val a = requireNotNull(cells["com.a"]?.pos)
+        val b = requireNotNull(cells["com.b"]?.pos)
+        assertTrue(a.x == b.x && a.y == b.y)
+    }
+
+    @Test
+    fun `a mixed workspace validates, and grid-overlap rules still reject two grid tiles sharing a cell`() {
+        // com.a and com.free both claim "cell":0, but com.free carries a pos, so
+        // it's exempt from grid-overlap — this must still parse as valid.
+        val valid = """{"version":2,"defaultWorkspaceId":"workspace-1","visualOrder":["workspace-1"],"authorColumns":4,""" +
+            """"workspaces":[{"id":"workspace-1","creationOrder":1,"name":"W1",""" +
+            """"cells":[{"pkg":"com.a","cell":0},{"pkg":"com.free","cell":0,"pos":{"x":0.5,"y":0.5}}],""" +
+            """"categoryKeys":[],"starterDismissed":false}]}"""
+        assertNotNull(WorkspaceStore.parse(valid))
+
+        // Two GRID tiles (neither has pos) sharing cell 0 must still be rejected.
+        val invalid = """{"version":2,"defaultWorkspaceId":"workspace-1","visualOrder":["workspace-1"],"authorColumns":4,""" +
+            """"workspaces":[{"id":"workspace-1","creationOrder":1,"name":"W1",""" +
+            """"cells":[{"pkg":"com.a","cell":0},{"pkg":"com.b","cell":0}],""" +
+            """"categoryKeys":[],"starterDismissed":false}]}"""
+        assertNull(WorkspaceStore.parse(invalid))
+    }
+
+    @Test
+    fun `resetAppToGrid clears the free position and the app returns to its preserved cell`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.a,com.b", "", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveAppToCanvas(initial, "workspace-1", "com.b", 0.4f, 0.6f, 0))
+        val reset = requireNotNull(WorkspaceStore.resetAppToGrid(moved, "workspace-1", "com.b"))
+        val cell = reset.workspaceAt(0)!!.cells.single { it.packageName == "com.b" }
+        assertNull(cell.pos)
+        assertEquals(1, cell.cell) // its original grid cell, untouched the whole time
+    }
+
+    @Test
+    fun `serialize then parse round-trips a free position including z`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.a", "", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveAppToCanvas(initial, "workspace-1", "com.a", 0.125f, 0.875f, 5))
+        val reparsed = requireNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(moved)))
+        val pos = requireNotNull(reparsed.workspaceAt(0)!!.cells.single { it.packageName == "com.a" }.pos)
+        assertTrue(pos.x == 0.125f)
+        assertTrue(pos.y == 0.875f)
+        assertEquals(5, pos.z)
+    }
+
+    @Test
+    fun `a layout saved without any pos field still parses with pos null on every cell`() {
+        // This is exactly the user's real existing saved layout — no "pos" key
+        // has ever been written before this feature.
+        val v2 = """{"version":2,"defaultWorkspaceId":"workspace-1","visualOrder":["workspace-1"],"authorColumns":4,""" +
+            """"workspaces":[{"id":"workspace-1","creationOrder":1,"name":"W1",""" +
+            """"cells":[{"pkg":"com.a","cell":0},{"pkg":"com.b","cell":1}],""" +
+            """"categoryKeys":[],"starterDismissed":false}]}"""
+        val layout = requireNotNull(WorkspaceStore.parse(v2))
+        assertTrue(layout.workspaceAt(0)!!.cells.all { it.pos == null })
+    }
+
+    @Test
+    fun `nextZ returns one above the highest existing z on the workspace`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.a,com.b,com.c", "", "{}", "{}", "")
+        assertEquals(0, WorkspaceStore.nextZ(initial, "workspace-1")) // no free tiles yet
+
+        val first = requireNotNull(
+            WorkspaceStore.moveAppToCanvas(initial, "workspace-1", "com.a", 0.1f, 0.1f, WorkspaceStore.nextZ(initial, "workspace-1")),
+        )
+        val second = requireNotNull(
+            WorkspaceStore.moveAppToCanvas(first, "workspace-1", "com.b", 0.2f, 0.2f, WorkspaceStore.nextZ(first, "workspace-1")),
+        )
+
+        assertEquals(2, WorkspaceStore.nextZ(second, "workspace-1"))
+    }
+
+    @Test
+    fun `reflow preserves a free-positioned tile's position and cell untouched across a grid-size change`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.wide", "", "{}", "{}", "")
+        val resized = requireNotNull(WorkspaceStore.resizeApp(base, "workspace-1", "com.wide", 2, 1))
+        val withSolo = requireNotNull(WorkspaceStore.addAppsAtFreeCells(resized, "workspace-1", listOf("com.solo")))
+        val moved = requireNotNull(WorkspaceStore.moveAppToCanvas(withSolo, "workspace-1", "com.wide", 0.3f, 0.3f, 4))
+        // com.wide is now free-positioned; its old 2x1 span/cell stay only as an
+        // unused fallback. com.solo remains an ordinary grid tile.
+        val reflowed = WorkspaceStore.reflow(moved.workspaceAt(0)!!, columns = 2)
+        val wide = reflowed.cells.single { it.packageName == "com.wide" }
+        assertEquals(0, wide.cell) // untouched fallback, not reflowed
+        assertEquals(2, wide.spanX) // untouched span, not clamped for the narrower grid
+        assertTrue(wide.pos?.x == 0.3f)
+        assertEquals(4, wide.pos?.z)
+        assertTrue(reflowed.cells.any { it.packageName == "com.solo" })
+    }
+
+    @Test
+    fun `moveAppWithinWorkspace leaves a free-positioned tile untouched and cannot reorder it`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.a,com.b,com.c", "", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveAppToCanvas(initial, "workspace-1", "com.b", 0.5f, 0.5f, 1))
+        // com.b is free-positioned; com.a and com.c remain grid tiles.
+
+        // Reordering a grid app still works and leaves com.b's free position alone.
+        val reordered = requireNotNull(
+            WorkspaceStore.moveAppWithinWorkspace(moved, "workspace-1", "com.a", destinationIndex = 1),
+        )
+        val bAfter = reordered.workspaceAt(0)!!.cells.single { it.packageName == "com.b" }
+        assertTrue(bAfter.pos?.x == 0.5f)
+        assertEquals(1, bAfter.cell) // untouched — its original cell before it went free
+
+        // A free-positioned tile has no "reading order index" to move to.
+        assertNull(WorkspaceStore.moveAppWithinWorkspace(moved, "workspace-1", "com.b", destinationIndex = 0))
+    }
+
+    @Test
+    fun `remove with moveContentsTo carries a free-positioned tile's canvas position into the destination`() {
+        val base = WorkspaceStore.migrateLegacy(3, "com.free", "com.solo", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveAppToCanvas(base, "workspace-1", "com.free", 0.6f, 0.2f, 3))
+        // workspace-1 has com.free at a free canvas position; workspace-2 has com.solo on the grid.
+        val result = requireNotNull(WorkspaceStore.remove(moved, "workspace-1", moveContentsTo = "workspace-2"))
+        val destination = result.workspaceAt(0)!!
+        val free = destination.cells.single { it.packageName == "com.free" }
+        assertTrue(free.pos?.x == 0.6f)
+        assertTrue(free.pos?.y == 0.2f)
+        assertEquals(3, free.pos?.z)
+        assertEquals(0, destination.cells.single { it.packageName == "com.solo" }.cell) // untouched
+        assertNotNull(WorkspaceStore.parse(WorkspaceStore.serialize(result)))
+    }
+
+    @Test
+    fun `addAppsAtFreeCells does not disturb an existing free-positioned tile`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.free", "", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveAppToCanvas(initial, "workspace-1", "com.free", 0.9f, 0.9f, 0))
+        // com.free's grid fallback cell is 0 — a stale value that must not block
+        // or shift where the newly added app lands.
+        val result = requireNotNull(WorkspaceStore.addAppsAtFreeCells(moved, "workspace-1", listOf("com.new")))
+        val newCell = result.workspaceAt(0)!!.cells.single { it.packageName == "com.new" }
+        assertEquals(0, newCell.cell) // lands right at cell 0 — the free tile doesn't block it
+        val free = result.workspaceAt(0)!!.cells.single { it.packageName == "com.free" }
+        assertTrue(free.pos?.x == 0.9f)
+    }
+
+    @Test
+    fun `resizeApp preserves a free-positioned tile's pos and allows it even though it would overlap a grid tile`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.free,com.grid", "", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveAppToCanvas(initial, "workspace-1", "com.free", 0.4f, 0.4f, 0))
+        // com.free's grid fallback is still cell 0; growing it to 4x4 would
+        // smother com.grid@1 on an ordinary grid tile — but com.free is exempt.
+        val result = requireNotNull(WorkspaceStore.resizeApp(moved, "workspace-1", "com.free", 4, 4))
+        val free = result.workspaceAt(0)!!.cells.single { it.packageName == "com.free" }
+        assertEquals(4, free.spanX)
+        assertTrue(free.pos?.x == 0.4f)
+    }
+
+    @Test
+    fun `placeApp clears a tile's free position when it is placed on a specific grid cell`() {
+        val initial = WorkspaceStore.migrateLegacy(3, "com.free", "", "{}", "{}", "")
+        val moved = requireNotNull(WorkspaceStore.moveAppToCanvas(initial, "workspace-1", "com.free", 0.4f, 0.4f, 0))
+        val placed = requireNotNull(WorkspaceStore.placeApp(moved, "workspace-1", "com.free", 3))
+        val cell = placed.workspaceAt(0)!!.cells.single { it.packageName == "com.free" }
+        assertNull(cell.pos)
+        assertEquals(3, cell.cell)
+    }
 }
