@@ -1,5 +1,6 @@
 package com.ciyato.launcher.ui.components
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
@@ -22,6 +23,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
@@ -51,6 +53,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.data.CanvasPos
 import com.ciyato.launcher.data.InstalledApp
 import com.ciyato.launcher.ui.theme.CiyatoBgEl2
 import com.ciyato.launcher.ui.theme.CiyatoGold
@@ -88,6 +91,16 @@ fun WorkspaceGrid(
     // can leave this at its default and behaviour is unchanged.
     cellSpans: Map<Int, Pair<Int, Int>> = emptyMap(),
     onResize: (packageName: String, spanX: Int, spanY: Int) -> Unit = { _, _, _ -> },
+    // packageName -> free placement, additive to [cellApps]'s grid cell (see
+    // AppCell.pos / CanvasPos). A package present here renders absolutely at
+    // (pos.x * canvasWidth, pos.y * canvasHeight) instead of grid flow,
+    // ordered by pos.z, and never reserves/hole-punches its grid fallback
+    // cell or affects the row count — the grid stays the DEFAULT layout
+    // generator only, never a runtime constraint on a moved object.
+    canvasPositions: Map<String, CanvasPos> = emptyMap(),
+    // Package that just landed from a drag, for a brief settle animation.
+    // Null (default) means no tile animates — existing callers are unaffected.
+    settlingPackage: String? = null,
 ) {
     val cols = columns.coerceIn(3, 8)
 
@@ -113,11 +126,18 @@ fun WorkspaceGrid(
     // is stable well before a person can physically grab a resize handle.
     var cellPxSize by remember { mutableStateOf(IntSize.Zero) }
 
+    // A free-positioned app is exempt from grid flow entirely (see
+    // AppCell.pos): it must never reserve its fallback cell, hole-punch the
+    // grid, or count toward the row calculation below. Split once so every
+    // grid computation that follows only ever sees [gridApps].
+    val gridApps = if (canvasPositions.isEmpty()) cellApps else cellApps.filterValues { it.packageName !in canvasPositions }
+    val freeApps = if (canvasPositions.isEmpty()) emptyMap() else cellApps.filterValues { it.packageName in canvasPositions }
+
     // Every rectangle currently covered by a placed (non-hidden) tile, keyed
     // covered-cell -> origin-cell. Drives both the row count (a spanning tile on
     // the last row extends the grid) and which cells skip the empty placeholder.
     val coveredBy = buildMap {
-        cellApps.forEach { (origin, app) ->
+        gridApps.forEach { (origin, app) ->
             if (app.packageName == hiddenPackage) return@forEach
             val (spanX, spanY) = resizePreview[app.packageName] ?: cellSpans[origin] ?: (1 to 1)
             val originCol = origin % cols
@@ -127,7 +147,7 @@ fun WorkspaceGrid(
             }
         }
     }
-    val maxCovered = coveredBy.keys.maxOrNull() ?: (cellApps.keys.maxOrNull() ?: -1)
+    val maxCovered = coveredBy.keys.maxOrNull() ?: (gridApps.keys.maxOrNull() ?: -1)
     val neededRows = if (maxCovered < 0) 0 else (maxCovered / cols) + 1
     val effectiveRows = maxOf(minRows.coerceAtLeast(1), neededRows)
     val totalCells = effectiveRows * cols
@@ -139,7 +159,7 @@ fun WorkspaceGrid(
                 val originOfCovered = coveredBy[cellIndex]
                 val isOrigin = originOfCovered == cellIndex
                 val isCoveredByOther = originOfCovered != null && !isOrigin
-                val app = cellApps[cellIndex]
+                val app = gridApps[cellIndex]
 
                 if (isOrigin && app != null && app.packageName != hiddenPackage) {
                     val (spanX, spanY) = resizePreview[app.packageName] ?: cellSpans[cellIndex] ?: (1 to 1)
@@ -154,6 +174,7 @@ fun WorkspaceGrid(
                             columns = cols,
                             isEditMode = isEditMode,
                             isTargeted = isTargeted,
+                            isSettling = app.packageName == settlingPackage,
                             iconSize = iconSize,
                             fontSize = fontSize,
                             lineHeight = lineHeight,
@@ -201,33 +222,100 @@ fun WorkspaceGrid(
                     }
                 }
             }
+
+            // Free-positioned tiles: absolute canvas placement, never part of
+            // grid flow. Declared (and therefore placed — see the measure
+            // block below) AFTER every grid child, sorted ascending by z, so
+            // they draw above the grid and higher-z free tiles draw above
+            // lower-z ones — in Compose, later-placed children draw on top.
+            freeApps.entries
+                .sortedBy { (_, app) -> canvasPositions[app.packageName]?.z ?: 0 }
+                .forEach { (cellIndex, app) ->
+                    if (app.packageName == hiddenPackage) return@forEach
+                    val pos = canvasPositions[app.packageName] ?: return@forEach
+                    val (spanX, spanY) = resizePreview[app.packageName] ?: cellSpans[cellIndex] ?: (1 to 1)
+                    key(app.packageName) {
+                        ResizableWorkspaceTile(
+                            modifier = Modifier.layoutId(FreeSlot(pos.x, pos.y, spanX, spanY)),
+                            cell = cellIndex,
+                            app = app,
+                            spanX = spanX,
+                            spanY = spanY,
+                            columns = cols,
+                            isEditMode = isEditMode,
+                            isTargeted = false,
+                            isSettling = app.packageName == settlingPackage,
+                            iconSize = iconSize,
+                            fontSize = fontSize,
+                            lineHeight = lineHeight,
+                            isExpanded = app.packageName in expandedPackages,
+                            cellPxSize = cellPxSize,
+                            onTap = onAppTap,
+                            tileGesture = tileGesture,
+                            onCellSizeMeasured = { cellPxSize = it },
+                            onResizePreview = { sx, sy -> resizePreview[app.packageName] = sx to sy },
+                            onResizeCommit = { sx, sy ->
+                                resizePreview.remove(app.packageName)
+                                if (sx != spanX || sy != spanY) onResize(app.packageName, sx, sy)
+                            },
+                            onResizeCancel = { resizePreview.remove(app.packageName) },
+                        )
+                    }
+                }
         },
     ) { measurables, constraints ->
         val spacingPx = spacing.roundToPx()
         val cellW = ((constraints.maxWidth - spacingPx * (cols - 1)) / cols).coerceAtLeast(0)
         val cellH = (cellW / cellAspectRatio).roundToInt().coerceAtLeast(0)
+        val totalHeight = effectiveRows * cellH + spacingPx * (effectiveRows - 1).coerceAtLeast(0)
 
         val placed = measurables.map { measurable ->
-            val slot = measurable.layoutId as GridSlot
+            val slot = measurable.layoutId as WorkspaceSlot
             val w = slot.spanX * cellW + spacingPx * (slot.spanX - 1)
             val h = slot.spanY * cellH + spacingPx * (slot.spanY - 1)
             slot to measurable.measure(Constraints.fixed(w.coerceAtLeast(0), h.coerceAtLeast(0)))
         }
-        val totalHeight = effectiveRows * cellH + spacingPx * (effectiveRows - 1).coerceAtLeast(0)
 
         layout(constraints.maxWidth, totalHeight) {
+            // Grid tiles place first (any order among themselves), free tiles
+            // place after in ascending-z content order — see the note above.
             placed.forEach { (slot, placeable) ->
-                val col = slot.cell % cols
-                val row = slot.cell / cols
-                placeable.placeRelative(col * (cellW + spacingPx), row * (cellH + spacingPx))
+                when (slot) {
+                    is GridSlot -> {
+                        val col = slot.cell % cols
+                        val row = slot.cell / cols
+                        placeable.placeRelative(col * (cellW + spacingPx), row * (cellH + spacingPx))
+                    }
+                    is FreeSlot -> {
+                        placeable.placeRelative(
+                            (slot.x * constraints.maxWidth).roundToInt(),
+                            (slot.y * totalHeight).roundToInt(),
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-/** Placement key threaded through the custom [Layout]: which cell a child
- *  originates at, and how many columns/rows (>=1) its rectangle spans. */
-private data class GridSlot(val cell: Int, val spanX: Int, val spanY: Int)
+/** Placement key threaded through the custom [Layout]. Every child (grid or
+ *  free) exposes its span so measurement is one shared code path; only
+ *  placement (col/row vs. canvas fraction) differs — see the `layout {}`
+ *  block above. */
+private sealed interface WorkspaceSlot {
+    val spanX: Int
+    val spanY: Int
+}
+
+/** A grid-flowed child: which cell it originates at. */
+private data class GridSlot(val cell: Int, override val spanX: Int, override val spanY: Int) : WorkspaceSlot
+
+/** A free-positioned child (see [CanvasPos]): [x]/[y] are normalized
+ *  fractions of the canvas this [Layout] itself renders at — resolved to
+ *  pixels only here, against this pass's own measured size, so it always
+ *  matches whatever a caller derives from this same node's
+ *  [androidx.compose.ui.layout.onGloballyPositioned] bounds. */
+private data class FreeSlot(val x: Float, val y: Float, override val spanX: Int, override val spanY: Int) : WorkspaceSlot
 
 private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
@@ -284,12 +372,28 @@ private fun ResizableWorkspaceTile(
     onResizeCommit: (spanX: Int, spanY: Int) -> Unit,
     onResizeCancel: () -> Unit,
     modifier: Modifier = Modifier,
+    // True for exactly one recomposition right after this tile lands from a
+    // drag (see WorkspaceGrid's settlingPackage). Drives a small landing
+    // bounce; the caller is responsible for clearing it soon after (and for
+    // never setting it at all when reduceMotion is on).
+    isSettling: Boolean = false,
 ) {
     val displaceScale by animateFloatAsState(
         targetValue = if (isTargeted) 0.90f else 1f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
         label = "grid_scale",
     )
+    // Small "landing" bounce right after a drop — a dip-then-spring-back to
+    // 1f, distinct from [displaceScale] above (which reacts to a DIFFERENT
+    // tile being dragged over this one). Multiplied together below so both
+    // can be mid-flight at once without fighting each other.
+    val settleScale = remember(app.packageName) { Animatable(1f) }
+    LaunchedEffect(isSettling) {
+        if (isSettling) {
+            settleScale.snapTo(0.92f)
+            settleScale.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 300f))
+        }
+    }
     var showPresetMenu by remember(app.packageName) { mutableStateOf(false) }
     var dragBaseSpan by remember(app.packageName) { mutableStateOf(spanX to spanY) }
     var dragAccum by remember(app.packageName) { mutableStateOf(Offset.Zero) }
@@ -313,7 +417,11 @@ private fun ResizableWorkspaceTile(
 
     Box(
         modifier = modifier
-            .graphicsLayer { scaleX = displaceScale; scaleY = displaceScale }
+            .graphicsLayer {
+                val scale = displaceScale * settleScale.value
+                scaleX = scale
+                scaleY = scale
+            }
             .then(if (isTargeted) Modifier.border(2.dp, CiyatoGold, RoundedCornerShape(16.dp)) else Modifier)
             .onGloballyPositioned {
                 onCellSizeMeasured(IntSize(it.size.width / spanX, it.size.height / spanY))

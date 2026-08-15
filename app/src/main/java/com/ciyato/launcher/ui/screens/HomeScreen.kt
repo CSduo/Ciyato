@@ -71,6 +71,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import android.view.WindowManager
 import com.ciyato.launcher.data.AppCategory
+import com.ciyato.launcher.data.CanvasPos
 import com.ciyato.launcher.data.CustomCategoryPresentation
 import com.ciyato.launcher.data.FocusSessionManager
 import com.ciyato.launcher.data.InstalledApp
@@ -271,11 +272,26 @@ fun HomeScreen(
     var upwardDrag by remember { mutableFloatStateOf(0f) }
     var launcherSurfaceHeight by remember { mutableFloatStateOf(0f) }
     var launcherSurfaceWidth by remember { mutableFloatStateOf(0f) }
-    var isDrawerGestureArmed by remember { mutableStateOf(false) }
 
     // ── Universal floating drag (grid ↔ workspace ↔ dock) ─────────────────────
     val dragController = remember { LauncherDragController() }
     var edgeFlipDir by remember { mutableIntStateOf(0) }   // -1 left, +1 right, 0 none
+
+    // Root-coordinate bounds of the currently visible page's WorkspaceGrid —
+    // the same Layout that reports cell bounds via onCellBounds, so this is
+    // the real rendered canvas size/position, never a guessed screen size.
+    // Free-canvas drop math (see commitGridDrop) reads this directly.
+    var activeGridBounds by remember { mutableStateOf<Rect?>(null) }
+
+    // Package that just landed from a drag, for WorkspaceGrid's brief settle
+    // animation — cleared automatically a moment later.
+    var settlingPackage by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(settlingPackage) {
+        if (settlingPackage != null) {
+            delay(220)
+            settlingPackage = null
+        }
+    }
 
     // Custom categories & order
     val customCats by viewModel.customCategories.collectAsState()
@@ -674,7 +690,8 @@ fun HomeScreen(
     }
     val density = LocalDensity.current
     val categoryMoveThresholdPx = with(density) { cardHeight.toPx() * 0.52f }
-    val drawerActivationHeightPx = with(density) { 96.dp.toPx() }
+    // Shared threshold for every swipe-up-to-open-drawer path (nested-scroll
+    // bubbling over the page content, and the plain drag on the dock strip).
     val drawerOpenDistancePx = with(density) { 96.dp.toPx() }
     val spacing = when (homeLayoutMode) {
         "dense" -> 12.dp
@@ -782,6 +799,24 @@ fun HomeScreen(
         }
     }
 
+    /**
+     * Root-coordinate finger position converted to a 0f..1f fraction of the
+     * currently visible page's own WorkspaceGrid — the exact same rectangle
+     * [CanvasPos] is measured against at render time (see WorkspaceGrid's
+     * `layout {}` block), taken from the same Layout that already supplies
+     * cell bounds via onCellBounds, never a guessed screen size. Falls back
+     * to the origin if bounds haven't been measured yet; WorkspaceStore
+     * clamps into range regardless.
+     */
+    fun canvasFraction(finger: Offset): Offset {
+        val bounds = activeGridBounds ?: return Offset.Zero
+        if (bounds.width <= 0f || bounds.height <= 0f) return Offset.Zero
+        return Offset(
+            ((finger.x - bounds.left) / bounds.width).coerceIn(0f, 1f),
+            ((finger.y - bounds.top) / bounds.height).coerceIn(0f, 1f),
+        )
+    }
+
     fun commitGridDrop(sourcePage: Int) {
         val pkg = dragController.activePackage ?: run { endDrag(); return }
         if (!dragController.movedFar(dragMoveThresholdPx)) {
@@ -800,11 +835,19 @@ fun HomeScreen(
                 viewModel.removeAppFromPage(sourcePage, pkg)
                 offerLayoutUndo("Moved to dock", snapshot)
             }
-            dragController.targetCell != null -> {
-                val cell = dragController.targetCell!!
-                if (currentPage == sourcePage) viewModel.placeAppAtCell(currentPage, pkg, cell)
-                else viewModel.moveAppToCell(sourcePage, currentPage, pkg, cell)
-                offerLayoutUndo("Shortcut moved", snapshot)
+            activeGridBounds?.contains(dragController.fingerRoot) == true -> {
+                // Freeform: the object lands exactly where it was released,
+                // never snapped to a cell — the canvas is a persistent
+                // surface, not a section, and that rule holds on every
+                // workspace page, not just Home.
+                val (x, y) = canvasFraction(dragController.fingerRoot)
+                if (currentPage != sourcePage) viewModel.moveAppBetweenWorkspaces(sourcePage, currentPage, pkg)
+                viewModel.moveAppToCanvasPos(currentPage, pkg, x, y)
+                if (!reduceMotion) settlingPackage = pkg
+                offerLayoutUndo(
+                    if (currentPage != sourcePage) "Shortcut moved to workspace" else "Shortcut moved",
+                    snapshot,
+                )
             }
             currentPage != sourcePage -> {
                 viewModel.moveAppBetweenWorkspaces(sourcePage, currentPage, pkg)
@@ -865,9 +908,13 @@ fun HomeScreen(
             }
         }
     }
-    // Cell zones belong to the visible page only; clear on flip so the incoming
-    // page re-registers fresh bounds.
-    LaunchedEffect(pagerState.currentPage) { dragController.cellZones.clear() }
+    // Cell zones (and the canvas bounds derived from the same grid) belong to
+    // the visible page only; clear on flip so the incoming page re-registers
+    // fresh bounds.
+    LaunchedEffect(pagerState.currentPage) {
+        dragController.cellZones.clear()
+        activeGridBounds = null
+    }
 
     Scaffold(
         containerColor = Color.Transparent, // Let system wallpaper or custom background show
@@ -887,27 +934,6 @@ fun HomeScreen(
                             if (isEditMode || showLauncherControls) cancelLauncherInteraction()
                         },
                     )
-                }
-                .pointerInput(isEditMode, showAppDrawer) {
-                    detectVerticalDragGestures(
-                        onDragStart = { offset ->
-                            val isBottomHalf = offset.y >= (size.height * 0.45f)
-                            isDrawerGestureArmed = !isEditMode && showAppDrawer && isBottomHalf
-                            upwardDrag = 0f
-                        },
-                        onVerticalDrag = { _, amount ->
-                            if (isDrawerGestureArmed && amount < 0f) upwardDrag += amount
-                        },
-                        onDragEnd = {
-                            if (isDrawerGestureArmed && upwardDrag <= -24.dp.toPx()) onOpenDrawer()
-                            upwardDrag = 0f
-                            isDrawerGestureArmed = false
-                        },
-                        onDragCancel = {
-                            upwardDrag = 0f
-                            isDrawerGestureArmed = false
-                        },
-                    )
                 },
         ) {
             if (!useSystemWallpaper && ciyatoImageWallpaper.isNotBlank()) {
@@ -924,6 +950,16 @@ fun HomeScreen(
             }
 
             val homeDirectionalConnection = com.ciyato.launcher.ui.components.rememberDirectionalNestedScrollConnection()
+            // Swipe-up-to-open-drawer: an ancestor of every page's LazyColumn,
+            // so it sees whatever vertical drag/fling that column couldn't
+            // itself consume (already scrolled to the end, or nothing to
+            // scroll) — see DrawerSwipeNestedScrollConnection for why this
+            // replaces the old root-level pointerInput.
+            val drawerSwipeConnection = rememberDrawerSwipeNestedScrollConnection(
+                thresholdPx = drawerOpenDistancePx,
+                enabled = !isEditMode && showAppDrawer,
+                onOpen = onOpenDrawer,
+            )
 
             // Swipable layout area. Keep neighbours composed so a drag gesture
             // survives an edge-flip to an adjacent workspace (the source tile
@@ -935,6 +971,7 @@ fun HomeScreen(
                     .fillMaxSize()
                     .directionResetPointerInput(homeDirectionalConnection)
                     .nestedScroll(homeDirectionalConnection)
+                    .nestedScroll(drawerSwipeConnection)
             ) { page ->
                 // Include the live swipe fraction so transitions animate smoothly
                 // across the whole gesture instead of snapping at the halfway point.
@@ -1344,6 +1381,9 @@ fun HomeScreen(
                                 val cellSpans1 = remember(apps, workspaceLayoutV2, gridSizePref) {
                                     viewModel.cellSpansForPage(1)
                                 }
+                                val canvasPos1 = remember(apps, workspaceLayoutV2, gridSizePref) {
+                                    viewModel.canvasPosForPage(1)
+                                }
                                 WorkspaceGrid(
                                     // The Home grid's cells are placed against the same
                                     // authorColumns (gridCols, from the grid-size setting) every
@@ -1355,6 +1395,8 @@ fun HomeScreen(
                                     minRows = 2,
                                     cellApps = cellApps1,
                                     cellSpans = cellSpans1,
+                                    canvasPositions = canvasPos1,
+                                    settlingPackage = settlingPackage.takeIf { pagerState.currentPage == 1 },
                                     expandedPackages = expandedAppsSet,
                                     isEditMode = isEditMode,
                                     onAppTap = { app -> viewModel.launchApp(app) },
@@ -1362,6 +1404,9 @@ fun HomeScreen(
                                     hiddenPackage = dragController.activePackage,
                                     highlightCell = dragController.targetCell.takeIf {
                                         dragController.isActive && !dragController.overDock && pagerState.currentPage == 1
+                                    },
+                                    modifier = Modifier.onGloballyPositioned {
+                                        if (pagerState.currentPage == 1) activeGridBounds = it.boundsInRoot()
                                     },
                                     onCellBounds = { cell, bounds ->
                                         if (pagerState.currentPage == 1) {
@@ -1562,17 +1607,25 @@ fun HomeScreen(
                                     val cellSpans = remember(apps, pageIndex, workspaceLayoutV2, gridSizePref) {
                                         viewModel.cellSpansForPage(pageIndex)
                                     }
+                                    val canvasPos = remember(apps, pageIndex, workspaceLayoutV2, gridSizePref) {
+                                        viewModel.canvasPosForPage(pageIndex)
+                                    }
                                     WorkspaceGrid(
                                         columns = gridCols,
                                         minRows = gridRows,
                                         cellApps = cellApps,
                                         cellSpans = cellSpans,
+                                        canvasPositions = canvasPos,
+                                        settlingPackage = settlingPackage.takeIf { pageIndex == pagerState.currentPage },
                                         isEditMode = isEditMode,
                                         onAppTap = { tapped -> viewModel.launchApp(tapped) },
                                         onResize = { pkg, spanX, spanY -> viewModel.resizeAppTile(pageIndex, pkg, spanX, spanY) },
                                         hiddenPackage = dragController.activePackage,
                                         highlightCell = dragController.targetCell.takeIf {
                                             dragController.isActive && !dragController.overDock
+                                        },
+                                        modifier = Modifier.onGloballyPositioned {
+                                            if (pageIndex == pagerState.currentPage) activeGridBounds = it.boundsInRoot()
                                         },
                                         onCellBounds = { cell, bounds ->
                                             if (pageIndex == pagerState.currentPage) {
@@ -1615,7 +1668,24 @@ fun HomeScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(bottom = scaffoldPadding.calculateBottomPadding() + 20.dp),
+                    .padding(bottom = scaffoldPadding.calculateBottomPadding() + 20.dp)
+                    // The page-indicator/dock strip sits outside the pager
+                    // (and therefore outside drawerSwipeConnection's subtree),
+                    // so it needs its own plain swipe-up detector — nothing
+                    // scrollable underneath it to compete for the gesture.
+                    .pointerInput(isEditMode, showAppDrawer, drawerOpenDistancePx) {
+                        detectVerticalDragGestures(
+                            onDragStart = { upwardDrag = 0f },
+                            onVerticalDrag = { _, amount ->
+                                if (!isEditMode && showAppDrawer && amount < 0f) upwardDrag += amount
+                            },
+                            onDragEnd = {
+                                if (!isEditMode && showAppDrawer && upwardDrag <= -drawerOpenDistancePx) onOpenDrawer()
+                                upwardDrag = 0f
+                            },
+                            onDragCancel = { upwardDrag = 0f },
+                        )
+                    },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Workspace map: always visible so you know where you are and

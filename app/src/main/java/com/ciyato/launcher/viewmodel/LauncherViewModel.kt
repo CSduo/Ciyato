@@ -702,14 +702,30 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Moves an app to a specific cell on another workspace (used by cross-page drag). */
-    fun moveAppToCell(fromPage: Int, toPage: Int, pkg: String, cell: Int) = viewModelScope.launch {
+    /**
+     * Moves an app to a free canvas position on [pageIndex] — [x]/[y] are
+     * normalized fractions of the workspace grid's own rendered area (see
+     * [CanvasPos]). The grid still generates the DEFAULT layout, but once an
+     * object is dragged like this it renders at this position instead, on
+     * every future load, until [resetAppToGridPos]. z always comes from
+     * [WorkspaceStore.nextZ] so the moved object comes to the front, same as
+     * bringing a window forward on a desktop.
+     */
+    fun moveAppToCanvasPos(pageIndex: Int, pkg: String, x: Float, y: Float) = viewModelScope.launch {
         updateLayout { layout ->
-            val from = layout.workspaceById(workspaceIdForPage(layout, fromPage) ?: return@updateLayout null)
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
-            val to = layout.workspaceById(workspaceIdForPage(layout, toPage) ?: return@updateLayout null)
+            WorkspaceStore.moveAppToCanvas(layout, workspace.id, pkg, x, y, WorkspaceStore.nextZ(layout, workspace.id))
+        }
+    }
+
+    /** Clears an app's free canvas position on [pageIndex] so it falls back
+     *  to ordinary grid flow at its preserved cell. */
+    fun resetAppToGridPos(pageIndex: Int, pkg: String) = viewModelScope.launch {
+        updateLayout { layout ->
+            val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)
                 ?: return@updateLayout null
-            WorkspaceStore.moveApp(layout, from.id, to.id, pkg, cell)
+            WorkspaceStore.resetAppToGrid(layout, workspace.id, pkg)
         }
     }
 
@@ -772,6 +788,16 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val workspaceId = workspaceIdForPage(layout, pageIndex) ?: return emptyMap()
         val cells = layout.workspaceById(workspaceId)?.cells.orEmpty()
         return cells.associate { it.cell to (it.spanX to it.spanY) }
+    }
+
+    /** packageName -> free canvas position, for one workspace page. Mirrors
+     *  [cellAppsForPage]/[cellSpansForPage]'s page resolution. A package
+     *  absent here is still grid-positioned — see [AppCell.pos]. */
+    fun canvasPosForPage(pageIndex: Int): Map<String, CanvasPos> {
+        val layout = currentWorkspaceLayout()
+        val workspaceId = workspaceIdForPage(layout, pageIndex) ?: return emptyMap()
+        val cells = layout.workspaceById(workspaceId)?.cells.orEmpty()
+        return cells.mapNotNull { c -> c.pos?.let { c.packageName to it } }.toMap()
     }
 
     fun getCategoriesForWorkspace(pageIndex: Int): List<String> {

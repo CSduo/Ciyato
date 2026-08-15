@@ -98,6 +98,74 @@ fun Modifier.directionResetPointerInput(connection: DirectionalNestedScrollConne
     }
 
 /**
+ * DrawerSwipeNestedScrollConnection
+ *
+ * Lets an upward drag or fling that a scrollable descendant (e.g. Home's
+ * LazyColumn) can't itself consume — because it's already at the end of its
+ * content, or has nothing scrollable at all — bubble up and open the app
+ * drawer, from anywhere on the page.
+ *
+ * This replaces a raw `pointerInput { detectVerticalDragGestures(...) }` at
+ * the screen root, which sounds like it should work but doesn't: Compose
+ * delivers pointer events to the innermost consumer first on the default
+ * (Main) pass, so a scrollable child always gets first claim on a vertical
+ * drag, and a root-level detector only ever sees what's left over — in
+ * practice, only drags that start somewhere the scrollable content doesn't
+ * cover at all. Going through the nested-scroll system instead means the
+ * drag doesn't need to start anywhere special: the moment the list can't
+ * absorb any more of an upward drag, the remainder bubbles here.
+ */
+class DrawerSwipeNestedScrollConnection(private val thresholdPx: Float) : NestedScrollConnection {
+    var enabled: Boolean = true
+    var onOpen: () -> Unit = {}
+
+    private var accumulated = 0f
+
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+        if (!enabled || available.y >= 0f) {
+            accumulated = 0f
+            return Offset.Zero
+        }
+        accumulated += available.y
+        if (accumulated <= -thresholdPx) {
+            accumulated = 0f
+            onOpen()
+            // Claim the remainder so the (already-exhausted) scrollable
+            // doesn't also try to react to it, e.g. with an overscroll glow.
+            return Offset(0f, available.y)
+        }
+        return Offset.Zero
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        // A quick upward flick the list couldn't use at all (already at its
+        // end, or nothing to scroll) often never accumulates enough
+        // onPostScroll distance on its own to cross the threshold above —
+        // treat a decisive flick the same as a held drag past it.
+        if (enabled && accumulated <= 0f && available.y < -FLING_OPEN_VELOCITY_PX_PER_S) onOpen()
+        accumulated = 0f
+        return Velocity.Zero
+    }
+}
+
+private const val FLING_OPEN_VELOCITY_PX_PER_S = 600f
+
+/** Remembers a [DrawerSwipeNestedScrollConnection] for [thresholdPx], keeping
+ *  [enabled]/[onOpen] current across recomposition without tearing the
+ *  connection down mid-gesture (which would lose its accumulated drag). */
+@Composable
+fun rememberDrawerSwipeNestedScrollConnection(
+    thresholdPx: Float,
+    enabled: Boolean,
+    onOpen: () -> Unit,
+): DrawerSwipeNestedScrollConnection {
+    val connection = remember(thresholdPx) { DrawerSwipeNestedScrollConnection(thresholdPx) }
+    connection.enabled = enabled
+    connection.onOpen = onOpen
+    return connection
+}
+
+/**
  * Directional Touch Lock Modifier
  * Pointer input modifier that monitors initial touch down and movement to lock pointer direction.
  */
