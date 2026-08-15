@@ -105,7 +105,17 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Settings ──────────────────────────────────────────────────────────────
 
-    val onboardingDone     = settings.onboardingDone    .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /**
+     * null until DataStore answers — deliberately NOT `false`.
+     *
+     * A `false` placeholder is indistinguishable from a genuine "never
+     * onboarded", so a NavHost created during that first frame commits to the
+     * onboarding destination and an already-onboarded person is shown
+     * onboarding again on every launch. Callers must wait for a non-null value
+     * before choosing a start destination.
+     */
+    val onboardingDone: StateFlow<Boolean?> = settings.onboardingDone
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val homeTipDismissed   = settings.homeTipDismissed  .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val showHomeGreeting   = settings.showHomeGreeting  .stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val showHomeSearch     = settings.showHomeSearch    .stateIn(viewModelScope, SharingStarted.Eagerly, true)

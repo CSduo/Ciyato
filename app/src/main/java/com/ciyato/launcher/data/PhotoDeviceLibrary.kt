@@ -1,15 +1,22 @@
 package com.ciyato.launcher.data
 
 import android.content.ClipData
+import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
+import android.database.Cursor
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Size
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 
 /**
@@ -45,42 +52,151 @@ object PhotoDeviceLibrary {
         val durationMs: Long,
     )
 
+    private val IMAGE_PROJECTION = arrayOf(
+        MediaStore.Images.Media._ID,
+        MediaStore.Images.Media.DISPLAY_NAME,
+        MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+        MediaStore.Images.Media.DATE_TAKEN,
+        MediaStore.Images.Media.DATE_MODIFIED,
+        MediaStore.Images.Media.SIZE,
+    )
+
+    private const val IMAGE_SORT = "${MediaStore.Images.Media.DATE_MODIFIED} DESC"
+
+    /** Reads the row the cursor is parked on, using [IMAGE_PROJECTION]'s column order. */
+    private fun Cursor.readImage(): DeviceImage = DeviceImage(
+        uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, getLong(0)),
+        name = getString(1) ?: "",
+        bucket = getString(2) ?: "Other",
+        // DATE_TAKEN is null for anything the camera didn't write (screenshots,
+        // downloads), so fall back to DATE_MODIFIED — which is in seconds.
+        takenAtMs = getLong(3).takeIf { it > 0 } ?: (getLong(4) * 1000L),
+        sizeBytes = getLong(5),
+    )
+
+    private fun queryImages(context: Context, trashedOnly: Boolean): Cursor? {
+        val resolver = context.contentResolver
+        val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        if (!trashedOnly) return resolver.query(collection, IMAGE_PROJECTION, null, null, IMAGE_SORT)
+        // Trashed rows are hidden from ordinary queries by design; only the
+        // Bundle form of query() can ask for them, and only from API 30.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val args = Bundle().apply {
+            putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
+            putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, IMAGE_SORT)
+        }
+        return resolver.query(collection, IMAGE_PROJECTION, args, null)
+    }
+
     suspend fun loadImages(context: Context, limit: Int = 3_000): List<DeviceImage> =
         withContext(Dispatchers.IO) {
             buildList {
                 runCatching {
-                    context.contentResolver.query(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        arrayOf(
-                            MediaStore.Images.Media._ID,
-                            MediaStore.Images.Media.DISPLAY_NAME,
-                            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
-                            MediaStore.Images.Media.DATE_TAKEN,
-                            MediaStore.Images.Media.DATE_MODIFIED,
-                            MediaStore.Images.Media.SIZE,
-                        ),
-                        null,
-                        null,
-                        "${MediaStore.Images.Media.DATE_MODIFIED} DESC",
-                    )?.use { cursor ->
-                        while (cursor.moveToNext() && size < limit) {
-                            val taken = cursor.getLong(3).takeIf { it > 0 }
-                                ?: (cursor.getLong(4) * 1000L)
-                            add(
-                                DeviceImage(
-                                    uri = ContentUris.withAppendedId(
-                                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                                        cursor.getLong(0),
-                                    ),
-                                    name = cursor.getString(1) ?: "",
-                                    bucket = cursor.getString(2) ?: "Other",
-                                    takenAtMs = taken,
-                                    sizeBytes = cursor.getLong(5),
-                                ),
-                            )
-                        }
+                    queryImages(context, trashedOnly = false)?.use { cursor ->
+                        while (cursor.moveToNext() && size < limit) add(cursor.readImage())
                     }
                 }
+            }
+        }
+
+    /**
+     * Same query as [loadImages], but emits an early slice before finishing.
+     *
+     * Reading a few thousand MediaStore rows takes long enough that a single
+     * terminal result leaves the grid blank for seconds on a full phone. The
+     * sort is stable (newest first), so the early slice is already the top of
+     * the final list and later rows only ever append below it — nothing the
+     * person is looking at moves when the rest arrives.
+     */
+    fun imageStream(
+        context: Context,
+        firstBatch: Int = 180,
+        limit: Int = 3_000,
+    ): Flow<List<DeviceImage>> = flow {
+        val all = ArrayList<DeviceImage>(firstBatch)
+        var emittedEarly = false
+        runCatching {
+            queryImages(context, trashedOnly = false)?.use { cursor ->
+                while (cursor.moveToNext() && all.size < limit) {
+                    all.add(cursor.readImage())
+                    if (!emittedEarly && all.size >= firstBatch) {
+                        emittedEarly = true
+                        emit(ArrayList(all))
+                    }
+                }
+            }
+        }
+        emit(all)
+    }.flowOn(Dispatchers.IO)
+
+    /** Photos sitting in the system trash, newest first. Empty below API 30. */
+    suspend fun loadTrashedImages(context: Context, limit: Int = 1_000): List<DeviceImage> =
+        withContext(Dispatchers.IO) {
+            buildList {
+                runCatching {
+                    queryImages(context, trashedOnly = true)?.use { cursor ->
+                        while (cursor.moveToNext() && size < limit) add(cursor.readImage())
+                    }
+                }
+            }
+        }
+
+    /**
+     * True when the OS owns a real trash for media, so deleting is reversible.
+     *
+     * Ciyato deliberately does not hand-roll a trash below this: the only way
+     * to fake one is to copy every "deleted" file into private storage, which
+     * *doubles* usage at the exact moment someone is deleting to reclaim space,
+     * and leaves the copies orphaned if the app is uninstalled. Where the OS
+     * can't do it properly, we say so instead of pretending.
+     */
+    val trashSupported: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+
+    /**
+     * Consent requests for destructive media operations.
+     *
+     * Media Ciyato did not create belongs to whoever wrote it, so the system —
+     * not this app — asks for confirmation. Each returns the [IntentSender] to
+     * launch, or null when the platform is too old or the request is empty.
+     */
+    fun trashRequest(context: Context, uris: Collection<Uri>): IntentSender? {
+        val media = mediaUris(uris) ?: return null
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        return runCatching {
+            MediaStore.createTrashRequest(context.contentResolver, media, true).intentSender
+        }.getOrNull()
+    }
+
+    fun restoreRequest(context: Context, uris: Collection<Uri>): IntentSender? {
+        val media = mediaUris(uris) ?: return null
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        return runCatching {
+            MediaStore.createTrashRequest(context.contentResolver, media, false).intentSender
+        }.getOrNull()
+    }
+
+    fun deleteRequest(context: Context, uris: Collection<Uri>): IntentSender? {
+        val media = mediaUris(uris) ?: return null
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        return runCatching {
+            MediaStore.createDeleteRequest(context.contentResolver, media).intentSender
+        }.getOrNull()
+    }
+
+    /** Non-empty media-authority URIs, or null — anything else throws inside the system call. */
+    private fun mediaUris(uris: Collection<Uri>): List<Uri>? =
+        uris.filter { it.authority == MediaStore.AUTHORITY }.takeIf { it.isNotEmpty() }
+
+    /**
+     * Legacy delete for API < 30, where no trash and no batch consent exist.
+     * Returns how many rows actually went away, so callers can report the true
+     * number rather than assuming the whole selection succeeded.
+     */
+    suspend fun deleteDirectly(context: Context, uris: Collection<Uri>): Int =
+        withContext(Dispatchers.IO) {
+            uris.count { uri ->
+                runCatching { context.contentResolver.delete(uri, null, null) > 0 }
+                    .getOrDefault(false)
             }
         }
 
@@ -227,6 +343,16 @@ object PhotoDeviceLibrary {
         // Editors write the result back through the same URI.
         if (action == Intent.ACTION_EDIT) target.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         if (target.resolveActivity(context.packageManager) == null) return false
+        target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // Sharing is the one case where a chooser is the point — you pick a
+        // different destination every time. Viewing and editing are not:
+        // createChooser explicitly bypasses the default-app setting, so routing
+        // them through it re-asked "open with?" on every single tap even after
+        // the person had chosen a gallery and tapped Always. Launch those
+        // directly and let Android honour the default it already recorded.
+        if (action != Intent.ACTION_SEND) {
+            if (runCatching { context.startActivity(target) }.isSuccess) return true
+        }
         val label = when (action) {
             Intent.ACTION_EDIT -> "Edit photo with"
             Intent.ACTION_SEND -> "Share photo"
@@ -235,6 +361,25 @@ object PhotoDeviceLibrary {
         return runCatching {
             context.startActivity(
                 Intent.createChooser(target, label).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }.isSuccess
+    }
+
+    /** Share sheet for a whole selection at once. */
+    fun launchShareMultiple(context: Context, uris: Collection<Uri>): Boolean {
+        if (uris.isEmpty()) return false
+        val list = ArrayList(uris)
+        if (list.size == 1) return launchPhotoAction(context, list[0], Intent.ACTION_SEND)
+        val target = Intent(Intent.ACTION_SEND_MULTIPLE)
+        target.setType("image/*")
+        target.putParcelableArrayListExtra(Intent.EXTRA_STREAM, list)
+        target.clipData = ClipData.newUri(context.contentResolver, "photos", list[0])
+            .also { clip -> list.drop(1).forEach { clip.addItem(ClipData.Item(it)) } }
+        target.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        return runCatching {
+            context.startActivity(
+                Intent.createChooser(target, "Share ${list.size} photos")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         }.isSuccess
     }

@@ -7,6 +7,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -31,6 +34,7 @@ import com.ciyato.launcher.data.LocationHelper
 import com.ciyato.launcher.ui.components.CiyatoBottomNavBar
 import com.ciyato.launcher.ui.components.CiyatoNavItem
 import com.ciyato.launcher.ui.screens.*
+import com.ciyato.launcher.ui.theme.CiyatoBg
 import com.ciyato.launcher.ui.theme.CiyatoTheme
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
@@ -83,26 +87,31 @@ class MainActivity : FragmentActivity() {
                 val onboardingDone by viewModel.onboardingDone.collectAsState()
                 val navController     = rememberNavController()
                 val requestedDestination = intent.getStringExtra(EXTRA_START_DESTINATION)
-                val startDest = when (requestedDestination) {
+                // An explicit destination (app shortcut, Settings deep link) never
+                // depends on onboarding state, so it resolves immediately. Only the
+                // plain launch has to wait for DataStore.
+                val startDest: String? = when (requestedDestination) {
                     "home", "files", "photos", "search", "settings", "agenda" -> requestedDestination
                     "dashboard" -> "home"
                     "shared" -> "photos"
-                    else -> if (onboardingDone) "home" else "onboarding"
+                    else -> onboardingDone?.let { done -> if (done) "home" else "onboarding" }
                 }
 
-                // onboardingDone starts false and DataStore loads the real value
-                // a frame later; NavHost fixes its start destination at creation,
-                // so an already-onboarded user could land on onboarding. Once the
-                // stored value resolves to true, navigate off it immediately.
-                LaunchedEffect(onboardingDone) {
-                    if (onboardingDone &&
-                        requestedDestination == null &&
-                        navController.currentDestination?.route == "onboarding"
-                    ) {
-                        navController.navigate("home") {
-                            popUpTo("onboarding") { inclusive = true }
-                        }
-                    }
+                // Don't compose the NavHost until the answer is known.
+                //
+                // This used to render immediately with onboardingDone's `false`
+                // placeholder and then try to correct itself once DataStore
+                // resolved. That correction was guarded on
+                // `currentDestination?.route == "onboarding"`, but on the first
+                // composition currentDestination is still null — the graph hasn't
+                // attached. If the stored value arrived in that window the guard
+                // matched nothing, and since onboardingDone never changes again the
+                // effect never re-ran: an onboarded person was stranded on
+                // onboarding every single launch. Waiting one frame removes the race
+                // entirely instead of racing to undo it.
+                if (startDest == null) {
+                    Box(Modifier.fillMaxSize().background(CiyatoBg))
+                    return@CiyatoTheme
                 }
 
                 // Apply the "Block screenshots" setting on the organizer surface

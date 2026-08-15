@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ciyato.launcher.data.MediaLibraryRepository
+import com.ciyato.launcher.data.PhotoDeviceLibrary
 import com.ciyato.launcher.ui.components.*
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
@@ -95,6 +96,12 @@ fun StorageCleanupScreen(
                 // media permission, so they simply don't appear rather than
                 // showing a fake zero.
                 if (hasPermission) {
+                    // Trashed photos are the one category that is pure win:
+                    // they are already deleted as far as the person is
+                    // concerned, and still occupying the disk until something
+                    // clears them. Emptying the trash is what actually frees
+                    // that space, so the cleanup agent owns that job.
+                    add(scanTrash(context))
                     add(scanLargeFiles(context))
                     add(scanOldScreenshots(context))
                     add(scanDownloads(context))
@@ -440,6 +447,7 @@ private enum class CleanupCategory(val label: String, val description: String, v
     DOWNLOADS("Downloads", "Everything in Downloads", Icons.Default.Download, CiyatoGreen),
     CACHE("App Cache", "Ciyato's own temporary data", Icons.Default.Memory, CiyatoAmber),
     EMPTY_FILES("Empty Files", "Zero-byte entries", Icons.Default.DeleteSweep, CiyatoRed),
+    TRASH("Trash", "Deleted photos still holding space", Icons.Default.DeleteForever, CiyatoRed),
 }
 
 private data class CleanupItem(
@@ -505,6 +513,25 @@ private val filesUri: Uri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXT
 private val pathColumn: String =
     if (Build.VERSION.SDK_INT >= 29) MediaStore.Files.FileColumns.RELATIVE_PATH
     else MediaStore.Files.FileColumns.DATA
+
+/**
+ * Photos sitting in the system trash.
+ *
+ * Deleting these goes through the same consent flow as every other media
+ * category — and because the rows are already trashed, that delete is the
+ * permanent one, which is exactly what emptying a trash means.
+ */
+private suspend fun scanTrash(context: Context): CategoryResult {
+    val items = PhotoDeviceLibrary.loadTrashedImages(context).map { image ->
+        CleanupItem(
+            id = image.uri.toString(),
+            name = image.name,
+            sizeBytes = image.sizeBytes,
+            uri = image.uri,
+        )
+    }
+    return CategoryResult(CleanupCategory.TRASH, items.sumOf { it.sizeBytes }, items.size, items)
+}
 
 private fun scanLargeFiles(context: Context): CategoryResult {
     val selection = "${MediaStore.Files.FileColumns.SIZE} >= ?"
