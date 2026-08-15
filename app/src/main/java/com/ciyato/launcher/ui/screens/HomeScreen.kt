@@ -783,7 +783,11 @@ fun HomeScreen(
     ) {
         val present = buildList {
             if (showHomeGreeting) add("greeting")
-            if (showHomeGreeting && "datetime" !in homeHiddenObjects) add("datetime")
+            // The clock is its own object with its own remove action, so it
+            // answers to its own switch only. Gating it on the greeting's
+            // toggle meant removing the greeting silently took the clock with
+            // it — while the Undo toast said "Greeting" and restored both.
+            if ("datetime" !in homeHiddenObjects) add("datetime")
             if (showHomeSearch) add("search")
             if (showHomeWeather) add("weather")
             if (showHomeAgenda) add("today")
