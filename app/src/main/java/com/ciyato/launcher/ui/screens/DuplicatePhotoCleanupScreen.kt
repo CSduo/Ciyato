@@ -42,7 +42,7 @@ import kotlin.coroutines.resume
 /**
  * DuplicatePhotoCleanupScreen — Suggestion #64
  * Finds duplicate photos using perceptual hashing and presents a
- * one-tap cleanup UI to delete duplicates (keeping the best quality copy).
+ * one-tap cleanup UI that trashes the extra copies, keeping the largest one.
  */
 
 @Composable
@@ -75,7 +75,9 @@ fun DuplicatePhotoCleanupScreen(
     }
 
     suspend fun deleteKeepingBest(group: DuplicatePhotoDetector.DuplicateGroup) {
-        val toDelete = group.photos.drop(1) // keep first (largest or most recent)
+        // photos[0] is the largest copy — DuplicatePhotoDetector sorts each
+        // group by size so the least re-compressed one is the survivor.
+        val toDelete = group.photos.drop(1)
         val requestConsent: suspend (IntentSender) -> Boolean = { intentSender ->
             suspendCancellableCoroutine { cont ->
                 pendingConsentResume = { granted -> cont.resume(granted) }
