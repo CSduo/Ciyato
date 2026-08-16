@@ -37,6 +37,11 @@ fun CiyatoTopBar(
     modifier: Modifier = Modifier,
     subtitle: String = "",
     subtitleColor: Color = CiyatoGold,
+    // Screens that paint their own backdrop (the weather gradient) need the
+    // bar to sit over it rather than punch a flat rectangle through the top.
+    // Without this they had to hand-roll a TopAppBar and drifted out of sync
+    // with everything else's type and metrics.
+    containerColor: Color = CiyatoBg,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     TopAppBar(
@@ -60,7 +65,7 @@ fun CiyatoTopBar(
             }
         },
         actions = actions,
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = CiyatoBg)
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = containerColor)
     )
 }
 

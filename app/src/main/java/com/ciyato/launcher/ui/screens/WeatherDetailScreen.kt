@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.data.LocationHelper
 import com.ciyato.launcher.data.WeatherRepository
 import com.ciyato.launcher.data.WeatherRepository.WeatherState
@@ -124,13 +125,11 @@ fun WeatherDetailScreen(
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            TopAppBar(
-                title = { Text("Weather", color = CiyatoWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CiyatoSec)
-                    }
-                },
+            CiyatoTopBar(
+                title = "Weather",
+                onBack = onBack,
+                // Transparent so the gradient behind it stays unbroken.
+                containerColor = Color.Transparent,
                 actions = {
                     if (viewModel != null) {
                         TextButton(onClick = {
@@ -145,7 +144,6 @@ fun WeatherDetailScreen(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         }
     ) { padding ->
