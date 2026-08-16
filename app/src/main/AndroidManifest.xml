@@ -91,6 +91,27 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!--
+          Notification badge counts. The service was written and working, its
+          own doc asserted it was "declared in AndroidManifest", and it never
+          was — so Android never bound it and badgeCounts stayed empty forever
+          while the notificationBadges setting defaulted to on.
+
+          Binding still requires the person to grant notification access in
+          system settings; Settings has a row for that. Until they do, the
+          service simply never starts, which is why badges are treated as
+          absent rather than zero.
+        -->
+        <service
+            android:name=".services.CiyatoNotificationListenerService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- LauncherHomeActivity is the actual Android HOME screen. -->
         <activity
             android:name=".LauncherHomeActivity"

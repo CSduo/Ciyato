@@ -100,7 +100,7 @@ fun AppVisibilityScreen(
                 onBack = onBack,
                 actions = {
                     if (apps.isNotEmpty()) {
-                        TextButton(onClick = { apps.forEach { viewModel.restoreApp(it.packageName) } }) {
+                        TextButton(onClick = { viewModel.restoreApps(apps.map { it.packageName }) }) {
                             Text("Restore all", color = CiyatoGold, fontSize = 12.sp)
                         }
                     }

@@ -1235,11 +1235,26 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         repo.setHiddenPackages(hiddenCsv)
     }
 
-    fun restoreApp(pkg: String) = viewModelScope.launch {
-        val removed = parsePackageCsv(settings.removedApps.first()).toMutableSet().apply { remove(pkg) }
-        val hidden = parsePackageCsv(settings.hiddenApps.first()).toMutableSet().apply { remove(pkg) }
-        val removedCsv = removed.sorted().joinToString(",")
-        val hiddenCsv = hidden.sorted().joinToString(",")
+    fun restoreApp(pkg: String) = restoreApps(listOf(pkg))
+
+    /**
+     * Restores a whole selection in ONE read-modify-write.
+     *
+     * "Restore all" used to be `apps.forEach { restoreApp(it) }`, and each of
+     * those is a read-modify-write that suspends at `first()` before writing.
+     * On Main.immediate every coroutine therefore read the same original CSV
+     * and wrote it back minus only its own package — last writer wins, so
+     * restoring 8 hidden apps restored exactly one and silently left seven
+     * hidden. Same lost-update shape the workspace layout hit, fixed the same
+     * way: one read, one write, whole batch.
+     */
+    fun restoreApps(packages: Collection<String>) = viewModelScope.launch {
+        if (packages.isEmpty()) return@launch
+        val drop = packages.toSet()
+        val removedCsv = parsePackageCsv(settings.removedApps.first())
+            .filterNot { it in drop }.sorted().joinToString(",")
+        val hiddenCsv = parsePackageCsv(settings.hiddenApps.first())
+            .filterNot { it in drop }.sorted().joinToString(",")
         settings.setRemovedApps(removedCsv)
         settings.setHiddenApps(hiddenCsv)
         repo.setRemovedPackages(removedCsv)

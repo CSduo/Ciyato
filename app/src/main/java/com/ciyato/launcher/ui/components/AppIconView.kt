@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.style.TextAlign
@@ -45,12 +46,27 @@ fun RealAppIcon(
     accentHex: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    // Cache the bitmap — only recompute when the drawable reference changes.
-    val bmp = remember(drawable) {
-        drawable.toBitmap((size.value * 2).toInt().coerceAtLeast(1), (size.value * 2).toInt().coerceAtLeast(1))
-    }
-    val accent = accentHex?.let { value ->
-        runCatching { Color(android.graphics.Color.parseColor(value)) }.getOrNull()
+    // Rasterizing a Drawable means allocating a Bitmap and running draw() — for
+    // an adaptive icon that is two layers plus a mask. This is the single leaf
+    // behind every icon in the launcher, so it happens 30-40 times in the first
+    // frames of Home and again for each item scrolling into the drawer. The
+    // process-wide cache below turns that into one raster per (icon, size)
+    // instead of one per composable instance; the repository already caches
+    // Drawables, but nothing cached the far more expensive rasterized result.
+    //
+    // Two bugs fixed in passing:
+    //   - the key was `drawable` only, so a span-resized tile kept the bitmap
+    //     rasterized at its old size;
+    //   - `size.value` is dp, and it was being passed as a pixel dimension, so
+    //     a 56dp icon rasterized at 112px and was upscaled to 168px on a 3x
+    //     screen. Icons looked soft. Density now converts properly.
+    val density = LocalDensity.current
+    val pxSize = with(density) { size.toPx() }.toInt().coerceIn(1, 512)
+    val bmp = remember(drawable, pxSize) { AppIconRasterCache.get(drawable, pxSize) }
+    val accent = remember(accentHex) {
+        accentHex?.let { value ->
+            runCatching { Color(android.graphics.Color.parseColor(value)) }.getOrNull()
+        }
     }
     Box(
         modifier = modifier

@@ -174,7 +174,12 @@ fun CalendarAgendaScreen(
                     Text(dateLabel, color = CiyatoGold, fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                 }
-                items(dayEvents, key = { it.id }) { event ->
+                // Keyed by id AND start time. `id` is Instances.EVENT_ID, which
+                // every occurrence of a recurring event shares — so a weekly
+                // standup produced the same key in several day sections of this
+                // one LazyColumn, and Compose throws on a duplicate key. Anyone
+                // with a repeating event crashed on opening Agenda.
+                items(dayEvents, key = { "${it.id}:${it.startMs}" }) { event ->
                     CalendarEventCard(event = event, onClick = {
                         openEventInCalendar(context, event.id)
                     })

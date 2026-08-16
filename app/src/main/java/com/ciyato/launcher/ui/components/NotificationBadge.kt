@@ -1,10 +1,9 @@
 package com.ciyato.launcher.ui.components
 
+import com.ciyato.launcher.services.CiyatoNotificationListenerService
 import android.content.ComponentName
 import android.content.Context
 import android.provider.Settings
-import android.service.notification.NotificationListenerService
-import android.service.notification.StatusBarNotification
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -73,48 +72,19 @@ fun NotificationBadge(
     }
 }
 
+/**
+ * Whether the person has granted notification access to Ciyato's listener.
+ *
+ * Points at [CiyatoNotificationListenerService], the one that is actually
+ * declared in the manifest. It used to name a second, duplicate listener class
+ * that lived in this file — neither was declared, so this returned false
+ * forever and badge counts stayed empty no matter what the user did.
+ */
 fun isNotificationListenerEnabled(context: Context): Boolean {
     val flat = Settings.Secure.getString(
         context.contentResolver,
         "enabled_notification_listeners",
     ) ?: return false
-    val cn = ComponentName(context, CiyatoNotificationListener::class.java)
+    val cn = ComponentName(context, CiyatoNotificationListenerService::class.java)
     return flat.contains(cn.flattenToString())
-}
-
-/**
- * CiyatoNotificationListener — receives live notification events.
- * Must be registered in AndroidManifest.xml:
- *
- *   <service android:name=".ui.components.CiyatoNotificationListener"
- *       android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
- *       android:exported="true">
- *     <intent-filter>
- *       <action android:name="android.service.notification.NotificationListenerService"/>
- *     </intent-filter>
- *   </service>
- */
-class CiyatoNotificationListener : NotificationListenerService() {
-
-    companion object {
-        private val _badgeCounts = mutableStateOf<Map<String, Int>>(emptyMap())
-        val badgeCounts: State<Map<String, Int>> get() = _badgeCounts
-    }
-
-    override fun onNotificationPosted(sbn: StatusBarNotification) {
-        rebuildCounts()
-    }
-
-    override fun onNotificationRemoved(sbn: StatusBarNotification) {
-        rebuildCounts()
-    }
-
-    private fun rebuildCounts() {
-        try {
-            val counts = activeNotifications
-                .groupBy { it.packageName }
-                .mapValues { (_, list) -> list.count { !it.isOngoing } }
-            _badgeCounts.value = counts
-        } catch (_: Exception) {}
-    }
 }
