@@ -69,7 +69,7 @@ fun StressFreeModeScreen(
     }
 
     val stressColor = when (stressLevel) {
-        StressLevel.CALM    -> Color(0xFF4CAF50)
+        StressLevel.CALM    -> CiyatoGreen
         StressLevel.MILD    -> Color(0xFFFF9800)
         StressLevel.STRESSED -> Color(0xFFF44336)
     }

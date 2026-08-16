@@ -121,7 +121,7 @@ fun AnomalyDetectionScreen(
             }
             anomalies.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(48.dp))
+                    Icon(Icons.Default.CheckCircle, null, tint = CiyatoGreen, modifier = Modifier.size(48.dp))
                     Spacer(Modifier.height(8.dp))
                     Text("No anomalies detected", color = CiyatoWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Text("Your usage patterns look consistent.", color = CiyatoMuted, fontSize = 13.sp)

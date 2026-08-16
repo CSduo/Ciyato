@@ -122,7 +122,7 @@ fun CustomGreetingScreen(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { save(customText) }),
                     trailingIcon = if (saved) ({
-                        Icon(Icons.Default.Check, null, tint = Color(0xFF39C66A))
+                        Icon(Icons.Default.Check, null, tint = CiyatoGreen)
                     }) else null,
                     supportingText = {
                         Text("Use {name} to insert your name automatically", color = CiyatoMuted, fontSize = 11.sp)

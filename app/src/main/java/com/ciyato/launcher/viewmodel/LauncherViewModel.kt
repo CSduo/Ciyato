@@ -187,7 +187,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val fileSearchIndex = settings.fileSearchIndex.stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     init {
-        viewModelScope.launch { ensureWorkspaceLayoutMigration() }
+        viewModelScope.launch {
+            // Order matters: migration establishes the layout, then the column
+            // reconciliation runs against the migrated result rather than
+            // racing it.
+            ensureWorkspaceLayoutMigration()
+            syncGridColumnsToLayout()
+        }
     }
 
     // ── Setters ───────────────────────────────────────────────────────────────
@@ -827,6 +833,44 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val cols = parts.getOrNull(0)?.trim()?.toIntOrNull()?.coerceIn(3, 8) ?: 6
         val rows = parts.getOrNull(1)?.trim()?.toIntOrNull()?.coerceIn(3, 8) ?: 5
         return cols to rows
+    }
+
+    /**
+     * Make the layout model agree with the grid the screen actually draws.
+     *
+     * Two independent defaults disagreed: the renderer takes its column count
+     * from [gridSize] ("6x5"), while [WorkspaceLayout.authorColumns] defaults
+     * to 4 — and nothing wrote authorColumns except [setGridSize], which only
+     * runs if someone opens Theme Studio and picks a size. So on a fresh
+     * install the grid was drawn 6 wide over a model that placed, spanned and
+     * bounds-checked every cell against 4.
+     *
+     * That single mismatch produced several long-standing symptoms at once:
+     * resizing appeared to do nothing (the store rejected spans that overflowed
+     * its narrower row), and newly added icons landed underneath existing ones
+     * (the store's idea of a free cell was a different screen position).
+     *
+     * [LauncherSettingsRepository.resetLayout] also writes the grid-size key
+     * straight to DataStore without going through [setGridSize], so the two
+     * could drift apart again after a reset. Reconciling at startup repairs
+     * that case too, instead of only preventing new ones.
+     */
+    private fun syncGridColumnsToLayout() = viewModelScope.launch {
+        // Deliberately the stored value, not gridSize.value: that StateFlow
+        // carries a "6x5" placeholder until DataStore answers, and reconciling
+        // against a placeholder would reflow a 4-column layout to 6 for someone
+        // who had actually chosen 4x4. first() waits for the real answer.
+        val stored = settings.gridSize.first()
+        val cols = stored.split("x").getOrNull(0)?.trim()?.toIntOrNull()?.coerceIn(3, 8) ?: return@launch
+        updateLayout { layout ->
+            // Returning null skips the write entirely, so the common case
+            // (already in agreement) costs nothing but a read.
+            if (layout.authorColumns == cols) null
+            else layout.copy(
+                authorColumns = cols,
+                workspaces = layout.workspaces.map { WorkspaceStore.reflow(it, cols) },
+            )
+        }
     }
 
     /** Change the grid dimensions and reflow every workspace to the new columns. */

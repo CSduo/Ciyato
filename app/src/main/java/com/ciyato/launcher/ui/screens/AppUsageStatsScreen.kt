@@ -189,7 +189,7 @@ private fun UsageStatRow(stat: AppUsageStat, totalMs: Long, rank: Int) {
 
     val barColor = when {
         rank == 1 -> CiyatoGold
-        rank <= 3 -> Color(0xFF7DB7FF)
+        rank <= 3 -> CiyatoInfo
         else -> CiyatoSec
     }
 

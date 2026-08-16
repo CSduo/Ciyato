@@ -55,15 +55,15 @@ fun VpnStatusIndicator(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier.size(7.dp).clip(CircleShape).background(Color(0xFF39C66A))
+            modifier = Modifier.size(7.dp).clip(CircleShape).background(CiyatoGreen)
         )
         Icon(
             Icons.Default.Security,
             contentDescription = null,
-            tint = Color(0xFF39C66A),
+            tint = CiyatoGreen,
             modifier = Modifier.size(13.dp),
         )
-        Text("VPN", color = Color(0xFF39C66A), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Text("VPN", color = CiyatoGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

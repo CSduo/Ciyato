@@ -60,8 +60,12 @@ fun HiddenVaultScreen(
             BiometricManager.Authenticators.DEVICE_CREDENTIAL
         )
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
+            // Fail CLOSED. `isUnlocked = true` here revealed the hidden-apps
+            // list to anyone holding the phone whenever no authenticator was
+            // enrolled — which, with USE_BIOMETRIC stripped from the manifest,
+            // was every device. Hidden apps that unhide themselves are not
+            // hidden; the lock has to hold even when it cannot ask.
             isBiometricUnavailable = true
-            isUnlocked = true
             return
         }
         // Fail CLOSED — this used to set `isUnlocked = true`, and since the host

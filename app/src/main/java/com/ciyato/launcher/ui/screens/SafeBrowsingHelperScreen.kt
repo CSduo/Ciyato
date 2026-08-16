@@ -156,8 +156,8 @@ fun SafeBrowsingHelperScreen(
             result?.let { r ->
                 val (bg, icon, title, msg, color) = when (r) {
                     is SafeBrowsingHelper.SafetyResult.Safe ->
-                        listOf(Color(0xFF4CAF50).copy(alpha = 0.15f), Icons.Default.CheckCircle,
-                            "✅ URL is Safe", "No threats detected. Safe to open.", Color(0xFF4CAF50))
+                        listOf(CiyatoGreen.copy(alpha = 0.15f), Icons.Default.CheckCircle,
+                            "✅ URL is Safe", "No threats detected. Safe to open.", CiyatoGreen)
                     is SafeBrowsingHelper.SafetyResult.Suspicious ->
                         listOf(Color(0xFFFF9800).copy(alpha = 0.15f), Icons.Default.Warning,
                             "⚠️ Suspicious URL", r.reason, Color(0xFFFF9800))

@@ -61,12 +61,12 @@ fun HealthConnectWidget(
                 CircularProgressIndicator(
                     progress = { animPct.value },
                     modifier = Modifier.size(60.dp),
-                    color = Color(0xFF39C66A),
+                    color = CiyatoGreen,
                     trackColor = Color(0xFF1E2128),
                     strokeWidth = 5.dp,
                     strokeCap = StrokeCap.Round,
                 )
-                Icon(Icons.Default.DirectionsWalk, null, tint = Color(0xFF39C66A),
+                Icon(Icons.Default.DirectionsWalk, null, tint = CiyatoGreen,
                     modifier = Modifier.size(24.dp))
             }
 
@@ -77,7 +77,7 @@ fun HealthConnectWidget(
                 LinearProgressIndicator(
                     progress = { animPct.value },
                     modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
-                    color = Color(0xFF39C66A),
+                    color = CiyatoGreen,
                     trackColor = Color(0xFF1E2128),
                 )
             }

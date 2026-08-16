@@ -43,11 +43,26 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
-    <!-- Remove permissions contributed by unreachable roadmap dependencies. -->
-    <uses-permission android:name="android.permission.USE_BIOMETRIC" tools:node="remove" />
-    <uses-permission android:name="android.permission.USE_FINGERPRINT" tools:node="remove" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
+    <!--
+      These were stripped as "contributed by unreachable roadmap dependencies".
+      That premise was wrong for three of them, and stripping a permission the
+      code actually calls fails silently — nothing warns you, the API simply
+      never succeeds.
+
+      USE_BIOMETRIC / USE_FINGERPRINT: androidx.biometric is a live dependency
+      and BiometricPrompt is used by the vaults, hidden apps and app lock.
+      Without the permission canAuthenticate() never returns BIOMETRIC_SUCCESS,
+      so every biometric gate in the app was permanently unavailable.
+
+      WAKE_LOCK / RECEIVE_BOOT_COMPLETED: WorkManager needs both — the first to
+      hold the CPU while a job runs, the second for its own boot receiver to
+      restore scheduled work. PhotoBackupWorker enqueues a 24-hour
+      PeriodicWorkRequest, so without them automatic backup stopped for good at
+      the first reboot while the UI kept promising it ran daily.
+
+      FOREGROUND_SERVICE stays removed: nothing calls startForeground and no
+      work is expedited, so it would be a permission requested and never used.
+    -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
 
     <application

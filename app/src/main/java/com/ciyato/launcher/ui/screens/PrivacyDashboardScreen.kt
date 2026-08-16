@@ -95,8 +95,8 @@ fun PrivacyDashboardScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
                         RiskStat("${highRisk.size}", "High Risk", CiyatoRed)
-                        RiskStat("${medRisk.size}", "Medium", Color(0xFFFF9500))
-                        RiskStat("${lowRisk.size}", "Low Risk", Color(0xFF39C66A))
+                        RiskStat("${medRisk.size}", "Medium", CiyatoWarning)
+                        RiskStat("${lowRisk.size}", "Low Risk", CiyatoGreen)
                         RiskStat("${summaries.size}", "Total Apps", CiyatoSec)
                     }
                 }
@@ -118,11 +118,11 @@ fun PrivacyDashboardScreen(
                             verticalAlignment = Alignment.CenterVertically) {
                             Text("🛡", fontSize = 22.sp)
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Android Privacy Dashboard", color = Color(0xFF7DB7FF),
+                                Text("Android Privacy Dashboard", color = CiyatoInfo,
                                     fontWeight = FontWeight.SemiBold)
                                 Text("See recent permission usage", color = CiyatoMuted, fontSize = 12.sp)
                             }
-                            Text("→", color = Color(0xFF7DB7FF), fontSize = 18.sp)
+                            Text("→", color = CiyatoInfo, fontSize = 18.sp)
                         }
                     }
                 }
@@ -136,14 +136,14 @@ fun PrivacyDashboardScreen(
             }
 
             if (medRisk.isNotEmpty()) {
-                item { SectionLabel("⚡ Medium Risk", Color(0xFFFF9500)) }
+                item { SectionLabel("⚡ Medium Risk", CiyatoWarning) }
                 items(medRisk) { app ->
                     PrivacyAppRow(app = app, context = context)
                 }
             }
 
             if (lowRisk.isNotEmpty()) {
-                item { SectionLabel("✅ Low Risk", Color(0xFF39C66A)) }
+                item { SectionLabel("✅ Low Risk", CiyatoGreen) }
                 items(lowRisk) { app ->
                     PrivacyAppRow(app = app, context = context)
                 }
@@ -156,8 +156,8 @@ fun PrivacyDashboardScreen(
 private fun PrivacyAppRow(app: AppPermissionSummary, context: Context) {
     val riskColor = when (app.riskLevel) {
         RiskLevel.HIGH -> CiyatoRed
-        RiskLevel.MEDIUM -> Color(0xFFFF9500)
-        RiskLevel.LOW -> Color(0xFF39C66A)
+        RiskLevel.MEDIUM -> CiyatoWarning
+        RiskLevel.LOW -> CiyatoGreen
     }
 
     Card(

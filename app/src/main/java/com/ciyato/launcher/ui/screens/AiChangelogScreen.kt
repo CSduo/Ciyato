@@ -176,8 +176,8 @@ fun AiChangelogScreen(
 @Composable
 private fun ChangelogCard(entry: PhoneChangeEntry) {
     val accentColor = when (entry.changeType) {
-        ChangeType.NEW_INSTALL -> Color(0xFF39C66A)
-        ChangeType.USAGE_UP -> Color(0xFF7DB7FF)
+        ChangeType.NEW_INSTALL -> CiyatoGreen
+        ChangeType.USAGE_UP -> CiyatoInfo
         ChangeType.USAGE_DOWN -> CiyatoMuted
         ChangeType.UPDATE -> CiyatoGold
         ChangeType.UNINSTALL -> CiyatoRed

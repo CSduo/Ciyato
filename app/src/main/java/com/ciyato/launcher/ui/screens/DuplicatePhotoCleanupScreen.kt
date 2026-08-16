@@ -148,7 +148,7 @@ fun DuplicatePhotoCleanupScreen(
             }
             groups.isEmpty() && deletedCount == 0 -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(48.dp))
+                    Icon(Icons.Default.CheckCircle, null, tint = CiyatoGreen, modifier = Modifier.size(48.dp))
                     Spacer(Modifier.height(8.dp))
                     Text("No duplicates found!", color = CiyatoWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 }
@@ -163,7 +163,7 @@ fun DuplicatePhotoCleanupScreen(
                         Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1B5E20)),
                             shape = RoundedCornerShape(12.dp)) {
                             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50))
+                                Icon(Icons.Default.CheckCircle, null, tint = CiyatoGreen)
                                 Spacer(Modifier.width(8.dp))
                                 // Deliberately not "Saved NN MB": on Android 11+
                                 // these went to the trash, so the space isn't
@@ -177,7 +177,7 @@ fun DuplicatePhotoCleanupScreen(
                                     } else {
                                         "Deleted $deletedCount duplicates · Saved ${savedBytes / 1024 / 1024}MB"
                                     },
-                                    color = Color(0xFF4CAF50), fontWeight = FontWeight.SemiBold,
+                                    color = CiyatoGreen, fontWeight = FontWeight.SemiBold,
                                 )
                             }
                         }

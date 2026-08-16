@@ -147,8 +147,8 @@ fun NetworkUsageScreen(
                         modifier = Modifier.padding(20.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
-                        NetStat("↓ Download", formatBytes(totalRx), Color(0xFF39C66A))
-                        NetStat("↑ Upload", formatBytes(totalTx), Color(0xFF7DB7FF))
+                        NetStat("↓ Download", formatBytes(totalRx), CiyatoGreen)
+                        NetStat("↑ Upload", formatBytes(totalTx), CiyatoInfo)
                         NetStat("Total", formatBytes(totalRx + totalTx), CiyatoGold)
                     }
                 }
@@ -202,8 +202,8 @@ private fun NetworkStatRow(stat: AppNetworkStat, maxBytes: Float, rank: Int) {
                 Text(formatBytes(stat.totalBytes), color = CiyatoGold, fontWeight = FontWeight.SemiBold)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("↓ ${formatBytes(stat.rxBytes)}", color = Color(0xFF39C66A), fontSize = 11.sp)
-                Text("↑ ${formatBytes(stat.txBytes)}", color = Color(0xFF7DB7FF), fontSize = 11.sp)
+                Text("↓ ${formatBytes(stat.rxBytes)}", color = CiyatoGreen, fontSize = 11.sp)
+                Text("↑ ${formatBytes(stat.txBytes)}", color = CiyatoInfo, fontSize = 11.sp)
             }
             Box(
                 modifier = Modifier.fillMaxWidth().height(4.dp)

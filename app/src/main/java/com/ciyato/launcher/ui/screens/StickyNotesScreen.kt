@@ -57,8 +57,8 @@ private val NOTE_COLORS = listOf(
 
 private val NOTE_ACCENT_COLORS = listOf(
     CiyatoSec,
-    Color(0xFF39C66A),
-    Color(0xFF7DB7FF),
+    CiyatoGreen,
+    CiyatoInfo,
     Color(0xFFEF4444),
     CiyatoGold,
     Color(0xFF06B6D4),

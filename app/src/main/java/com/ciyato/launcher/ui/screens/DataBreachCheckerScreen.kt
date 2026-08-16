@@ -170,7 +170,7 @@ fun DataBreachCheckerScreen(
 
             val currentResult = result
             if (currentResult != null) {
-                val bg = if (currentResult is BreachResult.Found) Color(0xFFF44336).copy(alpha = 0.15f) else Color(0xFF4CAF50).copy(alpha = 0.15f)
+                val bg = if (currentResult is BreachResult.Found) Color(0xFFF44336).copy(alpha = 0.15f) else CiyatoGreen.copy(alpha = 0.15f)
                 val icon = if (currentResult is BreachResult.Found) Icons.Default.Warning else Icons.Default.CheckCircle
                 val title = if (currentResult is BreachResult.Found) "⚠️ Password Compromised" else "✅ Password Safe"
                 val msg = if (currentResult is BreachResult.Found) {
@@ -186,7 +186,7 @@ fun DataBreachCheckerScreen(
                         Icon(
                             imageVector = icon,
                             contentDescription = null,
-                            tint = if (currentResult is BreachResult.Found) Color(0xFFF44336) else Color(0xFF4CAF50)
+                            tint = if (currentResult is BreachResult.Found) Color(0xFFF44336) else CiyatoGreen
                         )
                         Spacer(Modifier.width(10.dp))
                         Column {

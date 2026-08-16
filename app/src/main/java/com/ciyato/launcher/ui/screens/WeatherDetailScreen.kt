@@ -643,7 +643,7 @@ private fun DailyForecastCard(state: WeatherState.Success, useFahrenheit: Boolea
 @Composable
 private fun UvSunriseCard(state: WeatherState.Success) {
     val uvColor = when {
-        state.uvIndex < 3  -> Color(0xFF39C66A)
+        state.uvIndex < 3  -> CiyatoGreen
         state.uvIndex < 6  -> Color(0xFFF5C542)
         state.uvIndex < 8  -> Color(0xFFFF8C42)
         state.uvIndex < 11 -> CiyatoRed

@@ -210,7 +210,7 @@ fun AutoBackupScreen(
                 Card(colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
                     shape = RoundedCornerShape(16.dp)) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50))
+                        Icon(Icons.Default.CheckCircle, null, tint = CiyatoGreen)
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text("Last backup: $lastBackupLabel", color = CiyatoWhite, fontSize = 13.sp)

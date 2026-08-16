@@ -98,7 +98,14 @@ fun SecureFileVaultScreen(
             BiometricManager.Authenticators.DEVICE_CREDENTIAL
         )
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
-            onUnlocked()
+            // Fail CLOSED here too. This branch used to call onUnlocked() —
+            // decrypting every file and enabling the whole UI — whenever the
+            // device reported no usable authenticator. The earlier fix below
+            // only ever covered the activity-cast path, so the vault still
+            // opened itself on any phone with no enrolled biometric and no
+            // screen lock. DEVICE_CREDENTIAL is already in the request, so
+            // reaching here means there is genuinely nothing to verify against.
+            authError = "Set a screen lock or fingerprint on this phone to open the vault."
             return
         }
         // Fail CLOSED. This previously did `isUnlocked = true; loadVaultFiles()`,

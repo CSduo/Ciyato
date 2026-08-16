@@ -62,6 +62,12 @@ val CiyatoNight       = Color(0xFF1B2340)  // deep midnight navy
 val CiyatoSunrise     = Color(0xFFFF8C42)  // warm orange sunrise
 val CiyatoFoggy       = Color(0xFFCED5DC)  // soft fog
 
+// Full-opacity semantics for the state containers below. These existed only as
+// 10%-alpha container fills, so every screen that needed the solid colour for
+// text or an icon re-typed the hex by hand and they drifted apart.
+val CiyatoWarning     = Color(0xFFFFB347)   // caution / medium risk
+val CiyatoInfo        = Color(0xFF7DB7FF)   // informational / links
+
 // State containers (filled backgrounds for state cards)
 val CiyatoErrorContainer   = Color(0x1AEF5350)
 val CiyatoSuccessContainer = Color(0x1A39C66A)

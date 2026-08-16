@@ -222,7 +222,7 @@ private fun AuditAppCard(audited: AuditedApp, onClick: () -> Unit) {
     val riskColor = when (audited.riskLevel) {
         PermissionRiskLevel.HIGH   -> CiyatoRed
         PermissionRiskLevel.MEDIUM -> Color(0xFFF5C542)
-        PermissionRiskLevel.LOW    -> Color(0xFF39C66A)
+        PermissionRiskLevel.LOW    -> CiyatoGreen
     }
     val riskLabel = when (audited.riskLevel) {
         PermissionRiskLevel.HIGH   -> "Sensitive"
