@@ -224,14 +224,35 @@ object PhotoDeviceLibrary {
                 count = it.size,
             )
         }
-        return listOfNotNull(recentCollection) + bucketCollections
+        // Sorted by size, biggest first. Freeing space is the reason most
+        // people open a gallery with intent, and by date or by folder is
+        // exactly the wrong order for it — a hundred screenshots look the same
+        // as one video that costs more than all of them together. Pairs with
+        // multi-select: the top of this list is where deleting actually pays.
+        val heaviest = images
+            .filter { it.sizeBytes >= LARGE_PHOTO_BYTES }
+            .sortedByDescending { it.sizeBytes }
+        val largestCollection = heaviest.takeIf { it.isNotEmpty() }?.let {
+            DeviceCollection(
+                key = "largest",
+                title = "Largest",
+                coverUri = it.first().uri,
+                count = it.size,
+            )
+        }
+        return listOfNotNull(recentCollection, largestCollection) + bucketCollections
     }
+
+    /** Below this, deleting one photo isn't worth anyone's attention. */
+    private const val LARGE_PHOTO_BYTES = 5L * 1024 * 1024
 
     fun imagesForCollection(images: List<DeviceImage>, key: String): List<DeviceImage> = when {
         key == "recent" -> {
             val monthAgo = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
             images.filter { it.takenAtMs >= monthAgo }
         }
+        key == "largest" ->
+            images.filter { it.sizeBytes >= LARGE_PHOTO_BYTES }.sortedByDescending { it.sizeBytes }
         key.startsWith("bucket:") -> {
             val title = key.removePrefix("bucket:")
             images.filter { normalizedBucket(it.bucket, it.name) == title }
