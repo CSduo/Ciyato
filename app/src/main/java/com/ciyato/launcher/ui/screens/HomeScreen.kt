@@ -988,7 +988,15 @@ fun HomeScreen(
             h = draggedKnownSize?.h ?: (fallbackPx / bounds.height).coerceIn(0.01f, 1f),
         )
         val before = items.toMap()
-        CanvasEngine.settle(items.values.toList(), draggedId).forEach { item ->
+        // clampToBounds keeps each object's far edge inside the canvas by
+        // bounding its top-left to (1 - width). The store's own clamp only
+        // pins the top-left corner into 0..1, so a drop near the bottom-right
+        // persisted a position whose body rendered off-canvas, under the dock —
+        // despite CanvasPos's doc promising exactly this couldn't happen. The
+        // correct bound was already written here and simply never called.
+        CanvasEngine.clampToBounds(
+            CanvasEngine.settle(items.values.toList(), draggedId),
+        ).forEach { item ->
             val prior = before[item.id]
             val moved = prior == null || abs(prior.x - item.x) > 0.001f || abs(prior.y - item.y) > 0.001f
             if (item.id == draggedId || moved) {
@@ -1036,7 +1044,11 @@ fun HomeScreen(
             h = draggedKnownSize?.h ?: fallbackH,
         )
         val before = items.toMap()
-        CanvasEngine.settle(items.values.toList(), draggedPkg).forEach { item ->
+        // Same bound as the object path — an icon dropped at the far edge kept
+        // its top-left in range while its body sat outside the grid.
+        CanvasEngine.clampToBounds(
+            CanvasEngine.settle(items.values.toList(), draggedPkg),
+        ).forEach { item ->
             val prior = before[item.id]
             val moved = prior == null || abs(prior.x - item.x) > 0.001f || abs(prior.y - item.y) > 0.001f
             if (item.id == draggedPkg || moved) {

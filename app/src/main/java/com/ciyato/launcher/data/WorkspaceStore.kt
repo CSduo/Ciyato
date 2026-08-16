@@ -40,9 +40,15 @@ data class AppCell(
  * the object's own top-left corner, measured from the canvas's top-left —
  * never raw pixels. Raw pixels would break on rotation, on a different screen
  * size, and if dock/status-bar insets change; fractions survive all three and
- * are converted to pixels only at render time. Always clamped into 0f..1f on
- * write (see [WorkspaceStore.moveAppToCanvas]) so an object can never be
- * persisted somewhere it can no longer be grabbed again.
+ * are converted to pixels only at render time.
+ *
+ * The write clamp here pins the top-left corner into 0f..1f. That alone does
+ * NOT keep the object on screen — this doc used to claim it did — because a
+ * top-left at 0.97 puts the body outside the canvas. Keeping the far edge in
+ * range needs the object's own size, which this layer doesn't know, so it is
+ * done by `CanvasEngine.clampToBounds` at the drop site where the measured
+ * width and height are available. The clamp below is the floor, not the
+ * guarantee.
  *
  * [z] is stacking order — higher draws on top. See [WorkspaceStore.nextZ] for
  * "whatever you move comes to the front" (desktop-window) behaviour. Overlap
