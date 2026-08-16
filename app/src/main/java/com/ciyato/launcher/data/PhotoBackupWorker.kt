@@ -65,6 +65,17 @@ suspend fun runPhotoBackup(
         val root = DocumentFile.fromTreeUri(context, folderUri)?.takeIf { it.canWrite() }
             ?: return@withContext PhotoBackupResult(0, System.currentTimeMillis(), error = "Backup folder is no longer accessible.")
 
+        // The watermark for the NEXT run is taken before the query, not after
+        // the copy loop. It used to be stamped at completion, which opened a
+        // permanent hole: the query selects photos modified >= T0, the next run
+        // starts from T1 (when copying finished), and anything taken between T0
+        // and T1 was in neither window — never backed up, with no error and no
+        // way to notice. The window is widest on the first full-library run,
+        // exactly when it takes longest. Overlapping slightly instead means a
+        // photo can be considered twice, which the copy loop already handles by
+        // skipping names that exist; a gap could not be recovered at all.
+        val startedAtMs = System.currentTimeMillis()
+
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
@@ -119,7 +130,7 @@ suspend fun runPhotoBackup(
                 onProgress(done, total)
             }
         }
-        PhotoBackupResult(copiedCount = done, completedAtMs = System.currentTimeMillis())
+        PhotoBackupResult(copiedCount = done, completedAtMs = startedAtMs)
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (e: Exception) {

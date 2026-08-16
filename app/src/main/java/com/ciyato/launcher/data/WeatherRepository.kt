@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 /**
  * WeatherRepository — live weather via Open-Meteo + Nominatim.
@@ -209,10 +210,23 @@ object WeatherRepository {
 
     // ── HTTP helpers — all timeout/retry logic lives in NetworkClient ──────────
 
+    /**
+     * Coarsens a coordinate to ~1.1 km before it leaves the device.
+     *
+     * These go out as URL query strings, which land in the access log of every
+     * intermediary and of the endpoint itself. Sending a raw Double meant
+     * disclosing roughly centimetre-precision home location to three separate
+     * hosts — while LocationHelper's own doc told the reader "location never
+     * leaves the device". Two decimals is indistinguishable for a weather
+     * forecast, an air-quality reading, or a city-name lookup, and stops the
+     * request from being a precise home address.
+     */
+    private fun coarse(value: Double): String = String.format(Locale.US, "%.2f", value)
+
     private suspend fun fetchForecastJson(lat: Double, lon: Double): JSONObject {
         val url = buildString {
             append("https://api.open-meteo.com/v1/forecast")
-            append("?latitude=$lat&longitude=$lon")
+            append("?latitude=${coarse(lat)}&longitude=${coarse(lon)}")
             append("&current=temperature_2m,apparent_temperature,weather_code")
             append(",wind_speed_10m,wind_direction_10m,relative_humidity_2m,is_day")
             append("&hourly=temperature_2m,weather_code,precipitation_probability,is_day")
@@ -226,14 +240,14 @@ object WeatherRepository {
     private suspend fun fetchAqiJson(lat: Double, lon: Double): JSONObject {
         val url = buildString {
             append("https://air-quality-api.open-meteo.com/v1/air-quality")
-            append("?latitude=$lat&longitude=$lon")
+            append("?latitude=${coarse(lat)}&longitude=${coarse(lon)}")
             append("&current=pm10,pm2_5,european_aqi")
         }
         return JSONObject(NetworkClient.fetchText(url))
     }
 
     private suspend fun fetchCityName(lat: Double, lon: Double): String = try {
-        val url  = "https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon&zoom=10"
+        val url  = "https://nominatim.openstreetmap.org/reverse?format=json&lat=${coarse(lat)}&lon=${coarse(lon)}&zoom=10"
         val json = JSONObject(NetworkClient.fetchText(url, mapOf("User-Agent" to "Ciyato Launcher/1.0 (Android)")))
         val addr = json.optJSONObject("address")
         listOf("city", "town", "village", "county").firstNotNullOfOrNull { k ->

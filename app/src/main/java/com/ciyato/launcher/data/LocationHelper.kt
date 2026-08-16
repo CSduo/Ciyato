@@ -25,8 +25,15 @@ import kotlin.coroutines.resume
  *   3. If still nothing, request a fresh single update and wait up to 8 s.
  *   4. Return null only if all three steps fail.
  *
- * Location never leaves the device. There is deliberately no IP-geolocation
- * fallback: the previous one POSTed to a third-party host over plaintext
+ * Location DOES leave the device, coarsened. This said "location never leaves
+ * the device", which was not true: WeatherRepository sends the coordinates to
+ * Open-Meteo, its air-quality host, and Nominatim to turn them into a city
+ * name. What is true is that they are rounded to two decimals (~1.1 km) before
+ * any request, so what goes out is a neighbourhood, not an address — see
+ * WeatherRepository.coarse. Nothing else transmits location, and no identifier
+ * is attached to those requests.
+ *
+ * There is deliberately no IP-geolocation fallback: the previous one POSTed to a third-party host over plaintext
  * http://, which (a) the platform blocked outright under this app's
  * usesCleartextTraffic="false" policy, so it silently never worked, and
  * (b) would have disclosed the user's IP — and therefore approximate
