@@ -19,6 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -118,6 +119,16 @@ fun WeatherCard(
     isDense: Boolean,
     weatherState: WeatherState? = null,
     useFahrenheit: Boolean = false,
+    /**
+     * Turns off the animated weather overlay.
+     *
+     * That overlay is an infinite 60 fps particle canvas, so Home never
+     * reaches a quiescent state while it is on: a frame every 16 ms whether or
+     * not anyone is touching the phone, with per-frame Path allocation feeding
+     * GC pauses that land during drags and page swipes. It was installed
+     * unconditionally and honoured no setting.
+     */
+    reduceMotion: Boolean = false,
     onTap: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -134,9 +145,13 @@ fun WeatherCard(
             .clickable(onClick = onTap)
             .semantics { contentDescription = "Weather — tap to open your weather app" },
     ) {
-        (weatherState as? WeatherState.Success)?.let { ws ->
-            val theme = resolveSeasonTheme(ws.weatherCode, ws.tempC)
-            Weather2DEffectOverlay(theme = theme, modifier = Modifier.matchParentSize())
+        if (!reduceMotion) {
+            (weatherState as? WeatherState.Success)?.let { ws ->
+                val theme = remember(ws.weatherCode, ws.tempC) {
+                    resolveSeasonTheme(ws.weatherCode, ws.tempC)
+                }
+                Weather2DEffectOverlay(theme = theme, modifier = Modifier.matchParentSize())
+            }
         }
         Column(
             modifier = Modifier.matchParentSize().padding(padding),

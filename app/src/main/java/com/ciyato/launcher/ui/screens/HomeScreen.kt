@@ -497,6 +497,7 @@ fun HomeScreen(
     val categoryOrderVal by viewModel.categoryOrder.collectAsState()
     val homeSectionOrderVal by viewModel.homeSectionOrder.collectAsState()
     val categoryTilesSizesVal by viewModel.categoryTilesSizes.collectAsState()
+    val categoryRenamesVal by viewModel.categoryRenames.collectAsState()
     val expandedAppsVal by viewModel.expandedApps.collectAsState()
     val expandedAppsSet = remember(expandedAppsVal) {
         viewModel.parsePackageCsv(expandedAppsVal).toSet()
@@ -1233,9 +1234,26 @@ fun HomeScreen(
     @Composable
     fun CategoryCardObject(catKey: String, hasPosition: Boolean, pageIndex: Int = 1, cardModifier: Modifier = Modifier) {
         val standardCat = remember(catKey) { runCatching { AppCategory.valueOf(catKey) }.getOrNull() }
-        val displayName = if (standardCat != null) viewModel.getCategoryDisplayName(standardCat) else catKey
-        val catApps = if (standardCat != null) viewModel.byCategory(standardCat) else viewModel.byCustomCategory(catKey)
-        val tileSize = viewModel.getCategoryTileSize(catKey)
+        // All three of these were computed fresh on every recomposition, and
+        // each is expensive: two parse a whole JSON blob, the third runs a full
+        // filter over every installed app and hands back a NEW list, whose
+        // changed identity then forces SmartCategoryCard to re-run as well.
+        // With six Home categories that was 12 JSON parses and 6 full scans per
+        // recomposition of Home — on every page swipe, edit-mode toggle, drag
+        // target change and settings flip. The two lines below this were
+        // already remembered, so these three were an oversight rather than a
+        // deliberate choice.
+        //
+        // categoryRenames is now collected rather than read off .value, which
+        // also fixes a latent staleness bug: renaming a category previously
+        // didn't refresh the card until something unrelated recomposed.
+        val displayName = remember(catKey, standardCat, categoryRenamesVal) {
+            if (standardCat != null) viewModel.getCategoryDisplayName(standardCat) else catKey
+        }
+        val catApps = remember(catKey, standardCat, apps, customCats) {
+            if (standardCat != null) viewModel.byCategory(standardCat) else viewModel.byCustomCategory(catKey)
+        }
+        val tileSize = remember(catKey, categoryTilesSizesVal) { viewModel.getCategoryTileSize(catKey) }
         val isCustom = standardCat == null
         CanvasObject(
             pageIndex = pageIndex,
@@ -1382,6 +1400,7 @@ fun HomeScreen(
                     isDense = denseLayout,
                     weatherState = if (privacyMode) null else weatherState,
                     useFahrenheit = tempUnitPref == "F",
+                    reduceMotion = reduceMotion,
                     onTap = {
                         if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onWeatherTap()
@@ -1834,7 +1853,14 @@ fun HomeScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = viewModel.workspaceName(pageIndex),
+                                        // Not remembered before, inside a
+                                        // LazyColumn item — so it re-parsed the
+                                        // ENTIRE workspace layout JSON on every
+                                        // recomposition of this row just to read
+                                        // a page title.
+                                        text = remember(pageIndex, workspaceLayoutV2) {
+                                            viewModel.workspaceName(pageIndex)
+                                        },
                                         color = CiyatoWhite,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 18.sp
