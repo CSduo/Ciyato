@@ -159,8 +159,18 @@ private val detailedPages = listOf(
         icon = Icons.Default.Lock,
         eyebrow = "Private by design",
         title = "You stay in control.",
-        subtitle = "Everything stays on this phone.",
-        body = "No accounts, no uploads, no tracking. Permissions are asked only when a feature needs them — and every choice is reversible in Settings.",
+        // Was "Everything stays on this phone." / "No accounts, no uploads".
+        // That was not true, and the one screen where trust is established is the
+        // worst place to overstate it. Your apps, layout, files and photos really
+        // do stay local — but weather sends an approximate location to a forecast
+        // service, and the optional breach checker sends a partial password hash.
+        // Naming the exceptions costs one line and makes the rest believable.
+        subtitle = "Local first, and honest about the rest.",
+        body = "No accounts and no tracking. Your apps, layout, files and photos stay on this " +
+            "phone. Two optional features do reach the internet: weather sends a rounded " +
+            "location (never your exact position), and the breach checker sends part of a " +
+            "password hash. Permissions are asked only when a feature needs them, and every " +
+            "choice is reversible in Settings.",
         bullets = emptyList(),
         panels = emptyList(),
         visual = OnboardingVisual.HANDOFF,

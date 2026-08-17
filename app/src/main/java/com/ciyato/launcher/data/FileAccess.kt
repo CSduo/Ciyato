@@ -101,8 +101,32 @@ object FileAccess {
     fun shareableUri(context: Context, uri: Uri): Shareable {
         if (uri.scheme != "file") return Shareable.Ready(uri)
         val path = uri.path ?: return Shareable.Unavailable("This file has no readable path")
+        val file = File(path)
+
+        // Canonicalise before converting, and require the real location to sit
+        // inside shared storage or Ciyato's own directories.
+        //
+        // file_paths.xml has to declare a broad <external-path> for a file
+        // manager to work at all — the person can browse to any folder, and a
+        // narrow root would make "open" fail on perfectly ordinary files. What
+        // should NOT be broad is the set of paths this code is willing to hand
+        // over. getCanonicalFile resolves `..` segments and follows symlinks, so
+        // a crafted or symlinked path cannot use the wide provider root to reach
+        // somewhere outside shared storage.
+        val canonical = runCatching { file.canonicalFile }.getOrNull()
+            ?: return Shareable.Unavailable("This file's location can't be resolved")
+        val allowedRoots = listOfNotNull(
+            runCatching { internalRoot().canonicalFile }.getOrNull(),
+            runCatching { context.getExternalFilesDir(null)?.canonicalFile }.getOrNull(),
+            runCatching { context.cacheDir.canonicalFile }.getOrNull(),
+        )
+        val inAllowedRoot = allowedRoots.any { root ->
+            canonical == root || canonical.path.startsWith(root.path + File.separator)
+        }
+        if (!inAllowedRoot) return Shareable.Unavailable("This file is outside shared storage")
+
         return runCatching {
-            FileProvider.getUriForFile(context, context.packageName + PROVIDER_SUFFIX, File(path))
+            FileProvider.getUriForFile(context, context.packageName + PROVIDER_SUFFIX, canonical)
         }.fold(
             onSuccess = { Shareable.Ready(it) },
             onFailure = { Shareable.Unavailable("This file can't be shared safely") },

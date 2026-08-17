@@ -23,20 +23,42 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 
 /**
- * SafeBrowsingHelperScreen — Suggestion #83
- * Checks URLs against a safe-browsing heuristic list before launching.
- * Production: integrate Google SafeBrowsing API v4 with an API key.
- * Current: checks against known malicious TLD patterns and phishing indicators.
+ * Local URL inspection — warning signs only, never a safety verdict.
+ *
+ * This looks at the text of a URL. It performs no reputation lookup, contacts no
+ * blocklist, and cannot know whether a page is malicious. Two consequences are
+ * designed in rather than papered over:
+ *
+ *  1. **It never says "safe".** The previous version returned `Safe` for
+ *     anything that failed to trip a heuristic and the UI rendered
+ *     "✅ URL is Safe — No threats detected. Safe to open." A brand-new phishing
+ *     domain trips none of these rules, so the reassurance was strongest exactly
+ *     where it was most dangerous. The absence of a warning sign is not evidence
+ *     of safety, and this type can no longer express that claim.
+ *  2. **Every signal is collected**, not just the first. Returning on the first
+ *     match hid the fact that a URL had three separate problems.
  */
-
 object SafeBrowsingHelper {
 
-    sealed class SafetyResult {
-        object Safe : SafetyResult()
-        data class Suspicious(val reason: String) : SafetyResult()
-        data class Unsafe(val reason: String) : SafetyResult()
+    sealed interface UrlCheck {
+        /** Not a parseable URL. */
+        data class Invalid(val reason: String) : UrlCheck
+
+        /**
+         * Host is an exact match for a widely-known domain. Still not a safety
+         * verdict — a compromised or attacker-controlled page can live on any
+         * major domain — so this only says "the domain is what it appears to be".
+         */
+        data class RecognisedDomain(val domain: String) : UrlCheck
+
+        /** One or more warning signs found in the URL text. */
+        data class Warnings(val reasons: List<String>) : UrlCheck
+
+        /** Nothing in the URL text stood out. Explicitly NOT "safe". */
+        data object NoSignals : UrlCheck
     }
 
     private val SUSPICIOUS_TLDS = setOf(".xyz", ".tk", ".ml", ".ga", ".cf", ".gq", ".pw", ".cc")
@@ -50,34 +72,65 @@ object SafeBrowsingHelper {
         "reddit.com", "wikipedia.org", "amazon.com", "apple.com",
     )
 
-    suspend fun checkUrl(rawUrl: String): SafetyResult = withContext(Dispatchers.IO) {
-        try {
-            val uri = Uri.parse(rawUrl.trim())
-            val host = uri.host?.lowercase() ?: return@withContext SafetyResult.Unsafe("Invalid URL")
+    /**
+     * True when [host] IS [domain] or a subdomain of it.
+     *
+     * The bug this replaces was `host.endsWith(domain)`, which matches on raw
+     * characters rather than DNS label boundaries — so `evilgoogle.com` "ended
+     * with" `google.com` and was declared safe, which is precisely the trick a
+     * lookalike domain relies on. Comparing against `".$domain"` forces the
+     * match to fall on a label boundary.
+     */
+    private fun hostMatchesDomain(host: String, domain: String): Boolean {
+        val h = host.trimEnd('.').lowercase(Locale.ROOT)
+        val d = domain.trimEnd('.').lowercase(Locale.ROOT)
+        return h == d || h.endsWith(".$d")
+    }
 
-            // Whitelist check
-            if (KNOWN_SAFE_DOMAINS.any { host.endsWith(it) }) return@withContext SafetyResult.Safe
+    private val IPV4 = Regex("""^\d{1,3}(\.\d{1,3}){3}$""")
 
-            // TLD check
-            val suspiciousTld = SUSPICIOUS_TLDS.firstOrNull { host.endsWith(it) }
-            if (suspiciousTld != null) return@withContext SafetyResult.Suspicious("Suspicious TLD: $suspiciousTld")
+    suspend fun checkUrl(rawUrl: String): UrlCheck = withContext(Dispatchers.IO) {
+        val trimmed = rawUrl.trim()
+        val uri = runCatching { Uri.parse(trimmed) }.getOrNull()
+        val host = uri?.host?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() }
+            ?: return@withContext UrlCheck.Invalid("That doesn't look like a web address")
 
-            // Phishing pattern check
-            val phishingPattern = PHISHING_PATTERNS.firstOrNull { host.contains(it) || rawUrl.contains(it) }
-            if (phishingPattern != null) return@withContext SafetyResult.Suspicious("Phishing indicator: '$phishingPattern'")
+        val recognised = KNOWN_SAFE_DOMAINS.firstOrNull { hostMatchesDomain(host, it) }
 
-            // IP address check (direct IP URLs are suspicious)
-            if (host.matches(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+"))) {
-                return@withContext SafetyResult.Suspicious("Direct IP URL — potential redirect or phishing")
+        // Collected, not short-circuited: a URL with a lookalike host AND a
+        // phishing keyword is more alarming than either alone, and the previous
+        // version reported only whichever rule happened to run first.
+        val reasons = buildList {
+            SUSPICIOUS_TLDS.firstOrNull { host.endsWith(it) }?.let {
+                add("Uses the $it top-level domain, which is heavily abused")
             }
-
-            // Excessive subdomains
-            if (host.split(".").size > 4) {
-                return@withContext SafetyResult.Suspicious("Excessive subdomain depth — common in phishing")
+            PHISHING_PATTERNS.firstOrNull { host.contains(it) || trimmed.contains(it) }?.let {
+                add("Contains \"$it\", a pattern common in phishing links")
             }
+            if (IPV4.matches(host)) {
+                add("Points at a raw IP address instead of a domain name")
+            }
+            if (host.split('.').size > 4) {
+                add("Unusually deep subdomain nesting")
+            }
+            // Only meaningful when the host is NOT the real domain: a host that
+            // merely contains a famous name is the lookalike case the broken
+            // endsWith check used to wave through.
+            if (recognised == null) {
+                KNOWN_SAFE_DOMAINS.firstOrNull { known ->
+                    val bare = known.substringBefore('.')
+                    host.contains(bare) && !hostMatchesDomain(host, known)
+                }?.let { known ->
+                    add("Mentions \"${known.substringBefore('.')}\" but is not $known")
+                }
+            }
+        }
 
-            SafetyResult.Safe
-        } catch (_: Exception) { SafetyResult.Unsafe("Could not parse URL") }
+        when {
+            reasons.isNotEmpty() -> UrlCheck.Warnings(reasons)
+            recognised != null -> UrlCheck.RecognisedDomain(recognised)
+            else -> UrlCheck.NoSignals
+        }
     }
 }
 
@@ -89,7 +142,7 @@ fun SafeBrowsingHelperScreen(
 ) {
     val scope = rememberCoroutineScope()
     var urlInput by remember { mutableStateOf("") }
-    var result by remember { mutableStateOf<SafeBrowsingHelper.SafetyResult?>(null) }
+    var result by remember { mutableStateOf<SafeBrowsingHelper.UrlCheck?>(null) }
     var isChecking by remember { mutableStateOf(false) }
 
 
@@ -98,7 +151,7 @@ fun SafeBrowsingHelperScreen(
         topBar = {
             CiyatoTopBar(
                 title = "Safe Browsing",
-                subtitle = "Heuristic URL check — not Google Safe Browsing",
+                subtitle = "Reads the address only — no reputation lookup",
                 onBack = onBack,
             )
         }
@@ -153,25 +206,50 @@ fun SafeBrowsingHelperScreen(
                 }
             }
 
+            // Titles carry no emoji and no safety verdict. Emoji were doing the
+            // semantic work here ("✅ URL is Safe"), which a screen reader either
+            // skips or reads as "white heavy check mark" — the meaning has to be
+            // in the text and the icon, not in a glyph (F-059).
             result?.let { r ->
-                val (bg, icon, title, msg, color) = when (r) {
-                    is SafeBrowsingHelper.SafetyResult.Safe ->
-                        listOf(CiyatoGreen.copy(alpha = 0.15f), Icons.Default.CheckCircle,
-                            "✅ URL is Safe", "No threats detected. Safe to open.", CiyatoGreen)
-                    is SafeBrowsingHelper.SafetyResult.Suspicious ->
-                        listOf(Color(0xFFFF9800).copy(alpha = 0.15f), Icons.Default.Warning,
-                            "⚠️ Suspicious URL", r.reason, Color(0xFFFF9800))
-                    is SafeBrowsingHelper.SafetyResult.Unsafe ->
-                        listOf(Color(0xFFF44336).copy(alpha = 0.15f), Icons.Default.GppBad,
-                            "🚫 Unsafe URL", r.reason, Color(0xFFF44336))
+                val icon = when (r) {
+                    is SafeBrowsingHelper.UrlCheck.Warnings -> Icons.Default.Warning
+                    is SafeBrowsingHelper.UrlCheck.Invalid -> Icons.Default.GppBad
+                    else -> Icons.Default.Shield
                 }
-                Card(colors = CardDefaults.cardColors(containerColor = bg as Color), shape = RoundedCornerShape(14.dp)) {
+                val accent = when (r) {
+                    is SafeBrowsingHelper.UrlCheck.Warnings -> CiyatoWarning
+                    is SafeBrowsingHelper.UrlCheck.Invalid -> CiyatoRed
+                    else -> CiyatoSec
+                }
+                val title = when (r) {
+                    is SafeBrowsingHelper.UrlCheck.Invalid -> "Not a web address"
+                    is SafeBrowsingHelper.UrlCheck.Warnings ->
+                        if (r.reasons.size == 1) "1 warning sign" else "${r.reasons.size} warning signs"
+                    is SafeBrowsingHelper.UrlCheck.RecognisedDomain -> "Domain recognised"
+                    SafeBrowsingHelper.UrlCheck.NoSignals -> "Nothing stood out"
+                }
+                val body = when (r) {
+                    is SafeBrowsingHelper.UrlCheck.Invalid -> r.reason
+                    is SafeBrowsingHelper.UrlCheck.Warnings -> r.reasons.joinToString("\n") { "• $it" }
+                    is SafeBrowsingHelper.UrlCheck.RecognisedDomain ->
+                        "This really is ${r.domain}. That doesn't mean the page itself is " +
+                            "trustworthy — any site can host a bad page."
+                    SafeBrowsingHelper.UrlCheck.NoSignals ->
+                        "Ciyato found no warning signs in the address text. It cannot tell you " +
+                            "the site is safe — it never contacts a reputation service, and a " +
+                            "brand-new scam link looks completely ordinary."
+                }
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
                     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-                        Icon(icon as androidx.compose.ui.graphics.vector.ImageVector, null, tint = color as Color)
+                        Icon(icon, contentDescription = null, tint = accent)
                         Spacer(Modifier.width(10.dp))
                         Column {
-                            Text(title as String, color = CiyatoWhite, fontWeight = FontWeight.SemiBold)
-                            Text(msg as String, color = CiyatoMuted, fontSize = 13.sp)
+                            Text(title, color = CiyatoWhite, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(4.dp))
+                            Text(body, color = CiyatoMuted, fontSize = 13.sp, lineHeight = 18.sp)
                         }
                     }
                 }

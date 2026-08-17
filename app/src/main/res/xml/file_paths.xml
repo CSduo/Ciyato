@@ -2,10 +2,18 @@
 <!--
   Paths Ciyato may hand to other apps through FileProvider.
 
-  Broad on purpose: in All-files mode a file can be anywhere on the shared
-  volume, and a narrower path would mean "open" silently failing for anything
-  outside it. This grants nothing by itself — FileProvider only ever issues a
-  URI for a file the person explicitly chose to open or share, one at a time.
+  <external-path> is deliberately broad and that is a real trade-off, not an
+  oversight. Ciyato is a file manager: the person can browse to any folder on
+  shared storage, so a narrow root would make "open" fail on ordinary files in
+  ordinary places. Declaring a path here grants nothing on its own — FileProvider
+  issues a URI only for a specific file, only when asked, and the receiving app
+  gets a temporary read grant for that one URI.
+
+  The protection that matters lives in FileAccess.shareableUri, which is the ONLY
+  code allowed to mint these URIs. It canonicalises the path first (resolving
+  `..` and symlinks) and refuses anything that does not land inside shared
+  storage or Ciyato's own directories, so the wide root here cannot be used to
+  reach outside it. Keep that check if you ever touch this file.
 -->
 <paths>
     <external-path name="external_storage" path="." />
