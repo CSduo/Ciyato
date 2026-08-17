@@ -17,6 +17,31 @@ Baseline: `5773448cbd2d189055021b319d54c74ae2c779bf` · tag `baseline-audit-5773
 green on 21. Both are valid for AGP 8.x, but local and CI should not differ indefinitely — a
 compile that passes on 21 and fails on 17 would only surface in CI. Aligning is queued for Phase 1.
 
+## Visual verification — live, on API 36
+
+An emulator matrix is running. The SDK had system images for API 36 and API 37
+(the `_ps16k` 16 KB page-size variant, which F-188 needs) but no AVD and no
+`avdmanager`, so the AVD was hand-authored at `~/.android/avd/Ciyato_API36`.
+`image.sysdir.1` must use forward slashes and `hw.cpu.arch=x86_64` must be set,
+or the emulator misreads the ABI as arm and refuses to start.
+
+| Run | Result |
+|---|---|
+| Install debug APK on API 36 | **PASS** — streamed install, success |
+| Launch `MainActivity` | **PASS** — process alive, `topResumedActivity` = `com.ciyato.launcher/.MainActivity`, **zero errors in its log** |
+| First-frame render | **PASS** — onboarding renders; the near-black/graphite/silver direction holds up |
+
+Environment note: the emulator raises "System UI isn't responding" under software
+GPU. That ANR belongs to the emulator's own SystemUI, not Ciyato — confirmed by
+process state and an empty Ciyato log. Do not record it as an app defect.
+
+### Defects found by looking, not reading
+
+| Observation | Finding | Notes |
+|---|---|---|
+| Onboarding preview card is clipped: the "Smart categories" row is cut mid-card by the pager edge, "Organized apps" is sliced through, and the page-indicator dots overlay the clipped content | new | Content overflowing instead of being bounded. Static analysis would not have caught this. |
+| "AI Phone Organizer" appears twice in the very first frame (app subtitle + card title) | F-163 | Confirms the capability-inflation finding at the highest-visibility point in the product |
+
 ## Baseline capture — what CI will actually run
 
 Command: `./gradlew --no-daemon testDebugUnitTest lintDebug`
