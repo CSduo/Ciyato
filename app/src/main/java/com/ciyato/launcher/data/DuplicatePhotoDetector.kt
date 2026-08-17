@@ -69,7 +69,37 @@ object DuplicatePhotoDetector {
 
     private fun hammingDistance(a: Long, b: Long) = (a xor b).countOneBits()
 
-    /** Load all photos from MediaStore (limited to first 500 for performance). */
+    /**
+     * How many of the newest photos this scan will hash.
+     *
+     * Public because the UI has to state it. Hashing is decode-bound, so a cap is
+     * necessary — but a capped scan that reports "No duplicates found!" is making
+     * a claim about the whole library it never looked at (F-102, F-012).
+     */
+    const val SCAN_LIMIT = 500
+
+    /** Groups plus the coverage they were derived from, so the UI can be honest. */
+    data class DuplicateScan(
+        val groups: List<DuplicateGroup>,
+        /** Photos actually hashed. */
+        val scanned: Int,
+        /** Photos in the library, so "scanned X of Y" is possible. */
+        val libraryTotal: Int,
+    ) {
+        val wasBounded: Boolean get() = libraryTotal > scanned
+    }
+
+    /** Total images in the library, for coverage reporting. Cheap COUNT query. */
+    private fun libraryTotal(context: Context): Int =
+        runCatching {
+            context.contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Images.Media._ID),
+                null, null, null,
+            )?.use { it.count } ?: 0
+        }.getOrDefault(0)
+
+    /** Load the newest [SCAN_LIMIT] photos from MediaStore. */
     private fun loadPhotos(context: Context): List<PhotoEntry> {
         val photos = mutableListOf<PhotoEntry>()
         val projection = arrayOf(
@@ -88,7 +118,7 @@ object DuplicatePhotoDetector {
             val idCol   = it.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val nameCol = it.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
             val sizeCol = it.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
-            while (it.moveToNext() && photos.size < 500) {
+            while (it.moveToNext() && photos.size < SCAN_LIMIT) {
                 val id = it.getLong(idCol)
                 val uri = Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString())
                 photos.add(PhotoEntry(id, uri, it.getString(nameCol) ?: "", it.getLong(sizeCol)))
@@ -97,9 +127,10 @@ object DuplicatePhotoDetector {
         return photos
     }
 
-    /** Run duplicate detection. Returns list of groups with ≥ 2 photos. */
-    suspend fun findDuplicates(context: Context): List<DuplicateGroup> = withContext(Dispatchers.IO) {
+    /** Run look-alike detection over the newest [SCAN_LIMIT] photos. */
+    suspend fun findDuplicates(context: Context): DuplicateScan = withContext(Dispatchers.IO) {
         val photos = loadPhotos(context)
+        val total = libraryTotal(context)
         val hashes = mutableMapOf<PhotoEntry, Long>()
 
         photos.forEach { photo ->
@@ -147,6 +178,6 @@ object DuplicatePhotoDetector {
             }
         }
 
-        groups
+        DuplicateScan(groups = groups, scanned = photos.size, libraryTotal = total)
     }
 }
