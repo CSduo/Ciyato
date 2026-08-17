@@ -165,8 +165,14 @@ private fun ActiveSessionCard(
             }
         }
 
+        // Was "Distracting apps are blocked." Ciyato can hide these categories
+        // and decline its own launches \u2014 it cannot stop the apps, which stay
+        // reachable from Recents, a notification, or another launcher. Calling
+        // that "blocked" sells a launcher-level nudge as OS enforcement (F-119),
+        // and the person only discovers otherwise by accident.
         Text(
-            "Distracting apps are blocked.\nStay focused! \uD83D\uDCAA",
+            "Hidden here, and Ciyato won't open them.\n" +
+                "Still reachable from Recents or notifications.",
             color = CiyatoSec,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,

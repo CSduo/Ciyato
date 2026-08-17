@@ -1468,31 +1468,51 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Focus sessions (Suggestion 75) ────────────────────────────────────────
 
-    val focusSession = FocusSessionManager.activeSession
+    /**
+     * The running session, derived from the persisted end instant.
+     *
+     * Survives process death and reboot because nothing about it is held in
+     * memory — see [FocusSessionManager]. Note this emits when the stored values
+     * change, not once per second: expiry is evaluated whenever the value is
+     * read, and a screen that wants a live countdown ticks locally for display.
+     */
+    val focusSession: StateFlow<FocusSessionManager.FocusSession?> =
+        combine(
+            settings.focusEndsAt,
+            settings.focusDurationMin,
+            settings.focusBlockedCats,
+        ) { endsAt, durationMin, csv ->
+            FocusSessionManager.sessionOf(endsAt, durationMin, csv)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    fun startFocusSession() {
-        val blockedCats = focusBlockedCats.value
-            .split(",").mapNotNull { runCatching { AppCategory.valueOf(it.trim()) }.getOrNull() }
-        FocusSessionManager.startSession(
-            durationMin      = focusDurationMin.value,
-            blockedCategories= blockedCats,
-            scope            = viewModelScope,
-        )
-        viewModelScope.launch { settings.setFocusModeActive(true) }
+    /** Starts a session using the person's own configured duration and categories. */
+    fun startFocusSession(durationMin: Int? = null) = viewModelScope.launch {
+        val minutes = (durationMin ?: focusDurationMin.value).coerceIn(1, 120)
+        // Absolute end instant, so no ticker owns the session's lifetime.
+        settings.setFocusEndsAt(System.currentTimeMillis() + minutes * 60_000L)
     }
 
-    fun endFocusSession() {
-        FocusSessionManager.endSession()
-        viewModelScope.launch { settings.setFocusModeActive(false) }
+    fun endFocusSession() = viewModelScope.launch {
+        settings.setFocusEndsAt(0L)
     }
 
-    fun isCategoryBlocked(cat: AppCategory): Boolean = FocusSessionManager.isBlocked(cat)
+    /**
+     * Whether a category is held back right now.
+     *
+     * Reads the clock rather than a cached flag, so an expired session stops
+     * taking effect on its own. Deliberately scoped to launches that go through
+     * Ciyato — this is not OS-level enforcement and the UI must not say it is.
+     */
+    fun isCategoryBlocked(cat: AppCategory): Boolean =
+        FocusSessionManager.isBlocked(focusSession.value, cat)
 
     // ── App launch ────────────────────────────────────────────────────────────
 
     fun launchApp(app: InstalledApp) {
         if (isCategoryBlocked(app.category)) {
-            _toastEvent.value = Event("${app.label} is blocked during Focus Session")
+            // Scoped honestly: Ciyato declined to open it. It is not blocked
+            // at the OS level and remains reachable elsewhere.
+            _toastEvent.value = Event("Focus is on — Ciyato won't open ${app.label}")
             return
         }
         val context = getApplication<Application>()

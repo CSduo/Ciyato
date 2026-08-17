@@ -8,10 +8,13 @@ import android.service.quicksettings.TileService
 import androidx.annotation.RequiresApi
 import com.ciyato.launcher.data.AppCategory
 import com.ciyato.launcher.data.FocusSessionManager
+import com.ciyato.launcher.data.LauncherSettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * Quick Settings Tile — Focus Mode (#82).
@@ -49,19 +52,29 @@ class CiyatoFocusTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        val session = FocusSessionManager.activeSession.value
         val scope = serviceScope ?: return
-        if (session != null && session.isActive) {
-            FocusSessionManager.endSession()
-        } else {
-            FocusSessionManager.startSession(
-                durationMin       = DEFAULT_FOCUS_MIN,
-                blockedCategories = defaultBlockedCategories(),
-                scope             = scope,
+        // Reads and writes the SAME persisted state the launcher UI uses, and
+        // honours the person's configured duration instead of a hard-coded 25
+        // minutes with hard-coded categories (F-176). Because the session is an
+        // absolute end instant in DataStore, this service no longer owns its
+        // lifetime — previously the ticker ran in this scope, which Android
+        // cancels when the tile is destroyed, so a session started here never
+        // ended (F-120).
+        scope.launch {
+            val settings = LauncherSettingsRepository(applicationContext)
+            val current = FocusSessionManager.sessionOf(
+                endsAt = settings.focusEndsAt.first(),
+                durationMin = settings.focusDurationMin.first(),
+                blockedCatsCsv = settings.focusBlockedCats.first(),
             )
+            if (current != null && current.isActive) {
+                settings.setFocusEndsAt(0L)
+            } else {
+                val minutes = settings.focusDurationMin.first().coerceIn(1, 120)
+                settings.setFocusEndsAt(System.currentTimeMillis() + minutes * 60_000L)
+            }
+            syncTileState()
         }
-        // Allow FocusSessionManager to propagate state, then refresh tile.
-        handler.postDelayed({ syncTileState() }, 100L)
     }
 
     override fun onStopListening() {
@@ -71,21 +84,29 @@ class CiyatoFocusTileService : TileService() {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /** Reflects persisted state, so the tile agrees with the launcher UI. */
     private fun syncTileState() {
-        val tile = qsTile ?: return
-        val isActive = FocusSessionManager.activeSession.value?.isActive == true
-        tile.state = if (isActive) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-        tile.label = if (isActive) "Focus ON" else "Focus Mode"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            tile.subtitle = if (isActive) "Tap to end" else "${DEFAULT_FOCUS_MIN} min"
+        val scope = serviceScope ?: return
+        scope.launch {
+            val tile = qsTile ?: return@launch
+            val settings = LauncherSettingsRepository(applicationContext)
+            val configuredMin = settings.focusDurationMin.first()
+            val session = FocusSessionManager.sessionOf(
+                endsAt = settings.focusEndsAt.first(),
+                durationMin = configuredMin,
+                blockedCatsCsv = settings.focusBlockedCats.first(),
+            )
+            val active = session != null && session.isActive
+            tile.state = if (active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+            tile.label = if (active) "Focus on" else "Focus"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                tile.subtitle = when {
+                    active && session!!.remainingMin > 0 -> "${session.remainingMin} min left"
+                    active -> "Ending"
+                    else -> "$configuredMin min"
+                }
+            }
+            tile.updateTile()
         }
-        tile.updateTile()
-    }
-
-    private fun defaultBlockedCategories(): List<AppCategory> =
-        listOf(AppCategory.SOCIAL, AppCategory.ENTERTAINMENT, AppCategory.GAMES)
-
-    companion object {
-        private const val DEFAULT_FOCUS_MIN = 25
     }
 }

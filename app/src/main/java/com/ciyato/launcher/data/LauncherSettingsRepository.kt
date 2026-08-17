@@ -103,6 +103,18 @@ class LauncherSettingsRepository(private val context: Context) {
         val KEY_FOCUS_MODE_ACTIVE      = booleanPreferencesKey("focus_mode_active")
         val KEY_FOCUS_BLOCKED_CATS     = stringPreferencesKey("focus_blocked_cats")
         val KEY_FOCUS_DURATION_MIN     = intPreferencesKey("focus_duration_min")
+        /**
+         * Absolute wall-clock end of the current focus session, 0 when none.
+         *
+         * An absolute instant rather than a countdown, because a countdown only
+         * survives while a process does. The session used to live in an in-memory
+         * singleton whose ticker ran in the CALLER's coroutine scope — started
+         * from the Quick Settings tile, that scope died with the tile service and
+         * the session never ended. Persisting the end time makes "is focus on?" a
+         * question about the clock, answerable after process death, reboot, or a
+         * tile tap, with no timer required for correctness.
+         */
+        val KEY_FOCUS_ENDS_AT          = longPreferencesKey("focus_ends_at")
 
         // ── Haptic (#1) ───────────────────────────────────────────────────────
         val KEY_HAPTIC_FEEDBACK        = booleanPreferencesKey("haptic_feedback")
@@ -256,6 +268,7 @@ class LauncherSettingsRepository(private val context: Context) {
     val focusModeActive:        Flow<Boolean> = pref(KEY_FOCUS_MODE_ACTIVE,       false)
     val focusBlockedCats:       Flow<String>  = pref(KEY_FOCUS_BLOCKED_CATS,      "SOCIAL,ENTERTAINMENT,GAMES")
     val focusDurationMin:       Flow<Int>     = pref(KEY_FOCUS_DURATION_MIN,      25)
+    val focusEndsAt:            Flow<Long>    = pref(KEY_FOCUS_ENDS_AT,           0L)
 
     val hapticFeedback:         Flow<Boolean> = pref(KEY_HAPTIC_FEEDBACK,         true)
     val reduceMotion:           Flow<Boolean> = pref(KEY_REDUCE_MOTION,           false)
@@ -380,6 +393,7 @@ class LauncherSettingsRepository(private val context: Context) {
     suspend fun setFocusModeActive(v: Boolean)         = set(KEY_FOCUS_MODE_ACTIVE,       v)
     suspend fun setFocusBlockedCats(csv: String)       = set(KEY_FOCUS_BLOCKED_CATS,      csv)
     suspend fun setFocusDurationMin(v: Int)            = set(KEY_FOCUS_DURATION_MIN,      v.coerceIn(5, 120))
+    suspend fun setFocusEndsAt(v: Long)                = set(KEY_FOCUS_ENDS_AT,           v.coerceAtLeast(0L))
 
     suspend fun setHapticFeedback(v: Boolean)          = set(KEY_HAPTIC_FEEDBACK,         v)
     suspend fun setReduceMotion(v: Boolean)            = set(KEY_REDUCE_MOTION,           v)

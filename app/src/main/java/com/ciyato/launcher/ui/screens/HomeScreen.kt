@@ -403,7 +403,7 @@ fun HomeScreen(
     val hiddenHomeCategories by viewModel.hiddenHomeCategories.collectAsState()
     val privacyMode       by viewModel.privacyMode.collectAsState()
     val screenshotBlocked by viewModel.screenshotBlocked.collectAsState()
-    val focusSession      by FocusSessionManager.activeSession.collectAsState()
+    val focusSession      by viewModel.focusSession.collectAsState()
     val activeAccent = if (goldAccentEnabled) CiyatoGold else CiyatoBlue
 
     val haptic = LocalHapticFeedback.current
@@ -739,7 +739,7 @@ fun HomeScreen(
 
         val standard = allVisible.filter { cat ->
             val hasApps = viewModel.byCategory(cat).isNotEmpty()
-            val notBlocked = !FocusSessionManager.isBlocked(cat)
+            val notBlocked = !FocusSessionManager.isBlocked(focusSession, cat)
             val notBedtime = !bedtimeHide || cat !in listOf(AppCategory.SOCIAL, AppCategory.ENTERTAINMENT, AppCategory.GAMES)
             hasApps && notBlocked && notBedtime &&
                 cat.name !in hiddenHomeCategories.split(",") &&
