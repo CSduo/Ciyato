@@ -73,6 +73,15 @@ object FileAccess {
     /** The root of internal storage — `/storage/emulated/0` on most phones. */
     fun internalRoot(): File = Environment.getExternalStorageDirectory()
 
+    /** Outcome of converting a path into something another app may safely hold. */
+    sealed interface Shareable {
+        /** Safe to put in an Intent. */
+        data class Ready(val uri: Uri) : Shareable
+
+        /** Conversion failed. The caller must NOT fall back to the original URI. */
+        data class Unavailable(val reason: String) : Shareable
+    }
+
     /**
      * The single point where a path becomes something another app may hold.
      *
@@ -80,13 +89,82 @@ object FileAccess {
      * on API 24+, so every scanned file that leaves Ciyato — opened, shared,
      * edited — has to come through here first. Anything already a content URI
      * (the SAF path) passes straight through unchanged.
+     *
+     * Returns a result rather than a Uri, and that is the whole point. The first
+     * version of this function ended in `.getOrDefault(uri)`: when FileProvider
+     * refused a path — because it sits outside every configured <paths> root —
+     * it handed back the raw `file://` URI it was written to eliminate. A helper
+     * whose failure mode is "do the unsafe thing" is worse than no helper,
+     * because every call site looks correct while none of them are. A sealed
+     * result makes the failure branch impossible to ignore at compile time.
      */
-    fun shareableUri(context: Context, uri: Uri): Uri {
-        if (uri.scheme != "file") return uri
-        val path = uri.path ?: return uri
+    fun shareableUri(context: Context, uri: Uri): Shareable {
+        if (uri.scheme != "file") return Shareable.Ready(uri)
+        val path = uri.path ?: return Shareable.Unavailable("This file has no readable path")
         return runCatching {
             FileProvider.getUriForFile(context, context.packageName + PROVIDER_SUFFIX, File(path))
-        }.getOrDefault(uri)
+        }.fold(
+            onSuccess = { Shareable.Ready(it) },
+            onFailure = { Shareable.Unavailable("This file can't be shared safely") },
+        )
+    }
+
+    /**
+     * Hands a file to another app, or explains why it couldn't.
+     *
+     * Returns null on success, or a message to show the person. Every external
+     * handoff funnels through here so three rules hold in one place instead of
+     * being re-derived at each call site:
+     *
+     *  - a path that can't be converted safely is never launched (see
+     *    [shareableUri]) — the operation fails instead of leaking a raw path;
+     *  - viewing and editing launch directly, so Android honours whichever app
+     *    the person set as default. Intent.createChooser deliberately bypasses
+     *    that setting, which is why Ciyato used to re-ask "open with?" on every
+     *    single tap. Sharing keeps the chooser, where picking a different target
+     *    each time is the entire point;
+     *  - nothing fails silently: if no installed app can handle the file, the
+     *    caller gets a reason rather than a tap that appears to do nothing.
+     */
+    fun openExternally(
+        context: Context,
+        uri: Uri,
+        mimeType: String? = null,
+        action: String = Intent.ACTION_VIEW,
+        forceChooser: Boolean = false,
+    ): String? {
+        val shareable = shareableUri(context, uri)
+        val safeUri = when (shareable) {
+            is Shareable.Ready -> shareable.uri
+            is Shareable.Unavailable -> return shareable.reason
+        }
+        val type = mimeType?.takeIf { it.contains('/') } ?: mimeTypeOf(uri.lastPathSegment.orEmpty())
+        val target = Intent(action)
+        if (action == Intent.ACTION_SEND) {
+            target.setType(type.ifBlank { "*/*" })
+            target.putExtra(Intent.EXTRA_STREAM, safeUri)
+            target.clipData = android.content.ClipData.newUri(context.contentResolver, "file", safeUri)
+        } else {
+            target.setDataAndType(safeUri, type.ifBlank { "*/*" })
+        }
+        target.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (action == Intent.ACTION_EDIT) target.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        if (target.resolveActivity(context.packageManager) == null) {
+            return "No app on this phone can open this file"
+        }
+        if (action != Intent.ACTION_SEND && !forceChooser) {
+            if (runCatching { context.startActivity(target) }.isSuccess) return null
+        }
+        val label = when (action) {
+            Intent.ACTION_SEND -> "Share file"
+            Intent.ACTION_EDIT -> "Edit with"
+            else -> "Open with"
+        }
+        return runCatching {
+            context.startActivity(
+                Intent.createChooser(target, label).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }.fold(onSuccess = { null }, onFailure = { "Could not open this file" })
     }
 
     fun mimeTypeOf(name: String): String {

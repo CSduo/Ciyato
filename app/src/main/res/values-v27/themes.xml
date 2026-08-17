@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    API 27+ additions to Theme.Ciyato.
+
+    android:windowLightNavigationBar was introduced in API 27 (Android 8.1).
+    Ciyato's minSdk is 26, so declaring it in res/values/themes.xml made lint
+    fail the build with a NewApi error. Keeping it in a versioned folder is the
+    documented fix and the reason values-vNN exists: the platform picks this file
+    only where the attribute actually resolves.
+-->
+<resources>
+    <style name="Theme.Ciyato" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

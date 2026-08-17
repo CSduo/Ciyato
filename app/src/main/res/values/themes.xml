@@ -12,6 +12,14 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <!--
+            android:windowLightNavigationBar is API 27+ and minSdk is 26, so it
+            lives in values-v27 instead. Declaring it here was a lint *error*,
+            not a warning: on API 26 the attribute id does not exist, and OEMs
+            have historically reused unclaimed ids for their own attributes, so a
+            future-API attribute in a base theme can resolve to something else
+            entirely on those builds. The v27 override supplies it where it is
+            real; the light bars are already false by default below that.
+        -->
     </style>
 </resources>

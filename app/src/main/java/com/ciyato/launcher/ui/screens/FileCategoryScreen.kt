@@ -177,22 +177,12 @@ fun FileCategoryScreen(
             ) {
                 items(files, key = { it.uri.toString() }) { file ->
                     FileRow(file = file, onOpen = {
-                        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(FileAccess.shareableUri(context, file.uri), file.mimeType)
-                            addFlags(
-                                Intent.FLAG_ACTIVITY_NEW_TASK or
-                                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                            )
-                        }
-                        // Tell the user when nothing on the phone can open the
-                        // file type, instead of the tap silently doing nothing.
-                        if (viewIntent.resolveActivity(context.packageManager) != null) {
-                            runCatching { context.startActivity(viewIntent) }
-                        } else {
+                        // One owner for external handoff: it converts the path
+                        // safely, honours the default app, and returns a reason
+                        // instead of a tap that silently does nothing.
+                        FileAccess.openExternally(context, file.uri, file.mimeType)?.let { reason ->
                             android.widget.Toast.makeText(
-                                context,
-                                "No app can open this file type",
-                                android.widget.Toast.LENGTH_SHORT,
+                                context, reason, android.widget.Toast.LENGTH_SHORT,
                             ).show()
                         }
                     })

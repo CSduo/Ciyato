@@ -300,20 +300,17 @@ fun NlFileSearchScreen(
                     NlFileResultRow(
                         file = results.first(),
                         onOpen = {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW).apply {
-                                        // Indexed results can come from an
-                                        // All-files scan, where the URI is a
-                                        // raw path — handing that straight to
-                                        // another app throws on API 24+.
-                                        setDataAndType(
-                                            FileAccess.shareableUri(context, results.first().uri),
-                                            results.first().mimeType.ifBlank { "*/*" },
-                                        )
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    },
-                                )
+                            // Was wrapped in a bare runCatching that discarded the
+                            // failure, so a file that could not be opened looked
+                            // like a dead row (F-098). openExternally reports why.
+                            FileAccess.openExternally(
+                                context,
+                                results.first().uri,
+                                results.first().mimeType,
+                            )?.let { reason ->
+                                android.widget.Toast.makeText(
+                                    context, reason, android.widget.Toast.LENGTH_SHORT,
+                                ).show()
                             }
                         },
                     )
@@ -323,16 +320,10 @@ fun NlFileSearchScreen(
                     NlFileResultRow(
                         file = file,
                         onOpen = {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(
-                                            FileAccess.shareableUri(context, file.uri),
-                                            file.mimeType.ifBlank { "*/*" },
-                                        )
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    },
-                                )
+                            FileAccess.openExternally(context, file.uri, file.mimeType)?.let { reason ->
+                                android.widget.Toast.makeText(
+                                    context, reason, android.widget.Toast.LENGTH_SHORT,
+                                ).show()
                             }
                         },
                     )

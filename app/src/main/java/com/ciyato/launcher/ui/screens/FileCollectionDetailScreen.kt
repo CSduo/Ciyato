@@ -330,22 +330,14 @@ fun FileCollectionDetailScreen(
                                             isLoading = false
                                         }
                                     } else {
-                                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            // Browsing by real path yields file://
-                                            // URIs, which throw when handed to
-                                            // another app on API 24+.
-                                            setDataAndType(
-                                                FileAccess.shareableUri(context, file.uri),
-                                                file.mimeType ?: "*/*",
-                                            )
-                                            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                        }
-                                        // Swallowing this made the tap look like a dead control.
-                                        runCatching { context.startActivity(intent) }.onFailure {
+                                        // Browsing by real path yields file://
+                                        // URIs; openExternally converts them and
+                                        // refuses rather than leaking a raw path.
+                                        FileAccess.openExternally(
+                                            context, file.uri, file.mimeType,
+                                        )?.let { reason ->
                                             android.widget.Toast.makeText(
-                                                context,
-                                                "No app can open ${file.name}",
-                                                android.widget.Toast.LENGTH_SHORT,
+                                                context, reason, android.widget.Toast.LENGTH_SHORT,
                                             ).show()
                                         }
                                     }
