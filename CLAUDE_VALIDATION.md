@@ -17,7 +17,21 @@ Baseline: `5773448cbd2d189055021b319d54c74ae2c779bf` · tag `baseline-audit-5773
 green on 21. Both are valid for AGP 8.x, but local and CI should not differ indefinitely — a
 compile that passes on 21 and fails on 17 would only surface in CI. Aligning is queued for Phase 1.
 
-## Visual verification — live, on API 36
+## Scope note — emulator work stopped, 17 Aug
+
+The owner instructed that emulator/simulation work is not wanted: device
+verification is theirs to do, and effort here should go into making the code
+correct instead. The API 36 AVD recipe is kept below because it cost real effort
+to get working and may be wanted later, but **no further emulator runs are being
+performed**.
+
+What this means, stated plainly rather than glossed: every row in the device,
+recreation, performance and accessibility sections stays **unverified by me**.
+They are not assumptions to be quietly upgraded later — they are open until
+someone runs them on hardware. Nothing in these tables will be marked passing on
+the strength of a compile.
+
+## Visual verification — one pass completed on API 36 before that instruction
 
 An emulator matrix is running. The SDK had system images for API 36 and API 37
 (the `_ps16k` 16 KB page-size variant, which F-188 needs) but no AVD and no

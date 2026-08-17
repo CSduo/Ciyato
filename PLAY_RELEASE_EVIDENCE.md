@@ -38,8 +38,57 @@ Each needs a decision *and* a defensible declaration, or removal.
 | Permission | Purpose | Decision | Play requirement |
 |---|---|---|---|
 | `QUERY_ALL_PACKAGES` | enumerate installed apps — genuinely core to a launcher | retain | core-purpose declaration + disclosure (F-191) |
-| `MANAGE_EXTERNAL_STORAGE` | optional all-files Files mode | **UNDECIDED** — either a SAF/MediaStore-only Play flavour, or retain with a declaration proving SAF is insufficient | restricted; commonly rejected (F-192) |
-| `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO` | Photos library | **UNDECIDED** — broad access vs picker-first | core-functionality declaration or redesign (F-193) |
+| `MANAGE_EXTERNAL_STORAGE` | whole-device file management in Files | **RETAIN, built to be removable** — see decision below (F-192) | restricted; declaration required |
+| `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO` | Photos library | **RETAIN broad access** — owner's decision, 17 Aug (F-193) | core-functionality declaration |
+
+### Decision: All-files access (F-192)
+
+Owner's instruction was to choose whatever both avoids a Play flag *and* delivers
+whole-device file management. Those two goals are in genuine tension, so the
+decision is a risk-managed one rather than a clean win, and it is recorded here
+honestly.
+
+**Retain `MANAGE_EXTERNAL_STORAGE`, and engineer the product so that losing it is
+a configuration change rather than a redesign.** Concretely:
+
+1. **SAF stays the default and remains fully functional.** Every Files surface
+   must work with a SAF folder grant alone. All-files is an enhancement, never a
+   prerequisite — no screen may dead-end without it.
+2. **It is requested only on explicit intent**, from Files, when the person tries
+   to reach something SAF cannot grant. Never at onboarding, never pre-emptively.
+3. **The rationale states the platform truth**: since Android 11 the folder picker
+   cannot grant internal-storage root or `Download` to any app. That is why the
+   permission exists here, and the card says so.
+4. **Declaration**: filed as a file manager, which is an explicitly permitted use.
+   Store positioning must present file management as core, not incidental — the
+   audit's warning about breadth weakening a core-purpose claim is real.
+
+**Why this and not a SAF-only build:** dropping the permission removes the exact
+capability the owner asked for, and Ciyato is a genuine file manager, which is the
+use case Google permits. **Why not bet everything on approval:** it is frequently
+refused, so the fallback must be cheap. Because of (1), if the declaration is
+rejected the response is one manifest line plus hiding one card — no feature
+rewrite, no data-model change, no broken screens. That property is the actual
+deliverable of this decision and must be preserved as the code evolves.
+
+**Residual risk, stated plainly:** approval is not guaranteed, and no engineering
+choice can guarantee it. What is guaranteed is that a refusal cannot break the app.
+
+### Decision: broad photo access (F-193)
+
+**Retain `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO`.** Owner's explicit decision on
+17 Aug: a photo organiser that can only see individually-picked photos cannot
+group, deduplicate or report on a library, so the picker-first redesign was
+rejected.
+
+Obligations that come with keeping it, and are treated as requirements not
+nice-to-haves:
+- Android 14 partial access (`READ_MEDIA_VISUAL_USER_SELECTED`) must be a
+  first-class state, not an error — already handled as `MediaAccess.PARTIAL`.
+- Every count must state its scope, never implying the whole library from a
+  partial grant or a capped scan (F-107, F-108).
+- Denial must leave a usable screen, not a dead end.
+- Core-functionality declaration filed for the Photos feature.
 | `ACCESS_FINE_LOCATION` / `COARSE` | weather | retain | prominent disclosure; coordinates already coarsened to ~1.1 km |
 | `READ_CALENDAR` | agenda glance | retain | disclosure |
 | `BIND_NOTIFICATION_LISTENER_SERVICE` | badge counts | retain | user-granted in system settings |
