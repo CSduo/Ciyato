@@ -120,11 +120,22 @@ fun AutoBackupScreen(
             if (result.error != null) {
                 statusMessage = "Backup failed: ${result.error}"
             } else {
-                settingsRepo.setPhotoBackupLastRun(result.completedAtMs, result.copiedCount)
-                statusMessage = if (result.copiedCount > 0) {
-                    "Backup complete! ${result.copiedCount} photo${if (result.copiedCount == 1) "" else "s"} saved."
+                // Advance the watermark only on a complete run, matching the
+                // worker. If some photos failed, keeping the old watermark means
+                // the next run retries them; already-copied ones are skipped by
+                // name, so a retry is cheap rather than duplicating work.
+                if (result.isComplete) {
+                    settingsRepo.setPhotoBackupLastRun(result.completedAtMs, result.copiedCount)
+                }
+                // Reports the real outcome instead of one number. "Backup
+                // complete! 200 photos saved." was printable even when nothing
+                // was written, because the old counter incremented on file
+                // creation rather than on bytes actually copied.
+                statusMessage = if (result.isComplete) {
+                    "Backup complete — ${result.summary()}"
                 } else {
-                    "Backup complete — no new photos since the last backup."
+                    "Backup incomplete — ${result.summary()}. Ciyato will retry the " +
+                        "ones that failed; nothing was marked as saved."
                 }
             }
         }

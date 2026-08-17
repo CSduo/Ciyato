@@ -18,10 +18,17 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.TimeUnit
+
+/**
+ * Single reused destination folder.
+ *
+ * Deliberately NOT timestamped. A per-run folder name is what made backup
+ * non-idempotent: every run created a new directory and re-copied anything it
+ * saw again, so the destination accumulated near-duplicate folders and the
+ * person could not tell which held the current set.
+ */
+private const val BACKUP_FOLDER_NAME = "Ciyato_Backup"
 
 /**
  * Real photo backup: copies MediaStore images into a dated subfolder inside a
@@ -29,11 +36,41 @@ import java.util.concurrent.TimeUnit
  * AutoBackupScreen and by [PhotoBackupWorker]'s periodic runs, so both paths
  * do exactly the same, honest thing — only photos, nothing else.
  */
+/**
+ * The real outcome of a backup run.
+ *
+ * One count was not enough to be truthful. The previous version returned only
+ * `copiedCount`, and incremented it whenever a destination file could be
+ * *created* — the `?.use` blocks around the actual streams could both be skipped
+ * (either `openInputStream` or `openOutputStream` may return null) and the
+ * counter still advanced. So it could report "200 photos saved" having written
+ * zero bytes, and then move the watermark past all 200.
+ *
+ * [failed] exists so a partial run can be told apart from a clean one, and
+ * [skippedExisting] so a re-run over the same photos reads as "already safe"
+ * rather than as work done twice.
+ */
 data class PhotoBackupResult(
     val copiedCount: Int,
     val completedAtMs: Long,
     val error: String? = null,
-)
+    val skippedExisting: Int = 0,
+    val failed: Int = 0,
+) {
+    /** True when every photo the run examined is now in the destination. */
+    val isComplete: Boolean get() = failed == 0 && error == null
+
+    /** One line describing what actually happened, for the UI to show verbatim. */
+    fun summary(): String = when {
+        error != null -> error
+        copiedCount == 0 && skippedExisting == 0 && failed == 0 -> "Nothing new to back up."
+        else -> buildList {
+            if (copiedCount > 0) add("$copiedCount copied")
+            if (skippedExisting > 0) add("$skippedExisting already there")
+            if (failed > 0) add("$failed failed")
+        }.joinToString(" · ")
+    }
+}
 
 /** READ_MEDIA_IMAGES on API 33+, READ_EXTERNAL_STORAGE below — this feature only ever touches photos. */
 fun hasPhotoBackupPermission(context: Context): Boolean {
@@ -95,13 +132,32 @@ suspend fun runPhotoBackup(
             return@withContext PhotoBackupResult(copiedCount = 0, completedAtMs = System.currentTimeMillis())
         }
 
-        val df = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault())
-        val backupFolder = root.createDirectory("Ciyato_Backup_${df.format(Date())}") ?: run {
-            cursor.close()
-            return@withContext PhotoBackupResult(0, System.currentTimeMillis(), error = "Could not create a backup folder.")
-        }
+        // ONE stable destination, reused across runs.
+        //
+        // This used to be Ciyato_Backup_<timestamp>, created fresh on every run,
+        // which made the feature the opposite of idempotent: each run produced a
+        // new folder, and any photo seen by two runs was copied twice into two
+        // places. Over weeks the destination fills with near-duplicate folders
+        // and the person cannot tell which one is current. A single folder plus a
+        // per-file existence check means running twice is genuinely a no-op.
+        val backupFolder = root.findFile(BACKUP_FOLDER_NAME)?.takeIf { it.isDirectory }
+            ?: root.createDirectory(BACKUP_FOLDER_NAME)
+            ?: run {
+                cursor.close()
+                return@withContext PhotoBackupResult(
+                    0, System.currentTimeMillis(), error = "Could not create a backup folder.",
+                )
+            }
 
-        var done = 0
+        // Names already present, read once. Checking per file via findFile would
+        // be an O(n) provider query inside an O(n) loop.
+        val existing = runCatching {
+            backupFolder.listFiles().mapNotNull { it.name }.toHashSet()
+        }.getOrDefault(hashSetOf())
+
+        var copied = 0
+        var skipped = 0
+        var failed = 0
         cursor.use {
             val idCol = it.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val nameCol = it.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
@@ -112,25 +168,54 @@ suspend fun runPhotoBackup(
                 val name = it.getString(nameCol) ?: "photo_$id.jpg"
                 val mime = it.getString(mimeCol) ?: "image/jpeg"
                 val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+
+                if (name in existing) {
+                    skipped++
+                    onProgress(copied + skipped, total)
+                    continue
+                }
+
+                // Counted as copied ONLY if bytes actually moved. The old code
+                // incremented as soon as a destination file was created, so a
+                // null input or output stream produced a phantom success.
+                var wrote = false
+                var destFile: DocumentFile? = null
                 try {
-                    val destFile = backupFolder.createFile(mime, name)
+                    destFile = backupFolder.createFile(mime, name)
                     if (destFile != null) {
                         context.contentResolver.openInputStream(uri)?.use { inStream ->
-                            context.contentResolver.openOutputStream(destFile.uri)?.use { outStream ->
+                            context.contentResolver.openOutputStream(destFile!!.uri)?.use { outStream ->
                                 inStream.copyTo(outStream)
+                                outStream.flush()
+                                wrote = true
                             }
                         }
-                        done++
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
-                    // One unreadable/vanished photo shouldn't abort the whole backup.
+                    // One unreadable or vanished photo shouldn't abort the run.
                 }
-                onProgress(done, total)
+
+                if (wrote) {
+                    copied++
+                    existing += name
+                } else {
+                    failed++
+                    // Remove the empty placeholder, otherwise the next run sees
+                    // the name, "skips" it, and the photo is lost for good.
+                    destFile?.let { partial -> runCatching { partial.delete() } }
+                }
+                onProgress(copied + skipped, total)
             }
         }
-        PhotoBackupResult(copiedCount = done, completedAtMs = startedAtMs)
+
+        PhotoBackupResult(
+            copiedCount = copied,
+            completedAtMs = startedAtMs,
+            skippedExisting = skipped,
+            failed = failed,
+        )
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (e: Exception) {
@@ -161,10 +246,22 @@ class PhotoBackupWorker(appContext: Context, params: WorkerParameters) : Corouti
                     .build(),
             )
         }
-        if (result.error != null) return@withContext Result.failure()
+        if (result.error != null) return@withContext Result.retry()
 
-        settings.setPhotoBackupLastRun(result.completedAtMs, result.copiedCount)
-        Result.success()
+        // The watermark advances ONLY when every photo this run examined actually
+        // landed. If any failed, leaving it where it was means the next run sees
+        // them again — which is now harmless, because the destination is a single
+        // folder and already-copied photos are skipped by name. Advancing past a
+        // failure would have lost those photos permanently, with the UI still
+        // reporting success.
+        if (result.isComplete) {
+            settings.setPhotoBackupLastRun(result.completedAtMs, result.copiedCount)
+            Result.success()
+        } else {
+            // Partial: keep the old watermark and let WorkManager retry with
+            // backoff. Nothing is reported as finished that wasn't.
+            Result.retry()
+        }
     }
 
     companion object {
