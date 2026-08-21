@@ -50,14 +50,11 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     val repo     = LauncherRepository(app)
     val settings = LauncherSettingsRepository(app)
-    // Retained only for a legacy screen that is compiled but no longer reachable.
-    val aiOptimizer = AIOptimizerManager(app)
-
-    fun optimizeSystem() {
-        viewModelScope.launch {
-            aiOptimizer.optimizeSystem(this@LauncherViewModel)
-        }
-    }
+    // AIOptimizerManager and optimizeSystem() were removed here. The chain
+    // compiled and looked live, but nothing ever called optimizeSystem(), and
+    // what it did — deleting .log/.tmp files over 500KB from Ciyato's own cache —
+    // is covered more thoroughly by Storage Cleanup's Cache category, which
+    // walks both internal and external cache dirs and asks before deleting.
     // ── App list ──────────────────────────────────────────────────────────────
 
     val apps      get() = repo.apps

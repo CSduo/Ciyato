@@ -54,6 +54,10 @@ verified reachability myself. Where I disagree with the audit, the reasoning is 
 
 | Component | Commit | Reachability proof | What was preserved |
 |---|---|---|---|
+| `TFLiteCategorizerHelper` (71 lines) | B11 | Referenced from exactly one place in the tree: a *comment* in `AppCategorizer`. Contains no TensorFlow Lite execution at all — the name was the entire feature. | Nothing. The rule-based categorizer it "delegated to" is untouched; the stale comment naming it was corrected. |
+| `OnDeviceEmbeddingsHelper` (110 lines) | B11 | Zero references anywhere. | Nothing. It called TF-IDF bag-of-words "embeddings" and "semantic search", kept its index in memory only, and was never wired to a search path. |
+| `AIOptimizerManager` (47 lines) | B11 | **RECLASSIFIED.** The audit called it "explicitly unreachable", and it is — but not for the stated reason: it *was* instantiated in `LauncherViewModel` and wrapped in `optimizeSystem()`. Nothing ever called that public entry point, so the chain compiled and looked live while being dead from the UI down. | Capability, not code: it deleted `.log`/`.tmp` files over 500KB from Ciyato's own cache. Storage Cleanup's Cache category already does this more thoroughly — internal *and* external cache dirs, with sizes shown and confirmation before deleting. |
+| `GuestModeScreen` (188 lines) | B11 | Zero references outside its own file; no route in either activity. | Nothing. Its doc promised "No access to hidden apps, files, settings, or personal data", which a launcher screen cannot enforce — anything reachable from Recents, a notification or another launcher bypasses it entirely. Android's real multi-user Guest profile provides that boundary; imitating it in-app is a security claim with nothing behind it. |
 | `CiyatoNotificationListener` duplicate class | `828f473` | Two `NotificationListenerService` subclasses existed; neither declared in the manifest, so Android bound neither and `badgeCounts` was permanently empty | `CiyatoNotificationListenerService` retained, declared in the manifest, and the enabled-check now targets it |
 
 ## Preserved infrastructure (do not delete while refactoring)

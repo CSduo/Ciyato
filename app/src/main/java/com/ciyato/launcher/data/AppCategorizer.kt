@@ -414,7 +414,7 @@ object AppCategorizer {
 
     /**
      * Returns a flat list of keyword strings associated with a category.
-     * Used by TFLiteCategorizerHelper.confidence() to score rule-based matches.
+     * Scores how strongly a rule matched, for ordering and diagnostics.
      */
     fun categoryKeywords(category: AppCategory): List<String> = when (category) {
         AppCategory.FINANCE       -> listOf("bank", "wallet", "pay", "finance", "invest", "stock", "crypto", "cash", "money", "budget", "coin", "trading", "transfer")
