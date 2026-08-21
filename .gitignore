@@ -16,3 +16,9 @@ local.properties
 Ciyato.apk
 .kotlin
 **/build/
+
+# Release signing — never commit keys or their passwords
+keystore.properties
+app/keystore.properties
+*.jks
+*.keystore

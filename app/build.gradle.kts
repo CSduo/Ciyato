@@ -1,9 +1,79 @@
+// `java` resolves to the Android/Gradle extension inside this script, so the
+// package cannot be referenced inline — import the type explicitly.
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)                // KSP for Room (#111)
 }
+
+// Fails the build with an explanation the moment a release assembly is requested
+// without signing credentials. Without this the release task would still run and
+// emit an unsigned APK/AAB — technically "successful", and useless. An explicit
+// message beats discovering it at upload time.
+gradle.taskGraph.whenReady {
+    val wantsRelease = allTasks.any { task ->
+        task.name.contains("Release") &&
+            (task.name.startsWith("assemble") || task.name.startsWith("bundle"))
+    }
+    if (wantsRelease && project.extensions.getByType(com.android.build.gradle.AppExtension::class.java)
+            .signingConfigs.findByName("upload") == null
+    ) {
+        throw GradleException(
+            """
+            Release signing is not configured, so this build was stopped.
+
+            Provide an upload key in ONE of these ways:
+              1. app/keystore.properties (gitignored) containing:
+                     storeFile=/absolute/path/to/upload-keystore.jks
+                     storePassword=...
+                     keyAlias=...
+                     keyPassword=...
+              2. Environment variables:
+                     CIYATO_KEYSTORE, CIYATO_KEYSTORE_PASSWORD,
+                     CIYATO_KEY_ALIAS, CIYATO_KEY_PASSWORD
+
+            Debug signing is deliberately NOT used as a fallback: Play rejects
+            debug-signed uploads, and the debug key is publicly known, so anything
+            signed with it can be replaced by anyone.
+            """.trimIndent()
+        )
+    }
+}
+
+// ── Release signing credentials ───────────────────────────────────────────────
+//
+// Resolved at the top level on purpose: inside the `android { }` block, `java`
+// resolves to the Android extension rather than the java package, so
+// java.util.Properties cannot be referenced there.
+//
+// Credentials come from app/keystore.properties (gitignored) or environment
+// variables, so nothing secret is committed. If neither is present the "upload"
+// signing config is never created, the release build type gets no signingConfig,
+// and the guard below stops the build — rather than silently emitting an
+// unpublishable artifact.
+//
+// Release previously fell back to signingConfigs.getByName("debug"), so
+// `assembleRelease` always succeeded and always produced a debug-signed APK.
+// Play rejects those, and the debug key is publicly known, so anything signed
+// with it can be replaced by anyone (F-003).
+private val keystorePropsFile = rootProject.file("app/keystore.properties")
+private val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+private fun signingValue(key: String, env: String): String? =
+    (keystoreProps.getProperty(key) ?: System.getenv(env))?.takeIf { it.isNotBlank() }
+
+val uploadStorePath: String? = signingValue("storeFile", "CIYATO_KEYSTORE")
+val uploadStorePassword: String? = signingValue("storePassword", "CIYATO_KEYSTORE_PASSWORD")
+val uploadKeyAlias: String? = signingValue("keyAlias", "CIYATO_KEY_ALIAS")
+val uploadKeyPassword: String? = signingValue("keyPassword", "CIYATO_KEY_PASSWORD")
+val hasUploadKey: Boolean =
+    uploadStorePath != null && uploadStorePassword != null &&
+        uploadKeyAlias != null && uploadKeyPassword != null &&
+        File(uploadStorePath).exists()
 
 android {
     namespace = "com.ciyato.launcher"
@@ -45,6 +115,17 @@ android {
         // CA trust is the real, already-working protection here.
     }
 
+    signingConfigs {
+        if (hasUploadKey) {
+            create("upload") {
+                storeFile = file(uploadStorePath!!)
+                storePassword = uploadStorePassword
+                keyAlias = uploadKeyAlias
+                keyPassword = uploadKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled   = true     // R8 (#114)
@@ -53,10 +134,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // Debug-signed so `assembleRelease` yields an installable, R8-tested
-            // APK out of the box. A buyer swaps in their own upload keystore
-            // (see docs/SALE_HANDOVER.md) before publishing to Google Play.
-            signingConfig = signingConfigs.getByName("debug")
+            // Only set when real credentials were found. Left null otherwise,
+            // so Gradle refuses to produce an unsigned/unpublishable release
+            // instead of quietly handing back a debug-signed one.
+            signingConfig = signingConfigs.findByName("upload")
             buildConfigField("boolean", "IS_INTERNAL",         "false")
         }
         debug {
