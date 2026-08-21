@@ -265,6 +265,22 @@ class MainActivity : FragmentActivity() {
                             onNavigateToRemovedApps = { navController.navigate("removed_apps") },
                             onNavigateToPermissionAudit = { navController.navigate("permission_audit") },
                             onNavigateToFocus = { navController.navigate("focus") },
+                            // The fourteen below had no route and no callback, so
+                            // their Settings rows were enabled and inert (F-072).
+                            onNavigateToStorageCleanup = { navController.navigate("storage_cleanup") },
+                            onNavigateToPhotoCollections = { navController.navigate("photo_collections") },
+                            onNavigateToRecentFiles = { navController.navigate("recent_files") },
+                            onNavigateToContextualSuggestions = { navController.navigate("contextual_suggestions") },
+                            onNavigateToVoiceCommands = { navController.navigate("voice_commands") },
+                            onNavigateToAnomalyDetection = { navController.navigate("anomaly_detection") },
+                            onNavigateToAiChangelog = { navController.navigate("ai_changelog") },
+                            onNavigateToDataBreachChecker = { navController.navigate("breach_checker") },
+                            onNavigateToSafeBrowsing = { navController.navigate("safe_browsing") },
+                            onNavigateToSearchHistory = { navController.navigate("search_history") },
+                            onNavigateToStickyNotes = { navController.navigate("sticky_notes") },
+                            onNavigateToAutoBackup = { navController.navigate("auto_backup") },
+                            onNavigateToDuplicateShortcuts = { navController.navigate("duplicate_shortcuts") },
+                            onNavigateToWidgetHost = { navController.navigate("widget_host") },
                         )
                     }
 
@@ -323,6 +339,72 @@ class MainActivity : FragmentActivity() {
                             viewModel = viewModel,
                             onBack    = { navController.popBackStack() },
                         )
+                    }
+
+
+                    // ── Destinations reachable from Settings ──────────────────
+                    // Every Settings row must land somewhere. These fourteen
+                    // screens were fully implemented but had no route here, so
+                    // their rows were visible, enabled, and did nothing at all
+                    // when tapped (F-072). The nullable-callback signature made
+                    // that invisible at compile time; SettingsScreen now requires
+                    // every action, so a dead row cannot be reintroduced.
+
+                    composable("storage_cleanup") {
+                        StorageCleanupScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("photo_collections") {
+                        PhotoCollectionsScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("recent_files") {
+                        RecentFilesScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("contextual_suggestions") {
+                        ContextualSuggestionsScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("voice_commands") {
+                        VoiceCommandScreen(
+                            viewModel = viewModel,
+                            onBack = { navController.popBackStack() },
+                            onOpenCategory = { category ->
+                                navController.navigate("category_detail/${category.name}") { launchSingleTop = true }
+                            },
+                            onOpenSearch = { navController.navigate("search") { launchSingleTop = true } },
+                        )
+                    }
+                    composable("anomaly_detection") {
+                        AnomalyDetectionScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("ai_changelog") {
+                        AiChangelogScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("breach_checker") {
+                        DataBreachCheckerScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("safe_browsing") {
+                        SafeBrowsingHelperScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("search_history") {
+                        SearchHistoryScreen(
+                            viewModel = viewModel,
+                            onBack = { navController.popBackStack() },
+                            // Picking a past query should search it, not just close.
+                            onQuerySelected = {
+                                navController.navigate("search") { launchSingleTop = true }
+                            },
+                        )
+                    }
+                    composable("sticky_notes") {
+                        StickyNotesScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("auto_backup") {
+                        AutoBackupScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("duplicate_shortcuts") {
+                        DuplicateShortcutsScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("widget_host") {
+                        WidgetHostScreen(onBack = { navController.popBackStack() })
                     }
 
                     composable("agenda") {
