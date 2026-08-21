@@ -36,7 +36,17 @@ import kotlinx.coroutines.launch
 
 /**
  * WidgetHostScreen — Suggestion #15
- * Allows users to pick and place Android app widgets on the Ciyato home screen
+ * A widget panel inside Ciyato — NOT Home placement.
+ *
+ * The doc used to say widgets are placed "on the Ciyato home screen". They are
+ * not: HomeScreen contains no AppWidgetHostView and never hosted one, so the
+ * central claim of the feature was false (F-135). Widgets bound here are bound,
+ * configured, persisted and rendered on this screen only.
+ *
+ * Integrating them as Home canvas objects is the correct end state and the
+ * infrastructure below (host, binding, persisted IDs, configuration) is what
+ * that would build on. Until then this screen describes itself accurately
+ * rather than promising a placement that never happens
  * using AppWidgetHost + AppWidgetManager APIs.
  *
  * Placed widget IDs are persisted through [LauncherSettingsRepository] (see
@@ -102,34 +112,104 @@ fun WidgetHostScreen(
         isLoaded = true
     }
 
+    // The ID allocated for an in-flight bind, so it can be reclaimed if the flow
+    // does not complete. Without this, cancelling the system bind dialog leaked
+    // the ID permanently: result.data is null on cancel, so appWidgetId came back
+    // as -1 and the cleanup branch below was never reached (F-139). The old
+    // comment claimed it handled cancellation; it only handled "bound, but info
+    // missing", which is a different and rarer case.
+    var pendingWidgetId by remember { mutableStateOf(AppWidgetManager.INVALID_APPWIDGET_ID) }
+
     DisposableEffect(Unit) {
-        onDispose { widgetHost.stopListening() }
+        onDispose {
+            widgetHost.stopListening()
+            // An allocation still in flight when the screen dies would otherwise
+            // be orphaned with no owner and no way to reclaim it.
+            if (pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                widgetHost.deleteAppWidgetId(pendingWidgetId)
+            }
+        }
+    }
+
+    fun releasePending() {
+        if (pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            widgetHost.deleteAppWidgetId(pendingWidgetId)
+            pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+        }
+    }
+
+    fun addBound(appWidgetId: Int, info: AppWidgetProviderInfo) {
+        val updated = placedWidgets + PlacedWidget(
+            appWidgetId = appWidgetId,
+            label = info.loadLabel(context.packageManager),
+            providerInfo = info,
+        )
+        placedWidgets = updated
+        persistIds(updated)
+        pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+    }
+
+    // Some providers ship a configuration activity and are not usable until it
+    // has run — a clock with no timezone chosen, a folder widget with no folder.
+    // That step was never launched, so those widgets bound and then rendered
+    // empty or default forever (F-136).
+    val configureWidgetLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val id = pendingWidgetId
+        val info = if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            widgetManager.getAppWidgetInfo(id)
+        } else null
+        if (result.resultCode == android.app.Activity.RESULT_OK && info != null) {
+            addBound(id, info)
+        } else {
+            // Configuration cancelled: an unconfigured widget is not useful, so
+            // the binding is undone rather than left half-made.
+            releasePending()
+        }
+        showPickerDialog = false
+    }
+
+    fun finishBinding(appWidgetId: Int, provider: AppWidgetProviderInfo) {
+        if (provider.configure != null) {
+            pendingWidgetId = appWidgetId
+            val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE).apply {
+                component = provider.configure
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+            }
+            val launched = runCatching { configureWidgetLauncher.launch(intent) }.isSuccess
+            if (!launched) {
+                // Provider declares a config activity that cannot be started.
+                // Keep the widget rather than losing it; it may still render.
+                addBound(appWidgetId, provider)
+                showPickerDialog = false
+            }
+        } else {
+            addBound(appWidgetId, provider)
+            showPickerDialog = false
+        }
     }
 
     val bindWidgetLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        val appWidgetId = result.data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
-        if (appWidgetId != -1) {
-            val info = widgetManager.getAppWidgetInfo(appWidgetId)
-            if (info != null) {
-                val updated = placedWidgets + PlacedWidget(
-                    appWidgetId = appWidgetId,
-                    label = info.loadLabel(context.packageManager),
-                    providerInfo = info,
-                )
-                placedWidgets = updated
-                persistIds(updated)
-            } else {
-                // Binding was declined/cancelled — the ID was already allocated by
-                // pickWidget() below, so free it instead of leaking it.
-                widgetHost.deleteAppWidgetId(appWidgetId)
-            }
+        val id = pendingWidgetId
+        val provider = if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            widgetManager.getAppWidgetInfo(id)
+        } else null
+        if (result.resultCode == android.app.Activity.RESULT_OK && provider != null) {
+            finishBinding(id, provider)
+        } else {
+            // Covers the real cancel case: no data, no permission, or a provider
+            // that vanished. Either way the allocated ID goes back.
+            releasePending()
+            showPickerDialog = false
         }
     }
 
     fun pickWidget(provider: AppWidgetProviderInfo) {
         val appWidgetId = widgetHost.allocateAppWidgetId()
+        pendingWidgetId = appWidgetId
         val granted = widgetManager.bindAppWidgetIdIfAllowed(appWidgetId, provider.provider)
         if (!granted) {
             val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND).apply {
@@ -138,15 +218,8 @@ fun WidgetHostScreen(
             }
             bindWidgetLauncher.launch(intent)
         } else {
-            val updated = placedWidgets + PlacedWidget(
-                appWidgetId = appWidgetId,
-                label = provider.loadLabel(context.packageManager),
-                providerInfo = provider,
-            )
-            placedWidgets = updated
-            persistIds(updated)
+            finishBinding(appWidgetId, provider)
         }
-        showPickerDialog = false
     }
 
     Scaffold(

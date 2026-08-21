@@ -174,7 +174,13 @@ fun SettingsScreen(
             item {
                 CiyatoListCard(
                     title = "Widgets",
-                    subtitle = "Place Android app widgets on your home screen",
+                    // Was "Place Android app widgets on your home screen". Home
+                    // hosts no widgets — there is no AppWidgetHostView anywhere
+                    // in HomeScreen — so that sentence described a feature that
+                    // does not exist (F-135). Home placement is the right end
+                    // state and is tracked as such; until it lands the row says
+                    // what the screen actually does.
+                    subtitle = "Browse and keep app widgets in Ciyato's widget panel",
                     icon = Icons.Default.Widgets,
                     iconColor = CiyatoGold,
                     onClick = { onNavigateToWidgetHost() }
