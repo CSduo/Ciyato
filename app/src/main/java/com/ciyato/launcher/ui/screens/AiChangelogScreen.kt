@@ -287,7 +287,12 @@ private fun buildChangelog(context: Context): List<PhoneChangeEntry> {
         try {
             val allApps = pm.getInstalledPackages(PackageManager.GET_META_DATA)
             allApps.filter { it.firstInstallTime >= todayStart }.take(3).forEach { pkg ->
-                val label = pm.getApplicationLabel(pkg.applicationInfo).toString()
+                // applicationInfo is nullable as of the API 36 SDK. Skipping the
+                // entry is right: without it there is no label to show, and
+                // asserting non-null here would crash on exactly the edge case
+                // the platform introduced the nullability to describe.
+                val appInfo = pkg.applicationInfo ?: return@forEach
+                val label = pm.getApplicationLabel(appInfo).toString()
                 entries.add(PhoneChangeEntry(
                     emoji = "📦",
                     title = "New install: $label",
