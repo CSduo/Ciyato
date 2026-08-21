@@ -244,7 +244,16 @@ fun FileCollectionDetailScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 when {
-                    selectedFolderUri == null -> {
+                    // Gate on whether a readable root was actually established,
+                    // not on whether a SAF folder was picked.
+                    //
+                    // In All-files mode there is no selectedFolderUri by design —
+                    // the root comes from the filesystem — so this branch used to
+                    // hide a browser that had already loaded its data behind a
+                    // "choose a folder" card, and the picker it offered is the one
+                    // Android forbids from granting internal storage (F-090). The
+                    // person was sent in a circle past working content.
+                    selectedFolderUri == null && folderStack.isEmpty() && !isLoading -> {
                         item { GrantAccessCard(collectionTitle, collectionColor, onEnable = { folderPickerLauncher.launch(null) }) }
                         item { SafExplainerCard() }
                     }

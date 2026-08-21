@@ -116,11 +116,21 @@ private data class FileScopeScan(
     val totalBytes: Long get() = files.sumOf(AccessibleFile::sizeBytes)
 }
 
+/**
+ * One Files category.
+ *
+ * [matches] is held alongside [count] deliberately. The predicate used to live
+ * inline inside the count expression, so a row could report "42 Videos" with no
+ * way to then produce those 42 files — which is why tapping a category opened an
+ * unfiltered browser and silently discarded the choice (F-086). Counting and
+ * filtering now come from the same function and cannot drift.
+ */
 private data class FilesCategory(
     val label: String,
     val count: Int,
     val icon: ImageVector,
     val color: Color,
+    val matches: (AccessibleFile) -> Boolean,
 )
 
 /**
@@ -151,6 +161,9 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
     var isScanning by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
     var showBrowser by remember { mutableStateOf(false) }
+    // Tapping a category shows THAT category's files, using the scan already in
+    // memory. Previously every row opened the same unfiltered browser (F-086).
+    var openCategory by remember { mutableStateOf<String?>(null) }
     var refreshNonce by remember { mutableStateOf(0) }
     var cleanupResult by remember(rootUri) {
         mutableStateOf(rootUri?.let { uri -> FileCleanupResultStore.loadResult(context, uri.toString()) })
@@ -253,6 +266,30 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
         return
     }
 
+    // A tapped category renders its own files from the scan already in memory —
+    // no re-read, no second scope model, and the list is provably the same set
+    // the row counted because both come from category.matches.
+    val activeCategory = openCategory
+    if (activeCategory != null) {
+        val currentScan = scan
+        val category = currentScan?.let { buildCategories(it) }?.firstOrNull { it.label == activeCategory }
+        val categoryFiles = remember(currentScan, activeCategory) {
+            if (currentScan == null || category == null) emptyList()
+            else currentScan.files.filter(category.matches).sortedByDescending(AccessibleFile::modifiedAt)
+        }
+        FilesCategoryDetail(
+            title = activeCategory,
+            files = categoryFiles,
+            onBack = { openCategory = null },
+            onOpenFile = { file ->
+                FileAccess.openExternally(context, file.uri, file.mimeType)?.let { reason ->
+                    Toast.makeText(context, reason, Toast.LENGTH_SHORT).show()
+                }
+            },
+        )
+        return
+    }
+
     FilesHomeContent(
         rootUri = rootUri,
         scan = scan,
@@ -266,6 +303,12 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
         allFilesGranted = allFilesGranted,
         onBack = onBack,
         onOpenBrowser = { showBrowser = true },
+        onOpenCategory = { label -> openCategory = label },
+        onOpenFile = { file ->
+            FileAccess.openExternally(context, file.uri, file.mimeType)?.let { reason ->
+                Toast.makeText(context, reason, Toast.LENGTH_SHORT).show()
+            }
+        },
         onGrantAllFiles = {
             val intent = FileAccess.allFilesSettingsIntent(context)
             if (intent == null) {
@@ -287,11 +330,19 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
             if (rootUri != null || allFilesGranted) refreshNonce += 1
         },
         onScanDuplicates = {
-            rootUri?.let { uri ->
+            // rootUri?.let{} meant this button did nothing at all in All-files
+            // mode, where there is no SAF tree by design — an enabled control
+            // that silently no-ops (F-089). The worker needs a tree URI, so say
+            // so instead of pretending the tap registered.
+            val uri = rootUri
+            if (uri != null) {
                 cleanupError = null
                 cleanupNotice = null
                 cleanupProgress = 0 to 0
                 cleanupWorkId = FileCleanupWorker.enqueue(context, uri).id
+            } else {
+                cleanupError = "Duplicate scanning needs a chosen folder. " +
+                    "Pick one in Files Browser, then scan it."
             }
         },
         onReviewDuplicates = { showDuplicateReview = true },
@@ -331,6 +382,8 @@ private fun FilesHomeContent(
     allFilesGranted: Boolean,
     onBack: () -> Unit,
     onOpenBrowser: () -> Unit,
+    onOpenCategory: (String) -> Unit,
+    onOpenFile: (AccessibleFile) -> Unit,
     onGrantAllFiles: () -> Unit,
     onRefresh: () -> Unit,
     onScanDuplicates: () -> Unit,
@@ -409,7 +462,7 @@ private fun FilesHomeContent(
                     if (categories.isNotEmpty()) {
                         item { Text("Categories", color = CiyatoWhite, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
                         items(categories, key = { it.label }) { category ->
-                            FilesCategoryRow(category = category, onOpenBrowser = onOpenBrowser)
+                            FilesCategoryRow(category = category, onOpen = { onOpenCategory(category.label) })
                         }
                     }
 
@@ -417,7 +470,7 @@ private fun FilesHomeContent(
                     if (recentFiles.isEmpty()) {
                         item { TruthfulEmptyState("No accessible files were found in this selected folder.") }
                     } else {
-                        items(recentFiles, key = { it.uri.toString() }) { file -> FilesRecentRow(file) }
+                        items(recentFiles, key = { it.uri.toString() }) { file -> FilesRecentRow(file, onOpen = { onOpenFile(file) }) }
                     }
 
                     item { Text("Cleanup review", color = CiyatoWhite, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
@@ -551,13 +604,20 @@ private fun FilesScopeCard(scan: FileScopeScan, onOpenBrowser: () -> Unit) {
 }
 
 @Composable
-private fun FilesCategoryRow(category: FilesCategory, onOpenBrowser: () -> Unit) {
+/**
+ * A category row that opens THAT category.
+ *
+ * Every row previously called the same `onOpenBrowser`, so tapping "Images",
+ * "Videos" or "Documents" all landed in the same unfiltered browser and the
+ * selection the person made was discarded (F-086).
+ */
+private fun FilesCategoryRow(category: FilesCategory, onOpen: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(CiyatoBgEl)
-            .clickable(onClick = onOpenBrowser)
+            .clickable(onClick = onOpen)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -577,13 +637,20 @@ private fun FilesCategoryRow(category: FilesCategory, onOpenBrowser: () -> Unit)
 }
 
 @Composable
-private fun FilesRecentRow(file: AccessibleFile) {
+/**
+ * A recent-file row that opens the file.
+ *
+ * These were rendered with no click handler at all, so the most obviously
+ * tappable thing on Files Home did nothing (F-087).
+ */
+private fun FilesRecentRow(file: AccessibleFile, onOpen: () -> Unit) {
     val dateFormat = remember { DateFormat.getDateInstance(DateFormat.MEDIUM) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(CiyatoBgEl)
+            .clickable(onClick = onOpen)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -881,14 +948,33 @@ private fun TruthfulEmptyState(message: String) {
 }
 
 private fun buildCategories(scan: FileScopeScan): List<FilesCategory> {
-    fun count(predicate: (AccessibleFile) -> Boolean) = scan.files.count(predicate)
+    fun category(
+        label: String,
+        icon: ImageVector,
+        color: Color,
+        matches: (AccessibleFile) -> Boolean,
+    ): FilesCategory? {
+        val count = scan.files.count(matches)
+        return if (count > 0) FilesCategory(label, count, icon, color, matches) else null
+    }
+    fun isScreenshot(f: AccessibleFile) = "screenshot" in f.name.lowercase()
+    fun isApk(f: AccessibleFile) =
+        f.mimeType == "application/vnd.android.package-archive" || f.name.endsWith(".apk", true)
+
     return listOfNotNull(
-        FilesCategory("Screenshots", count { "screenshot" in it.name.lowercase() }, Icons.Default.Screenshot, CiyatoPurple).takeIf { it.count > 0 },
-        FilesCategory("Documents", count { isDocument(it) }, Icons.Default.Article, CiyatoBlue).takeIf { it.count > 0 },
-        FilesCategory("Photos", count { it.mimeType.startsWith("image/") && "screenshot" !in it.name.lowercase() }, Icons.Default.Image, CiyatoGreen).takeIf { it.count > 0 },
-        FilesCategory("Videos", count { it.mimeType.startsWith("video/") }, Icons.Default.Movie, CiyatoRed).takeIf { it.count > 0 },
-        FilesCategory("APKs", count { it.mimeType == "application/vnd.android.package-archive" || it.name.endsWith(".apk", true) }, Icons.Default.InsertDriveFile, CiyatoGold).takeIf { it.count > 0 },
-        FilesCategory("Other files", count { !isDocument(it) && !it.mimeType.startsWith("image/") && !it.mimeType.startsWith("video/") && !it.name.endsWith(".apk", true) }, Icons.Default.InsertDriveFile, CiyatoSec).takeIf { it.count > 0 },
+        category("Screenshots", Icons.Default.Screenshot, CiyatoPurple) { isScreenshot(it) },
+        // APKs are excluded here because they are also application/* and were
+        // therefore counted under BOTH Documents and APKs (F-092).
+        category("Documents", Icons.Default.Article, CiyatoBlue) { isDocument(it) && !isApk(it) },
+        category("Photos", Icons.Default.Image, CiyatoGreen) {
+            it.mimeType.startsWith("image/") && !isScreenshot(it)
+        },
+        category("Videos", Icons.Default.Movie, CiyatoRed) { it.mimeType.startsWith("video/") },
+        category("APKs", Icons.Default.InsertDriveFile, CiyatoGold) { isApk(it) },
+        category("Other files", Icons.Default.InsertDriveFile, CiyatoSec) {
+            !isDocument(it) && !it.mimeType.startsWith("image/") &&
+                !it.mimeType.startsWith("video/") && !isApk(it)
+        },
     )
 }
 
@@ -973,4 +1059,49 @@ private fun formatScopeBytes(bytes: Long): String = when {
     bytes < 1024L * 1024L -> String.format("%.1f KB", bytes / 1024f)
     bytes < 1024L * 1024L * 1024L -> String.format("%.1f MB", bytes / (1024f * 1024f))
     else -> String.format("%.2f GB", bytes / (1024f * 1024f * 1024f))
+}
+
+
+/**
+ * One category's files, filtered from the scan already held in memory.
+ *
+ * Deliberately not a new scope model or a second scan: the audit's Files
+ * direction is one domain with one scope, and this list is derived from exactly
+ * the same predicate that produced the count on the row, so the two can never
+ * disagree.
+ */
+@Composable
+private fun FilesCategoryDetail(
+    title: String,
+    files: List<AccessibleFile>,
+    onBack: () -> Unit,
+    onOpenFile: (AccessibleFile) -> Unit,
+) {
+    androidx.activity.compose.BackHandler(onBack = onBack)
+    androidx.compose.material3.Scaffold(
+        containerColor = CiyatoBg,
+        topBar = {
+            CiyatoTopBar(
+                title = title,
+                subtitle = "${files.size} ${if (files.size == 1) "file" else "files"} in this scope",
+                onBack = onBack,
+            )
+        },
+    ) { padding ->
+        if (files.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text("Nothing in this category", color = CiyatoMuted, fontSize = 13.sp)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(files, key = { it.uri.toString() }) { file ->
+                    FilesRecentRow(file, onOpen = { onOpenFile(file) })
+                }
+            }
+        }
+    }
 }
