@@ -12,7 +12,7 @@ Baseline: `5773448cbd2d189055021b319d54c74ae2c779bf` · tag `baseline-audit-5773
 | `compileDebugKotlin` on 36 | **PASS** |
 | `testDebugUnitTest` on 36 | **PASS** — all suites |
 | `assembleDebug` on 36 | **PASS** |
-| `lintDebug` on 36 | see baseline section |
+| `lintDebug` on 36 | **PASS** — 0 errors |
 | Predictive Back (F-045/F-186) | **NOT VERIFIED** — both nav systems use custom back handling; needs migration + device test |
 | Edge-to-edge / large screen (F-046/F-187) | **NOT VERIFIED** — device only |
 | 16 KB page size (F-188) | **NOT VERIFIED** — device only |
@@ -79,7 +79,7 @@ Command: `./gradlew --no-daemon testDebugUnitTest lintDebug`
 |---|---|---|
 | `compileDebugKotlin` | PASS | verified repeatedly through 16 Aug |
 | `testDebugUnitTest` | PASS | plus 24 regressions added since (backup outcome, focus lifetime, search date ranges) |
-| `lintDebug` | PASS (0 errors) | **2 errors at baseline**, both fixed: `NewApi` windowLightNavigationBar moved to values-v27, and QueryAllPackagesPermission kept deliberately with a recorded Play decision. 142 warnings remain and are not yet triaged. |
+| `lintDebug` | PASS (0 errors) — verified, 22 Aug | **2 errors at baseline.** `NewApi` windowLightNavigationBar moved to `values-v27`. `QueryAllPackagesPermission` is suppressed on that single manifest element with a written rationale — a launcher is a documented exception, and the Play declaration is recorded in PLAY_RELEASE_EVIDENCE.md. Correction: an earlier revision of this row claimed PASS *before* the second error was actually handled; lint was still failing the build at that point. 142 warnings remain, untriaged. |
 | `assembleDebug` | PASS | APK produced at `Ciyato.apk` |
 | CI end-to-end | **FAIL at baseline** | died before Gradle on a non-existent `ciyato-android/` directory (F-001); workflow repaired, awaiting first green run |
 

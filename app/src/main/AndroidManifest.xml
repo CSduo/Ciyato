@@ -3,7 +3,23 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- App listing and launching. Required for a launcher to show installed apps. -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!--
+      Lint flags this by default, correctly: most apps must use a <queries>
+      declaration instead, and Play refuses QUERY_ALL_PACKAGES for them.
+
+      A launcher is one of the documented exceptions — Ciyato's core function is
+      showing, categorising and launching everything installed, which a filtered
+      <queries> list cannot express. The suppression is scoped to this single
+      element rather than disabling the check, so any OTHER misuse still fails
+      the build, and the Play declaration decision is recorded in
+      PLAY_RELEASE_EVIDENCE.md (F-191).
+
+      This is an acknowledgement, not a dismissal: if the declaration is refused,
+      the permission has to go and the app must fall back to <queries>.
+    -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <!-- Required on Android 9+ for the system uninstall dialog to accept our request. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
