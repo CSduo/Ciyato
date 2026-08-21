@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.ciyato.launcher.data.FileAccess
 import com.ciyato.launcher.data.VaultCrypto
 import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
@@ -38,7 +39,9 @@ import java.io.File
 /**
  * SecureFileVaultScreen — Suggestion #68
  * Biometric-gated file vault using AES-256-GCM (Android Keystore) encryption.
- * Files are encrypted on import and decrypted on open via [VaultCrypto].
+ * Files are encrypted on import, and can be decrypted and opened again — the
+ * screen previously offered no way out at all, which made "vault" the wrong word
+ * for it (F-146).
  * Vault directory lives in app's internal private storage.
  */
 
@@ -56,6 +59,46 @@ fun SecureFileVaultScreen(
 
     val vaultDir = remember {
         File(context.filesDir, "secure_vault").also { it.mkdirs() }
+    }
+
+    // Deleting a vault file destroys the only decryptable copy, so it asks first
+    // (F-147). Nothing else in Ciyato deletes user data without confirmation.
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
+    var vaultMessage by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * Decrypts a vault file and hands it to another app.
+     *
+     * The vault had no way to get a file back OUT (F-146): the only per-file
+     * action was Delete, while the docs claimed files are "decrypted on open".
+     * Encrypting something you can never read again is a shredder, not a vault.
+     *
+     * Plaintext is written to Ciyato's private cache — not to shared storage —
+     * and handed over as a temporary content grant through the same FileProvider
+     * path everything else uses, so no raw file:// URI escapes. That cache copy
+     * is a real trade-off and is swept on every unlock rather than left lying
+     * around indefinitely.
+     */
+    fun exportAndOpen(name: String) {
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val encrypted = File(vaultDir, name).readBytes()
+                    val plain = VaultCrypto.decrypt(encrypted)
+                    val outDir = File(context.cacheDir, "vault_open").also { it.mkdirs() }
+                    val out = File(outDir, name.removeSuffix(".enc"))
+                    out.writeBytes(plain)
+                    out
+                }
+            }
+            result.fold(
+                onSuccess = { file ->
+                    val reason = FileAccess.openExternally(context, Uri.fromFile(file))
+                    if (reason != null) vaultMessage = reason
+                },
+                onFailure = { vaultMessage = "That file could not be decrypted." },
+            )
+        }
     }
 
     suspend fun refreshVaultFiles() {
@@ -80,6 +123,9 @@ fun SecureFileVaultScreen(
                 val entries = vaultDir.listFiles() ?: emptyArray()
                 val (orphans, files) = entries.partition { VaultCrypto.isTempArtifact(it.name) }
                 orphans.forEach { it.delete() }
+                // Decrypted copies from a previous session's "open" do not
+                // outlive that session.
+                File(context.cacheDir, "vault_open").listFiles()?.forEach { it.delete() }
                 files.count { file ->
                     runCatching { VaultCrypto.verifyAndMigrate(file, context.packageName) }.isFailure
                 }
@@ -226,14 +272,21 @@ fun SecureFileVaultScreen(
                                 Spacer(Modifier.width(10.dp))
                                 Text(name.removeSuffix(".enc"), color = CiyatoWhite,
                                     fontSize = 13.sp, modifier = Modifier.weight(1f))
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        withContext(Dispatchers.IO) { File(vaultDir, name).delete() }
-                                        refreshVaultFiles()
-                                    }
-                                }) {
-                                    Icon(Icons.Default.Delete, null, tint = Color(0xFFFF6B6B),
-                                        modifier = Modifier.size(18.dp))
+                                IconButton(onClick = { exportAndOpen(name) }) {
+                                    Icon(
+                                        Icons.Default.FileOpen,
+                                        contentDescription = "Open ${name.removeSuffix(".enc")}",
+                                        tint = CiyatoSec,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                                IconButton(onClick = { pendingDelete = name }) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Delete ${name.removeSuffix(".enc")}",
+                                        tint = Color(0xFFFF6B6B),
+                                        modifier = Modifier.size(18.dp),
+                                    )
                                 }
                             }
                         }
@@ -242,4 +295,45 @@ fun SecureFileVaultScreen(
             }
         }
     }
+    pendingDelete?.let { name ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            containerColor = CiyatoBgEl,
+            title = { Text("Delete from vault?", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
+            text = {
+                Text(
+                    "\"${name.removeSuffix(".enc")}\" will be permanently deleted. This is the " +
+                        "only decryptable copy — Ciyato cannot recover it.",
+                    color = CiyatoSec,
+                    fontSize = 13.sp,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val target = name
+                    pendingDelete = null
+                    scope.launch {
+                        withContext(Dispatchers.IO) { File(vaultDir, target).delete() }
+                        refreshVaultFiles()
+                    }
+                }) { Text("Delete", color = CiyatoRed, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Keep", color = CiyatoSec) }
+            },
+        )
+    }
+
+    vaultMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { vaultMessage = null },
+            containerColor = CiyatoBgEl,
+            title = { Text("Couldn't open", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
+            text = { Text(message, color = CiyatoSec, fontSize = 13.sp) },
+            confirmButton = {
+                TextButton(onClick = { vaultMessage = null }) { Text("OK", color = CiyatoGold) }
+            },
+        )
+    }
+
 }
