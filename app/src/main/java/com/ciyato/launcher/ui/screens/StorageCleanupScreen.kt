@@ -164,7 +164,19 @@ fun StorageCleanupScreen(
                 }
             } else {
                 val uniqueItems = remember(results) { results.flatMap { it.items }.distinctBy { it.id } }
-                val measuredBytes = results.sumOf { it.totalBytes }
+                // Unique bytes, not the sum of category totals.
+                //
+                // A single file legitimately appears in several categories — a
+                // 400 MB video in Downloads is also a Large File, and a trashed
+                // photo is also in Trash — so summing category totals counted the
+                // same bytes two or three times. The headline could therefore
+                // promise more free space than the device physically had (F-113).
+                // The overlap was already detected here, and used only to soften
+                // the SUBTITLE while leaving the number wrong.
+                val measuredBytes = remember(uniqueItems) { uniqueItems.sumOf { it.sizeBytes } }
+                val overlapping = remember(uniqueItems, results) {
+                    uniqueItems.size < results.sumOf { it.totalCount }
+                }
                 LazyColumn(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -175,8 +187,10 @@ fun StorageCleanupScreen(
                     item {
                         CleanupSummaryCard(
                             totalBytes = measuredBytes,
-                            totalCount = results.sumOf { it.totalCount },
-                            overlapNote = uniqueItems.size < results.sumOf { it.totalCount },
+                            // Distinct files too — the count had the same
+                            // double-counting problem as the bytes.
+                            totalCount = uniqueItems.size,
+                            overlapNote = overlapping,
                         )
                     }
                     items(results, key = { it.category }) { result ->
@@ -301,10 +315,22 @@ private fun CleanupSummaryCard(totalBytes: Long, totalCount: Int, overlapNote: B
             .border(1.dp, CiyatoSubtleBorder, CiyatoShapes.large).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text("You could free up", color = CiyatoMuted, style = labelL)
+        // "You could free up" presented a candidate list as guaranteed reclaim,
+        // over a total that also double-counted (F-113, F-114). These are things
+        // worth LOOKING at — some will be worth keeping — so the headline frames
+        // it as found, and the number is now distinct bytes.
+        Text("Found to review", color = CiyatoMuted, style = labelL)
         Text(MediaLibraryRepository.formatBytes(totalBytes), color = CiyatoGold, style = displaySection)
         Text(
-            "$totalCount item${if (totalCount == 1) "" else "s"} across ${if (overlapNote) "overlapping " else ""}categories below",
+            buildString {
+                append("$totalCount distinct item")
+                if (totalCount != 1) append("s")
+                if (overlapNote) {
+                    append(" — some appear in more than one category, counted once here")
+                } else {
+                    append(" across the categories below")
+                }
+            },
             color = CiyatoSec,
             style = bodyM,
         )
