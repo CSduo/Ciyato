@@ -118,7 +118,9 @@ fun NlFileSearchScreen(
         hasSearched = false
         focusManager.clearFocus()
         try {
-            kotlinx.coroutines.delay(400)
+            // The 400 ms sleep that used to be here was theatre — it made a
+            // local index lookup feel like remote work (F-094). Removing it is a
+            // straight latency win; nothing depended on the pause.
             if (selectedRoot == null) {
                 // All-files mode: the index Files built over internal storage
                 // is the only source — there is no SAF tree to walk as a
@@ -295,7 +297,9 @@ fun NlFileSearchScreen(
                 item {
                     Text("${results.size} accessible result${if (results.size == 1) "" else "s"}", color = CiyatoMuted, fontSize = 13.sp)
                 }
-                item { Text("Top match", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 15.sp) }
+                // Was "Top match", which implies a relevance score. Results are
+                    // ordered by recency, so the label now says that (F-201).
+                    item { Text("Most recent", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 15.sp) }
                 item {
                     NlFileResultRow(
                         file = results.first(),
@@ -401,10 +405,17 @@ private fun parseNlQuery(query: String): ParsedQuery {
     val now = System.currentTimeMillis()
 
     val dateRange: Pair<Long, Long>? = when {
-        "today" in lower -> (System.currentTimeMillis() - TimeUnit.HOURS.toMillis(24)) to now
+        // Calendar days, not rolling windows.
+        //
+        // "today" was `now - 24h .. now`, so a search at 9am returned files from
+        // 3pm YESTERDAY and called them today's (F-095). Nobody means "the last
+        // 24 hours" when they say today — they mean since midnight. "yesterday"
+        // had the same shape one day back, so the two windows also overlapped.
+        // startOfToday() anchors both to real local midnight.
+        "today" in lower -> startOfToday() to now
         "yesterday" in lower -> {
-            val yd = now - TimeUnit.DAYS.toMillis(1)
-            (yd - TimeUnit.HOURS.toMillis(24)) to yd
+            val todayStart = startOfToday()
+            (todayStart - TimeUnit.DAYS.toMillis(1)) to todayStart
         }
         "last week" in lower || "this week" in lower -> (now - TimeUnit.DAYS.toMillis(7)) to now
         "last month" in lower || "this month" in lower -> (now - TimeUnit.DAYS.toMillis(30)) to now
@@ -448,14 +459,37 @@ private fun parseNlQuery(query: String): ParsedQuery {
     return ParsedQuery(keywords, mimeType, dateRange, minimumSizeBytes)
 }
 
-private fun dateRangeForMonth(month: Int): Pair<Long, Long> {
+/** Local midnight at the start of today. */
+internal fun startOfToday(): Long = Calendar.getInstance().apply {
+    set(Calendar.HOUR_OF_DAY, 0)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+}.timeInMillis
+
+/**
+ * The most recent occurrence of [month], which is usually what a bare month name
+ * means.
+ *
+ * Two bugs fixed. The year was never set, so the calendar kept the CURRENT year:
+ * asking for "December" in August produced a window entirely in the future and
+ * therefore always zero results (F-096). And minutes, seconds and milliseconds
+ * were never zeroed, so both boundaries carried the current time of day —
+ * "March" started partway through 1 March and ended partway through the 31st,
+ * quietly dropping files at both ends.
+ */
+internal fun dateRangeForMonth(month: Int): Pair<Long, Long> {
     val cal = Calendar.getInstance()
-    cal.set(Calendar.MONTH, month)
-    cal.set(Calendar.DAY_OF_MONTH, 1)
-    cal.set(Calendar.HOUR_OF_DAY, 0)
+    val currentMonth = cal.get(Calendar.MONTH)
+    val year = if (month > currentMonth) cal.get(Calendar.YEAR) - 1 else cal.get(Calendar.YEAR)
+    cal.set(year, month, 1, 0, 0, 0)
+    cal.set(Calendar.MILLISECOND, 0)
     val start = cal.timeInMillis
     cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
     cal.set(Calendar.HOUR_OF_DAY, 23)
+    cal.set(Calendar.MINUTE, 59)
+    cal.set(Calendar.SECOND, 59)
+    cal.set(Calendar.MILLISECOND, 999)
     return start to cal.timeInMillis
 }
 
