@@ -35,7 +35,12 @@ import java.util.concurrent.TimeUnit
 
 /**
  * NetworkUsageScreen — Suggestion #80
- * Shows per-app network (data) usage for the current billing cycle.
+ * Shows per-app mobile-data usage over the last 30 days.
+ *
+ * Deliberately NOT "the current billing cycle" — the query is a rolling 30-day
+ * window and Android exposes no billing-cycle boundary to apps, so the doc used
+ * to describe something the code never computed (F-155). The on-screen copy
+ * already said 30 days; only this comment disagreed.
  */
 
 data class AppNetworkStat(

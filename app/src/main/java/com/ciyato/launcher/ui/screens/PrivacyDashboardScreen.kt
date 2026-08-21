@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * PrivacyDashboardScreen — Suggestion #88
@@ -62,8 +64,18 @@ fun PrivacyDashboardScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val summaries by remember {
-        derivedStateOf { buildPrivacySummaries(context) }
+    // Off the main thread, with a real loading state.
+    //
+    // This was `derivedStateOf { buildPrivacySummaries(context) }`, which walks
+    // EVERY installed package with GET_PERMISSIONS — hundreds of binder calls —
+    // synchronously during composition, so the screen froze on open with no
+    // spinner to explain why (F-158). derivedStateOf was also the wrong tool: it
+    // reads no snapshot state, so it never recomputed and bought nothing.
+    var summaries by remember { mutableStateOf<List<AppPermissionSummary>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        summaries = withContext(Dispatchers.IO) { buildPrivacySummaries(context) }
+        isLoading = false
     }
 
     val highRisk = summaries.filter { it.riskLevel == RiskLevel.HIGH }
@@ -76,6 +88,20 @@ fun PrivacyDashboardScreen(
             CiyatoTopBar(title = "Privacy Dashboard", onBack = onBack)
         }
     ) { padding ->
+        // Scanning every installed app takes real time. Saying so beats a frozen
+        // frame that looks like a crash.
+        if (isLoading) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator(color = CiyatoGold)
+                    Text("Checking what each app can access…", color = CiyatoMuted, fontSize = 13.sp)
+                }
+            }
+            return@Scaffold
+        }
         LazyColumn(
             contentPadding = PaddingValues(
                 start = 16.dp, end = 16.dp,
