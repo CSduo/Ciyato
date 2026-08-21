@@ -5,6 +5,21 @@ failures; nothing here is marked passing on the strength of a green compile alon
 
 Baseline: `5773448cbd2d189055021b319d54c74ae2c779bf` · tag `baseline-audit-5773448`.
 
+## API 36 migration status (branch `api36-migration`)
+
+| Gate | Result |
+|---|---|
+| `compileDebugKotlin` on 36 | **PASS** |
+| `testDebugUnitTest` on 36 | **PASS** — all suites |
+| `assembleDebug` on 36 | **PASS** |
+| `lintDebug` on 36 | see baseline section |
+| Predictive Back (F-045/F-186) | **NOT VERIFIED** — both nav systems use custom back handling; needs migration + device test |
+| Edge-to-edge / large screen (F-046/F-187) | **NOT VERIFIED** — device only |
+| 16 KB page size (F-188) | **NOT VERIFIED** — device only |
+
+One real source change was required, and it is a platform change rather than
+configuration: `PackageInfo.applicationInfo` is nullable as of the API 36 SDK.
+
 ## Toolchain
 
 | Item | Local | CI |
