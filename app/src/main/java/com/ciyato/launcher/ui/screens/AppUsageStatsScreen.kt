@@ -261,7 +261,16 @@ private fun getUsageStats(context: Context): List<AppUsageStat> {
     return try {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()
-        val start = now - TimeUnit.DAYS.toMillis(1)
+        // The label says "Today's total", so measure today — local midnight to
+        // now — instead of a rolling 24 hours (F-127). The old window meant the
+        // figure included yesterday evening and shrank as the day went on, which
+        // is the opposite of what a daily total should do.
+        val start = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
         val statsMap = usm.queryAndAggregateUsageStats(start, now)
         val pm = context.packageManager
         statsMap.values

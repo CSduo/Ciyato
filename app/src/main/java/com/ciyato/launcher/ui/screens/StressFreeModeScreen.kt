@@ -27,30 +27,22 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlin.math.sin
 
 /**
- * StressFreeModeScreen — Suggestion #36
- * Sentiment-based UI mood adaptation. Detects stress signals from usage patterns
+ * A paced breathing exercise. Nothing more, deliberately.
+ *
+ * This was "Stress-Free Mode", which displayed a CALM/MILD/STRESSED verdict
+ * inferred from the clock and a recent-app count. That inference is gone: it
+ * measured nothing, and an app asserting an emotional state it cannot observe is
+ * worse than one staying quiet — particularly for anyone inclined to believe it.
+ * What remains is the part that was always honest
  * (high notification count, rapid app switching, late-night usage) and activates
  * a calmer, distraction-reduced layout with breathing exercises.
  */
-
-enum class StressLevel { CALM, MILD, STRESSED }
 
 @Composable
 fun StressFreeModeScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
 ) {
-    val recentApps = viewModel.getRecentlyLaunchedApps()
-    val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
-
-    val stressLevel = remember {
-        when {
-            hour >= 23 || hour < 6 -> StressLevel.STRESSED
-            recentApps.size > 8    -> StressLevel.MILD
-            else                   -> StressLevel.CALM
-        }
-    }
-
     var breathingActive by remember { mutableStateOf(false) }
     val breathPhase = remember { Animatable(0f) }
 
@@ -68,16 +60,10 @@ fun StressFreeModeScreen(
         }
     }
 
-    val stressColor = when (stressLevel) {
-        StressLevel.CALM    -> CiyatoGreen
-        StressLevel.MILD    -> Color(0xFFFF9800)
-        StressLevel.STRESSED -> Color(0xFFF44336)
-    }
-
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            CiyatoTopBar(title = "Stress-Free Mode", onBack = onBack)
+            CiyatoTopBar(title = "Breathing", subtitle = "A paced exercise, on request", onBack = onBack)
         }
     ) { padding ->
         Column(
@@ -88,21 +74,31 @@ fun StressFreeModeScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // The "Stress Indicator" that stood here has been removed, not
+            // softened (F-131). It reported CALM / MILD / STRESSED from two
+            // signals: the hour of day (23:00–06:00 was rendered as STRESSED in
+            // red) and whether more than eight apps had been opened recently.
+            // Neither measures stress. Being awake late means you are awake
+            // late, and a phone cannot tell the difference between a person
+            // under pressure and one browsing recipes. Showing a red emotional
+            // verdict on that basis is a wellbeing claim from nothing, and the
+            // people most likely to believe it are the ones it could affect.
+            //
+            // The breathing exercise below is real, so it stays — as something
+            // offered, not as treatment for a diagnosis the app invented.
             Card(
                 colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
                 shape = RoundedCornerShape(20.dp),
             ) {
-                Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Stress Indicator", color = CiyatoMuted, fontSize = 12.sp)
-                    Text(stressLevel.name, color = stressColor, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Column(
+                    Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("Take a moment", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     Text(
-                        when (stressLevel) {
-                            StressLevel.CALM     -> "You look relaxed. Keep it up! 🌿"
-                            StressLevel.MILD     -> "A bit of activity detected. Take a breath. 🌬️"
-                            StressLevel.STRESSED -> "High usage or late-night session detected. Time to rest. 🌙"
-                        },
-                        color = CiyatoWhite, fontSize = 13.sp
+                        "A paced breathing exercise, whenever you want one. Ciyato doesn't " +
+                            "monitor how you're feeling and can't tell — this is here if it's useful.",
+                        color = CiyatoMuted, fontSize = 13.sp, lineHeight = 18.sp,
                     )
                 }
             }

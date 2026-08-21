@@ -70,7 +70,9 @@ fun AiChangelogScreen(
     }
 
     LaunchedEffect(hasPermission) {
-        kotlinx.coroutines.delay(600)
+        // A 600 ms sleep used to sit here to make a local UsageStats query feel
+        // like "analysis" (F-125). Inventing latency to imply computation is the
+        // same class of dishonesty as inventing the numbers.
         entries = if (hasPermission) buildChangelog(context) else emptyList()
         isLoading = false
     }
@@ -213,23 +215,51 @@ private fun buildChangelog(context: Context): List<PhoneChangeEntry> {
     try {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()
-        val dayAgo = now - TimeUnit.DAYS.toMillis(1)
-        val weekAgo = now - TimeUnit.DAYS.toMillis(7)
+        // The local calendar day, not a rolling 24 hours (F-126). "Today" that
+        // silently includes yesterday afternoon is not what the word means, and
+        // the number moves depending on what time you happen to look.
+        val todayStart = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        // Prior seven full days, ending where today begins, so today's own
+        // partial usage is not folded into the average it is compared against.
+        val weekAgo = todayStart - TimeUnit.DAYS.toMillis(7)
 
-        val todayStats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, dayAgo, now)
-        val weekStats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, weekAgo, now)
+        val todayStats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, todayStart, now)
+        val weekStats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, weekAgo, todayStart)
 
-        val weekAvg = weekStats.associate {
-            it.packageName to (it.totalTimeInForeground / 7f)
+        // SUM per package, then divide.
+        //
+        // queryUsageStats(INTERVAL_DAILY, ...) returns one entry PER DAY per
+        // package. The previous code used associate{}, which keeps only the last
+        // entry for each key and discards the rest — so "weekly average" was one
+        // arbitrary day's foreground time divided by seven (F-124). Every
+        // "% more than your weekly average" line was therefore comparing today
+        // against roughly a seventh of a single day, and the percentages it
+        // printed were fiction.
+        val weekTotals = HashMap<String, Long>()
+        weekStats.forEach { stat ->
+            weekTotals[stat.packageName] =
+                (weekTotals[stat.packageName] ?: 0L) + stat.totalTimeInForeground
+        }
+        val weekAvg = weekTotals.mapValues { (_, total) -> total / 7f }
+
+        // Today can also span several buckets, so it is summed the same way.
+        val todayTotals = HashMap<String, Long>()
+        todayStats.forEach { stat ->
+            todayTotals[stat.packageName] =
+                (todayTotals[stat.packageName] ?: 0L) + stat.totalTimeInForeground
         }
 
-        todayStats.forEach { stat ->
+        todayTotals.forEach { (packageName, todayMs) ->
             val label = try {
-                pm.getApplicationLabel(pm.getApplicationInfo(stat.packageName, 0)).toString()
+                pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
             } catch (_: Exception) { return@forEach }
 
-            val avg = weekAvg[stat.packageName] ?: 0f
-            val todayMs = stat.totalTimeInForeground
+            val avg = weekAvg[packageName] ?: 0f
             val ratio = if (avg > 0) todayMs / avg else 0f
 
             when {
@@ -256,7 +286,7 @@ private fun buildChangelog(context: Context): List<PhoneChangeEntry> {
 
         try {
             val allApps = pm.getInstalledPackages(PackageManager.GET_META_DATA)
-            allApps.filter { it.firstInstallTime > dayAgo }.take(3).forEach { pkg ->
+            allApps.filter { it.firstInstallTime >= todayStart }.take(3).forEach { pkg ->
                 val label = pm.getApplicationLabel(pkg.applicationInfo).toString()
                 entries.add(PhoneChangeEntry(
                     emoji = "📦",
