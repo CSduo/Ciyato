@@ -22,20 +22,28 @@ import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.ui.theme.*
 
 /**
- * Reusable Ciyato search bar.
- * Used in: App Drawer (light mode), AI Search.
- * Accepts custom bg/border/text colors so it works on both dark and light surfaces.
+ * Reusable Ciyato search bar. Used by the App Drawer and AI Search.
+ *
+ * The defaults were built for a light drawer that does not exist: a warm cream
+ * fill with near-black text. AI Search takes the defaults, so it shipped a cream
+ * pill sitting inside the near-black screen — visible proof of the appearance
+ * inconsistency behind F-036, not a theory about it. The App Drawer passed dark
+ * overrides for every one of them, which is what a wrong default looks like when
+ * only one caller has noticed.
+ *
+ * Defaults are the dark palette now. The parameters stay: a search bar over a
+ * photo or a wallpaper still needs to adjust.
  */
 @Composable
 fun CiyatoSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
     placeholder: String = "Search apps...",
-    backgroundColor: Color = Color(0xFFECE9E3),   // warm cream for light drawer
-    borderColor: Color = Color(0x18000000),         // very subtle dark border on light
-    iconTint: Color = CiyatoLightSec,
-    textColor: Color = CiyatoLightText,
-    placeholderColor: Color = CiyatoLightSec,
+    backgroundColor: Color = CiyatoBgEl2,
+    borderColor: Color = CiyatoBorder,
+    iconTint: Color = CiyatoMuted,
+    textColor: Color = CiyatoWhite,
+    placeholderColor: Color = CiyatoMuted,
     modifier: Modifier = Modifier,
 ) {
     BasicTextField(

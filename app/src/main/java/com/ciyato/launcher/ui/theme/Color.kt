@@ -93,13 +93,6 @@ val CatDaily         = Color(0xFFC8C8C4)   // Daily = bright silver
 val CatGaming        = Color(0xFFA8A8A8)   // Gaming = silver
 val CatShopping      = Color(0xFFA0B0AA)   // Shopping = muted teal
 
-// ─── Light Mode (App Drawer) ──────────────────────────────────────────────────
-val CiyatoLightBg     = Color(0xFFF5F2EC)
-val CiyatoLightCard   = Color(0xB8FFFFFF)
-val CiyatoLightBorder = Color(0x0F000000)
-val CiyatoLightText   = Color(0xFF191B1F)
-val CiyatoLightSec    = Color(0xFF5F646A)
-
 // ─── Gradient Brushes ─────────────────────────────────────────────────────────
 val goldGradient = Brush.linearGradient(
     colors = listOf(CiyatoGoldSoft, CiyatoGoldDark)

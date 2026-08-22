@@ -82,7 +82,7 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             val font by viewModel.font.collectAsState()
-            CiyatoTheme(darkMode = "dark", font = font, dynamicColor = false) {
+            CiyatoTheme(font = font) {
                 val context           = LocalContext.current
                 val onboardingDone by viewModel.onboardingDone.collectAsState()
                 val navController     = rememberNavController()

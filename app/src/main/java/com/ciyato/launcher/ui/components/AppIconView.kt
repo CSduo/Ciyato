@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.ciyato.launcher.data.InstalledApp
-import com.ciyato.launcher.ui.theme.CiyatoLightSec
 import com.ciyato.launcher.ui.theme.CiyatoMuted
 import com.ciyato.launcher.ui.theme.CiyatoSec
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -92,7 +91,8 @@ fun RealAppIcon(
 
 /**
  * Full app icon + label tile — used in grids and rows.
- * labelColor defaults to CiyatoSec (dark); pass CiyatoLightSec for light-mode drawer.
+ * labelColor defaults to CiyatoSec; override it when the icon sits on a
+ * wallpaper or photo rather than a Ciyato surface.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

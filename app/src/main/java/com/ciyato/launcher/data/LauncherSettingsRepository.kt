@@ -27,10 +27,8 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore("ciyato_se
  *  75  Focus sessions
  *  91  Custom accent color (Theme Studio)
  *  93  Wallpaper blur
- *  97  Dark/Light/AMOLED mode
  *  98  Font selector
  *  99  Glass morphism preset
- *  100 Seasonal themes
  *  113 BuildConfig/debug stubs
  *  116 Weather cache
  *  117 Offline indicator enabled
@@ -57,7 +55,6 @@ class LauncherSettingsRepository(private val context: Context) {
         val KEY_HIDDEN_HOME_CATEGORIES = stringPreferencesKey("hidden_home_categories")
         val KEY_DENSE_LAYOUT           = booleanPreferencesKey("dense_layout")
         val KEY_HOME_LAYOUT_MODE       = stringPreferencesKey("home_layout_mode") // smart | dense | spacious
-        val KEY_DARK_MODE              = stringPreferencesKey("dark_mode")          // auto | dark | light | amoled
         val KEY_GOLD_ACCENT            = booleanPreferencesKey("gold_accent")
         val KEY_SMART_CATEGORIES       = booleanPreferencesKey("smart_categories")
         val KEY_DUPLICATE_SHORTCUTS    = booleanPreferencesKey("duplicate_shortcuts")
@@ -228,7 +225,6 @@ class LauncherSettingsRepository(private val context: Context) {
     val denseLayout:            Flow<Boolean> = pref(KEY_DENSE_LAYOUT,            true)
     val homeLayoutMode:         Flow<String>  = pref(KEY_HOME_LAYOUT_MODE,        "dense")
     val expandedApps:           Flow<String>  = pref(KEY_EXPANDED_APPS,           "")
-    val darkMode:               Flow<String>  = pref(KEY_DARK_MODE,               "dark")
     val goldAccent:             Flow<Boolean> = pref(KEY_GOLD_ACCENT,             true)
     val smartCategories:        Flow<Boolean> = pref(KEY_SMART_CATEGORIES,        true)
     val duplicateShortcuts:     Flow<Boolean> = pref(KEY_DUPLICATE_SHORTCUTS,     true)
@@ -350,7 +346,6 @@ class LauncherSettingsRepository(private val context: Context) {
     suspend fun setDenseLayout(v: Boolean)             = set(KEY_DENSE_LAYOUT,             v)
     suspend fun setHomeLayoutMode(v: String)           = set(KEY_HOME_LAYOUT_MODE,         v)
     suspend fun setExpandedApps(v: String)             = set(KEY_EXPANDED_APPS,            v)
-    suspend fun setDarkMode(v: String)                 = set(KEY_DARK_MODE,                v)
     suspend fun setGoldAccent(v: Boolean)              = set(KEY_GOLD_ACCENT,              v)
     suspend fun setSmartCategories(v: Boolean)         = set(KEY_SMART_CATEGORIES,         v)
     suspend fun setDuplicateShortcuts(v: Boolean)      = set(KEY_DUPLICATE_SHORTCUTS,      v)
@@ -477,7 +472,6 @@ class LauncherSettingsRepository(private val context: Context) {
             p[KEY_SHOW_APP_DRAWER]     = true
             p[KEY_HIDDEN_HOME_CATEGORIES] = ""
             p[KEY_WORKSPACE_TRANSITION] = "slide"
-            p[KEY_DARK_MODE]           = "dark"
             p[KEY_GOLD_ACCENT]         = true
             p[KEY_SMART_CATEGORIES]    = true
             p[KEY_DUPLICATE_SHORTCUTS] = true

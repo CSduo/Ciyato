@@ -90,8 +90,14 @@ fun VoiceCommandScreen(
             lower.contains("focus mode") || lower.contains("focus session") -> {
                 viewModel.startFocusSession(); "Focus session started!"
             }
-            lower.contains("dark mode on")  -> { viewModel.setDarkMode("dark");  "Dark mode enabled." }
-            lower.contains("dark mode off") -> { viewModel.setDarkMode("light"); "Light mode enabled." }
+            // Ciyato renders one appearance. These used to persist a
+            // light/dark preference and announce success, but both Compose roots
+            // render dark unconditionally and nothing reads the preference — so
+            // "Light mode enabled." was simply false, and the stored value made
+            // the app look broken rather than opinionated (F-142, F-177).
+            lower.contains("dark mode on") -> "Ciyato is always dark — you're already in it."
+            lower.contains("dark mode off") || lower.contains("light mode") ->
+                "Ciyato doesn't have a light mode. Its dark look is fixed by design."
             lower.contains("search ") -> {
                 val q = lower.substringAfter("search ").trim()
                 onOpenSearch(q); "Searching for '$q'…"

@@ -60,6 +60,15 @@ verified reachability myself. Where I disagree with the audit, the reasoning is 
 | `GuestModeScreen` (188 lines) | B11 | Zero references outside its own file; no route in either activity. | Nothing. Its doc promised "No access to hidden apps, files, settings, or personal data", which a launcher screen cannot enforce — anything reachable from Recents, a notification or another launcher bypasses it entirely. Android's real multi-user Guest profile provides that boundary; imitating it in-app is a security claim with nothing behind it. |
 | `CiyatoNotificationListener` duplicate class | `828f473` | Two `NotificationListenerService` subclasses existed; neither declared in the manifest, so Android bound neither and `badgeCounts` was permanently empty | `CiyatoNotificationListenerService` retained, declared in the manifest, and the enabled-check now targets it |
 
+### B24 — the theming that had no consumer
+
+| Component | Disposition | Reachability proof | Reasoning |
+|---|---|---|---|
+| `SeasonalThemeManager` (62 lines) | **DELETED** | Zero references anywhere in the tree. | A dead chain of the same shape as `AIOptimizerManager`: it looked live because it called `ThemePresetExporter`, but nothing called it. It also promised appearances the app cannot render — "Spring Fresh — Light, airy, and calm" and "Summer Vibes — Clean and bright" set `darkMode = "light"`, covering roughly half the calendar year. |
+| `ThemePresetExporter` (84 lines) | **DELETED** | Referenced from exactly one place: `SeasonalThemeManager`, itself dead. | Serialisation for a theme model the app does not have — presets carry `darkMode` (no effect), fonts "inter"/"poppins" (only sans/serif/mono exist), and a "Minimal White" preset that cannot render. **Not a lost capability so much as an unbuilt one**: shareable theme presets are a reasonable future feature, and building it should start from the settings that exist rather than from this. |
+| `CiyatoLightColorScheme` + dynamic colour selection | **DELETED** | `ciyatoColorScheme` had one caller, which passed a hard-coded "dark" and `dynamicColor = false`, so the selector had exactly one possible outcome. | `CiyatoDarkColorScheme` retained — Material 3's own components read it even though no Ciyato screen does. |
+| `CiyatoLightBg/Card/Border/Text/Sec` palette | **DELETED** | Three had zero references; the other two survived only as wrong defaults on `CiyatoSearchBar` and a stale comment in `AppIconView`. | Nothing. See N-04 — leaving them was actively producing a visual defect. |
+
 ### B23 — the second photo gallery
 
 | Component | Disposition | Reachability proof | What was preserved |

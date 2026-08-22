@@ -124,7 +124,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val denseLayout        = settings.denseLayout        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val homeLayoutMode     = settings.homeLayoutMode     .stateIn(viewModelScope, SharingStarted.Eagerly, "dense")
     val expandedApps       = settings.expandedApps       .stateIn(viewModelScope, SharingStarted.Eagerly, "")
-    val darkMode           = settings.darkMode           .stateIn(viewModelScope, SharingStarted.Eagerly, "auto")
     val goldAccent         = settings.goldAccent         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val smartCategories    = settings.smartCategories    .stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val duplicateShortcuts = settings.duplicateShortcuts .stateIn(viewModelScope, SharingStarted.Eagerly, true)
@@ -225,7 +224,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         settings.setHomeLayoutMode(v)
         settings.setDenseLayout(v == "dense")
     }
-    fun setDarkMode(v: String)            = viewModelScope.launch { settings.setDarkMode(v) }
     fun setGoldAccent(v: Boolean)         = viewModelScope.launch { settings.setGoldAccent(v) }
     fun setSmartCategories(v: Boolean)    = viewModelScope.launch { settings.setSmartCategories(v) }
     fun setDuplicateShortcuts(v: Boolean) = viewModelScope.launch { settings.setDuplicateShortcuts(v) }

@@ -134,11 +134,6 @@ fun AppDrawerScreen(
             query = query,
             onQueryChange = viewModel::setSearch,
             placeholder = "Search apps",
-            backgroundColor = CiyatoBgEl2,
-            borderColor = CiyatoBorder,
-            iconTint = CiyatoMuted,
-            textColor = CiyatoWhite,
-            placeholderColor = CiyatoMuted,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp),

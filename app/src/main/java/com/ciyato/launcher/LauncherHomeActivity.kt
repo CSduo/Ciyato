@@ -75,7 +75,7 @@ class LauncherHomeActivity : FragmentActivity() {
             val font by viewModel.font.collectAsState()
             // Ciyato V2 is intentionally a consistent black launcher surface.
             // Do not expose a partial light/dynamic theme over hard-coded dark UI.
-            CiyatoTheme(darkMode = "dark", font = font, dynamicColor = false) {
+            CiyatoTheme(font = font) {
                 LauncherRoot(
                     viewModel = viewModel,
                     activity = this@LauncherHomeActivity,
