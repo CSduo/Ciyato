@@ -88,7 +88,28 @@ object PhotoDeviceLibrary {
         return resolver.query(collection, IMAGE_PROJECTION, args, null)
     }
 
-    suspend fun loadImages(context: Context, limit: Int = 3_000): List<DeviceImage> =
+    /**
+     * Default cap on how many images are loaded, newest first.
+     *
+     * Public because any screen showing a count has to be able to say whether it
+     * is looking at the whole library. "N photos on this device" was printed
+     * straight from a capped list, so a 12,000-photo library was reported as
+     * 3,000 (F-107, F-108).
+     */
+    const val DEFAULT_IMAGE_LIMIT = 3_000
+
+    /** Total images MediaStore can see, for honest coverage reporting. */
+    suspend fun libraryCount(context: Context): Int = withContext(Dispatchers.IO) {
+        runCatching {
+            context.contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Images.Media._ID),
+                null, null, null,
+            )?.use { it.count } ?: 0
+        }.getOrDefault(0)
+    }
+
+    suspend fun loadImages(context: Context, limit: Int = DEFAULT_IMAGE_LIMIT): List<DeviceImage> =
         withContext(Dispatchers.IO) {
             buildList {
                 runCatching {
@@ -111,7 +132,7 @@ object PhotoDeviceLibrary {
     fun imageStream(
         context: Context,
         firstBatch: Int = 180,
-        limit: Int = 3_000,
+        limit: Int = DEFAULT_IMAGE_LIMIT,
     ): Flow<List<DeviceImage>> = flow {
         val all = ArrayList<DeviceImage>(firstBatch)
         var emittedEarly = false

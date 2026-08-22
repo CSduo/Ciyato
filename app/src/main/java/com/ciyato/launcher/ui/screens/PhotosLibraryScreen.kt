@@ -230,6 +230,9 @@ fun PhotosLibraryScreen(
 
     var images by remember { mutableStateOf<List<DeviceImage>>(emptyList()) }
     var trashed by remember { mutableStateOf<List<DeviceImage>>(emptyList()) }
+    // What MediaStore actually holds, so a capped list is never described as the
+    // whole library (F-107).
+    var libraryTotal by remember { mutableStateOf(0) }
     var loaded by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf(LibraryTab.COLLECTIONS) }
     var openCollection by remember { mutableStateOf<String?>(null) }
@@ -317,6 +320,7 @@ fun PhotosLibraryScreen(
 
     LaunchedEffect(access, reloadToken) {
         trashed = PhotoDeviceLibrary.loadTrashedImages(context)
+        libraryTotal = PhotoDeviceLibrary.libraryCount(context)
     }
 
     val collections = remember(images) { PhotoDeviceLibrary.collections(images) }
@@ -381,6 +385,12 @@ fun PhotosLibraryScreen(
                         ?: when {
                             viewingTrash -> "${trashed.size} waiting to be cleared"
                             access == MediaAccess.PARTIAL -> "${images.size} photos you shared with Ciyato"
+                            // Was "N photos on this device" printed from a list
+                            // capped at DEFAULT_IMAGE_LIMIT, so a 12,000-photo
+                            // library reported 3,000 as though that were all of
+                            // it (F-107). Say which it is.
+                            libraryTotal > images.size ->
+                                "Newest ${images.size} of ${libraryTotal} photos"
                             else -> "${images.size} photos on this device"
                         },
                     onBack = {
@@ -673,9 +683,16 @@ private fun AiScanBanner(
                     progress != null && progress.second > 0 ->
                         "Scanning ${progress.first}/${progress.second} photos on-device…"
                     progress != null -> "Starting scan…"
-                    hasResults -> "Runs fully on this phone. Free, private, offline."
+                    // Coverage stated on the SUCCESS path too, not only when
+                    // nothing matched. Labelling is capped at
+                    // PhotoAiLabeler's maxImages, so results describe the newest
+                    // N photos — presenting them as the whole library implied a
+                    // completeness the scan never had (F-104).
+                    hasResults ->
+                        "Grouped from your newest ${result!!.scannedCount} photos. " +
+                            "Runs on this phone — free, private, offline."
                     result != null ->
-                        "Scanned ${result.scannedCount} photos — nothing grouped confidently yet."
+                        "Scanned your newest ${result.scannedCount} photos — nothing grouped confidently yet."
                     else -> "Group photos by what's in them — free, on-device, private."
                 },
                 color = CiyatoMuted,
