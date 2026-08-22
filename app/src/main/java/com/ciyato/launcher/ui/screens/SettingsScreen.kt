@@ -165,7 +165,7 @@ fun SettingsScreen(
             item {
                 CiyatoListCard(
                     title = "Theme Studio",
-                    subtitle = "Typography, Home layout, and App Library layout",
+                    subtitle = "Typeface, Home layout, app grid and wallpaper",
                     icon = Icons.Default.Palette,
                     iconColor = CiyatoGold,
                     onClick = { onNavigateToTheme() }
@@ -188,7 +188,7 @@ fun SettingsScreen(
             }
 
             // ── Smart Layout ──────────────────────────────────────────────────
-            item { SectionHeader("Smart Layout") }
+            item { SectionHeader("Home behaviour") }
             item {
                 CiyatoSettingSwitch(
                     title = "Time-Aware Layout",
@@ -229,7 +229,7 @@ fun SettingsScreen(
             }
 
             // ── Organization ──────────────────────────────────────────────────
-            item { SectionHeader("Organization") }
+            item { SectionHeader("Organizer") }
             item {
                 CiyatoSettingSwitch(
                     title = "Smart Categories",
@@ -249,7 +249,7 @@ fun SettingsScreen(
                 )
             }
             // ── Smart Insights ───────────────────────────────────────────────
-            item { SectionHeader("Smart Insights") }
+            item { SectionHeader("Labs", "Experimental. These use rough signals and can be wrong.") }
             item {
                 CiyatoListCard(
                     title = "Smart Suggestions",
@@ -288,7 +288,7 @@ fun SettingsScreen(
             }
 
             // ── Weather ───────────────────────────────────────────────────────
-            item { SectionHeader("Weather") }
+            item { SectionHeader("Weather glance") }
             item {
                 SettingsOptionRow(
                     icon     = Icons.Default.Thermostat,
@@ -300,7 +300,7 @@ fun SettingsScreen(
             }
 
             // ── Accessibility ─────────────────────────────────────────────────
-            item { SectionHeader("Permissions & Access") }
+            item { SectionHeader("Organizer access") }
             item {
                 CiyatoListCard(
                     title = "Files Access",
@@ -366,15 +366,6 @@ fun SettingsScreen(
                 )
             }
             item {
-                CiyatoSettingSwitch(
-                    title = "Reduce Motion",
-                    subtitle = "Use calmer workspace transitions and pause Ciyato video backgrounds",
-                    icon = Icons.Default.MotionPhotosPause,
-                    checked = reduceMotion,
-                    onCheckedChange = viewModel::setReduceMotion
-                )
-            }
-            item {
                 CiyatoListCard(
                     title = "Photos Access",
                     subtitle = "${PhotoLibraryStore.parseUris(photoMediaUris).size} selected item(s). Android Photo Picker only.",
@@ -414,6 +405,17 @@ fun SettingsScreen(
             }
 
             item { SectionHeader("Accessibility") }
+            // Moved here from "Permissions & Access", where it had nothing to do
+            // with permissions and nobody would think to look for it.
+            item {
+                CiyatoSettingSwitch(
+                    title = "Reduce Motion",
+                    subtitle = "Use calmer workspace transitions and pause Ciyato video backgrounds",
+                    icon = Icons.Default.MotionPhotosPause,
+                    checked = reduceMotion,
+                    onCheckedChange = viewModel::setReduceMotion
+                )
+            }
             item {
                 CiyatoSettingSwitch(
                     title = "Haptic Feedback",
@@ -425,11 +427,11 @@ fun SettingsScreen(
             }
 
             // ── Focus ─────────────────────────────────────────────────────────
-            item { SectionHeader("Focus") }
+            item { SectionHeader("Focus (Labs)") }
             item {
                 CiyatoListCard(
                     title = "Focus Sessions",
-                    subtitle = "Block distracting apps for a set duration",
+                    subtitle = "Hide chosen categories and stop Ciyato opening them for a while",
                     icon = Icons.Default.Timer,
                     iconColor = CiyatoGold,
                     onClick = { onNavigateToFocus() }
@@ -535,7 +537,7 @@ fun SettingsScreen(
             }
 
             // ── Diagnostics ───────────────────────────────────────────────────
-            item { SectionHeader("Diagnostics") }
+            item { SectionHeader("About & diagnostics") }
             item {
                 CiyatoSettingSwitch(
                     title = "Crash Reporting",
@@ -558,7 +560,7 @@ fun SettingsScreen(
             }
 
             // ── Danger Zone ───────────────────────────────────────────────────
-            item { SectionHeader("App Info") }
+            item { SectionHeader("App info") }
             item {
                 InfoCard(
                     Icons.Default.Info,
@@ -863,9 +865,24 @@ private fun CrashLogsScreen(context: Context, onBack: () -> Unit) {
 // ─── Shared Settings Components ───────────────────────────────────────────────
 
 @Composable
-private fun SectionHeader(title: String) {
-    Text(title.uppercase(), color = CiyatoGold, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-        letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
+/**
+ * A settings section heading, with an optional caption.
+ *
+ * The caption exists so experimental features can be labelled as experimental in
+ * the place people actually read. Settings previously presented thirteen sections
+ * at identical visual weight, so a rough usage heuristic sat beside "Set Ciyato
+ * as Home" and looked equally load-bearing (F-066, F-076).
+ */
+private fun SectionHeader(title: String, caption: String? = null) {
+    Column(modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)) {
+        Text(
+            title.uppercase(), color = CiyatoGold, fontSize = 11.sp,
+            fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp,
+        )
+        if (caption != null) {
+            Text(caption, color = CiyatoMuted, fontSize = 11.sp, lineHeight = 15.sp)
+        }
+    }
 }
 
 @Composable
