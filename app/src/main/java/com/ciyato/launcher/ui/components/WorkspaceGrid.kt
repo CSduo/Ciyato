@@ -43,6 +43,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -52,6 +53,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.data.CanvasPos
 import com.ciyato.launcher.data.InstalledApp
@@ -91,6 +95,33 @@ fun WorkspaceGrid(
     // can leave this at its default and behaviour is unchanged.
     cellSpans: Map<Int, Pair<Int, Int>> = emptyMap(),
     onResize: (packageName: String, spanX: Int, spanY: Int) -> Unit = { _, _, _ -> },
+    /**
+     * Move a tile to an explicit cell, without dragging it there.
+     *
+     * Everything on this surface was reachable only by precise touch: long-press,
+     * drag, drop, drag a resize handle. That makes core personalization
+     * impossible with TalkBack, switch access or a keyboard, and hard for anyone
+     * with a motor impairment (F-048). These callbacks let the same operations be
+     * exposed as accessibility actions, running through exactly the paths the
+     * drag uses so the two can never diverge.
+     *
+     * Defaults are no-ops, so a caller that has not wired them yet simply
+     * publishes no move actions rather than publishing broken ones.
+     */
+    onMoveToCell: (packageName: String, destinationCell: Int) -> Unit = { _, _ -> },
+    /** Move a tile one workspace page left (-1) or right (+1). */
+    onMoveToPage: (packageName: String, pageDelta: Int) -> Unit = { _, _ -> },
+    /**
+     * Open the tile's options, and take it off this page.
+     *
+     * Long-press on a tile is a raw pointer drag detector, deliberately so — see
+     * WorkspaceAppTile, where stacking combinedClickable on top made the menu
+     * race the drag. The cost is that no long-click accessibility action is
+     * published at all, so the context menu was unreachable without touch. These
+     * publish it explicitly instead of changing the gesture that works.
+     */
+    onShowOptions: (app: InstalledApp) -> Unit = {},
+    onRemoveFromPage: (packageName: String) -> Unit = {},
     // packageName -> free placement, additive to [cellApps]'s grid cell (see
     // AppCell.pos / CanvasPos). A package present here renders absolutely at
     // (pos.x * canvasWidth, pos.y * canvasHeight) instead of grid flow,
@@ -195,6 +226,12 @@ fun WorkspaceGrid(
                                 if (sx != spanX || sy != spanY) onResize(app.packageName, sx, sy)
                             },
                             onResizeCancel = { resizePreview.remove(app.packageName) },
+                            occupiedCells = coveredBy.keys,
+                            totalCells = totalCells,
+                            onMoveToCell = onMoveToCell,
+                            onMoveToPage = onMoveToPage,
+                            onShowOptions = onShowOptions,
+                            onRemoveFromPage = onRemoveFromPage,
                         )
                     }
                 } else if (!isCoveredByOther) {
@@ -267,6 +304,12 @@ fun WorkspaceGrid(
                                 if (sx != spanX || sy != spanY) onResize(app.packageName, sx, sy)
                             },
                             onResizeCancel = { resizePreview.remove(app.packageName) },
+                            occupiedCells = coveredBy.keys,
+                            totalCells = totalCells,
+                            onMoveToCell = onMoveToCell,
+                            onMoveToPage = onMoveToPage,
+                            onShowOptions = onShowOptions,
+                            onRemoveFromPage = onRemoveFromPage,
                         )
                     }
                 }
@@ -379,6 +422,12 @@ private fun ResizableWorkspaceTile(
     onResizePreview: (spanX: Int, spanY: Int) -> Unit,
     onResizeCommit: (spanX: Int, spanY: Int) -> Unit,
     onResizeCancel: () -> Unit,
+    occupiedCells: Set<Int>,
+    totalCells: Int,
+    onMoveToCell: (packageName: String, destinationCell: Int) -> Unit,
+    onMoveToPage: (packageName: String, pageDelta: Int) -> Unit,
+    onShowOptions: (app: InstalledApp) -> Unit,
+    onRemoveFromPage: (packageName: String) -> Unit,
     modifier: Modifier = Modifier,
     // True for exactly one recomposition right after this tile lands from a
     // drag (see WorkspaceGrid's settlingPackage). Drives a small landing
@@ -423,6 +472,49 @@ private fun ResizableWorkspaceTile(
     val tileFontSize = if (tileScale == 1f) fontSize else fontSize * tileScale
     val tileLineHeight = if (tileScale == 1f) lineHeight else lineHeight * tileScale
 
+    // Everything this tile can do without a finger on it.
+    //
+    // Placement and resizing were reachable only by long-press-and-drag and by
+    // dragging a corner handle, which makes the launcher's central feature
+    // unusable with TalkBack, switch access or a keyboard, and awkward for
+    // anyone with a motor impairment (F-048). Each action below routes through
+    // the same callback the drag ends in, so an accessible edit and a dragged
+    // edit cannot produce different results.
+    //
+    // Only offered in edit mode, matching when dragging is possible — actions
+    // that would silently no-op are worse than absent ones, and a tile outside
+    // edit mode should read as "opens this app", nothing more.
+    val moveActions = if (!isEditMode) emptyList() else buildList {
+        val col = cell % columns
+        val row = cell / columns
+
+        fun addMove(label: String, destination: Int, allowed: Boolean) {
+            // A destination already covered by another tile would be rejected
+            // downstream, so it is never offered. Announcing an action that does
+            // nothing is the accessibility equivalent of a dead button.
+            if (!allowed || destination !in 0 until totalCells) return
+            if (destination in occupiedCells) return
+            add(CustomAccessibilityAction(label) { onMoveToCell(app.packageName, destination); true })
+        }
+        addMove("Move left", cell - 1, col > 0)
+        addMove("Move right", cell + spanX, col + spanX < columns)
+        addMove("Move up", cell - columns, row > 0)
+        addMove("Move down", cell + columns * spanY, true)
+
+        add(CustomAccessibilityAction("Move to previous page") { onMoveToPage(app.packageName, -1); true })
+        add(CustomAccessibilityAction("Move to next page") { onMoveToPage(app.packageName, 1); true })
+
+        // The same four presets the size badge offers by tap, so the menu is
+        // not the only way to reach them.
+        RESIZE_PRESETS.forEach { (px, py) ->
+            if (px == spanX && py == spanY) return@forEach
+            if (col + px > columns) return@forEach
+            add(CustomAccessibilityAction("Resize to $px by $py") { onResizeCommit(px, py); true })
+        }
+
+        add(CustomAccessibilityAction("Remove from this page") { onRemoveFromPage(app.packageName); true })
+    }
+
     Box(
         modifier = modifier
             .graphicsLayer {
@@ -431,6 +523,22 @@ private fun ResizableWorkspaceTile(
                 scaleY = scale
             }
             .then(if (isTargeted) Modifier.border(2.dp, CiyatoGold, RoundedCornerShape(16.dp)) else Modifier)
+            .semantics {
+                // Published in every mode, not just edit: long-press is a raw
+                // pointer detector, so without this the context menu — rename,
+                // hide, change category, app info — has no non-touch route.
+                onLongClick("Show options") { onShowOptions(app); true }
+                // Position is visible to sighted users and invisible otherwise,
+                // so it is stated. Without it, "Move left" gives no feedback a
+                // screen-reader user can act on.
+                stateDescription = if (isEditMode) {
+                    "Editing. Row ${cell / columns + 1}, column ${cell % columns + 1}" +
+                        if (spanX > 1 || spanY > 1) ", $spanX by $spanY" else ""
+                } else {
+                    ""
+                }
+                if (moveActions.isNotEmpty()) customActions = moveActions
+            }
             .onGloballyPositioned {
                 onCellSizeMeasured(IntSize(it.size.width / spanX, it.size.height / spanY))
             },

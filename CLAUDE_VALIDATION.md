@@ -78,7 +78,7 @@ Command: `./gradlew --no-daemon testDebugUnitTest lintDebug`
 | Gate | Result | Notes |
 |---|---|---|
 | `compileDebugKotlin` | PASS | verified repeatedly through 16 Aug |
-| `testDebugUnitTest` | PASS — **165 tests, 0 failures, 0 errors**, verified 22 Aug | plus 40 regressions added since (backup outcome, focus lifetime, search date ranges, breach-response parsing, photo month bucketing) |
+| `testDebugUnitTest` | PASS — **172 tests, 0 failures, 0 errors**, verified 22 Aug | plus 40 regressions added since (backup outcome, focus lifetime, search date ranges, breach-response parsing, photo month bucketing) |
 | `lintDebug` | PASS (0 errors, **62 warnings**, all dependency-version notices) - re-verified 22 Aug after B27 | **2 errors at baseline.** `NewApi` windowLightNavigationBar moved to `values-v27`. `QueryAllPackagesPermission` is suppressed on that single manifest element with a written rationale — a launcher is a documented exception, and the Play declaration is recorded in PLAY_RELEASE_EVIDENCE.md. Correction: an earlier revision of this row claimed PASS *before* the second error was actually handled; lint was still failing the build at that point. Warnings triaged in full (B26): 141 -> 62. Eleven of fifteen categories eliminated; **all 62 remaining are dependency-version notices** (`GradleDependency`, `AndroidGradlePluginVersion`, `UseTomlInstead`), which report that newer library versions exist and flag no defect. Nothing is suppressed without a written reason - the two `InlinedApi` and one `ApplySharedPref` suppressions each carry the argument for why lint is wrong at that site. |
 | `assembleDebug` | PASS | APK produced at `Ciyato.apk` |
 | CI end-to-end | **FAIL at baseline** | died before Gradle on a non-existent `ciyato-android/` directory (F-001); workflow repaired, awaiting first green run |
@@ -150,7 +150,7 @@ recomposition, workspace title no longer re-parsing the layout per recomposition
 | 200% font scale without truncation | not audited |
 | Contrast (incl. over wallpaper extremes) | not audited |
 | Reduce Motion honoured by decorative animation | partially — weather overlay fixed; other loops outstanding (F-167) |
-| Non-gesture alternative to drag editing | **missing** (F-048) |
+| Non-gesture alternative to drag editing | **implemented, unverified on device** (F-048) — tiles publish Move/Resize/Move-to-page/Remove/Show-options custom actions and a long-click action; correctness of the underlying moves is unit-tested, but the audit's acceptance run (full layout edit with TalkBack only, then with keyboard/switch focus) needs hardware |
 
 ## Fault injection
 

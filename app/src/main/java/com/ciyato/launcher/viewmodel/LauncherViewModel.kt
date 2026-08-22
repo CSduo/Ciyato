@@ -1019,6 +1019,26 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Move a tile to an exact grid cell on the same page.
+     *
+     * Distinct from [moveAppWithinWorkspace], which takes an ordinal position in
+     * a reflowed reading order and repacks the whole workspace row-major. That
+     * is right for "move this app one place earlier in the list" and wrong for
+     * "move this tile one cell left": it would compact every deliberate gap on
+     * the page as a side effect of nudging one icon.
+     *
+     * Drag-and-drop lands on a cell, so the accessibility actions that replace
+     * dragging must land on a cell too, or the two paths produce different
+     * layouts from the same intent (F-048).
+     */
+    fun moveAppToCell(pageIndex: Int, packageName: String, targetCell: Int) = viewModelScope.launch {
+        updateLayout { layout ->
+            val id = workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null
+            WorkspaceStore.moveApp(layout, id, id, packageName, targetCell)
+        }
+    }
+
     fun moveAppWithinWorkspace(pageIndex: Int, packageName: String, destinationIndex: Int) = viewModelScope.launch {
         updateLayout { layout ->
             val workspace = layout.workspaceById(workspaceIdForPage(layout, pageIndex) ?: return@updateLayout null)

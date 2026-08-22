@@ -1730,6 +1730,18 @@ fun HomeScreen(
                                                 isEditMode = isEditMode,
                                                 onAppTap = { app -> viewModel.launchApp(app) },
                                                 onResize = { pkg, spanX, spanY -> viewModel.resizeAppTile(1, pkg, spanX, spanY) },
+                                                // Accessibility equivalents of drag and drop (F-048).
+                                                onMoveToCell = { pkg, destination ->
+                                                    viewModel.moveAppToCell(1, pkg, destination)
+                                                },
+                                                onMoveToPage = { pkg, delta ->
+                                                    val target = 1 + delta
+                                                    if (target >= 0) viewModel.moveAppBetweenWorkspaces(1, target, pkg)
+                                                },
+                                                onShowOptions = { tapped ->
+                                                    interactionState = LauncherInteractionState.ItemSelected(tapped.packageName)
+                                                },
+                                                onRemoveFromPage = { pkg -> viewModel.removeAppFromPage(1, pkg) },
                                                 hiddenPackage = dragController.activePackage,
                                                 highlightCell = dragController.targetCell.takeIf {
                                                     dragController.isActive && !dragController.overDock && pagerState.currentPage == 1
@@ -1982,6 +1994,18 @@ fun HomeScreen(
                                         isEditMode = isEditMode,
                                         onAppTap = { tapped -> viewModel.launchApp(tapped) },
                                         onResize = { pkg, spanX, spanY -> viewModel.resizeAppTile(pageIndex, pkg, spanX, spanY) },
+                                        // Accessibility equivalents of drag and drop (F-048).
+                                        onMoveToCell = { pkg, destination ->
+                                            viewModel.moveAppToCell(pageIndex, pkg, destination)
+                                        },
+                                        onMoveToPage = { pkg, delta ->
+                                            val target = pageIndex + delta
+                                            if (target >= 0) viewModel.moveAppBetweenWorkspaces(pageIndex, target, pkg)
+                                        },
+                                        onShowOptions = { tapped ->
+                                            interactionState = LauncherInteractionState.ItemSelected(tapped.packageName)
+                                        },
+                                        onRemoveFromPage = { pkg -> viewModel.removeAppFromPage(pageIndex, pkg) },
                                         hiddenPackage = dragController.activePackage,
                                         highlightCell = dragController.targetCell.takeIf {
                                             dragController.isActive && !dragController.overDock
