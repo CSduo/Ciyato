@@ -70,15 +70,12 @@ fun VpnStatusIndicator(modifier: Modifier = Modifier) {
 private fun isVpnConnected(context: Context): Boolean {
     return try {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val networks = cm.allNetworks
-            networks.any { network ->
-                val caps = cm.getNetworkCapabilities(network)
-                caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            cm.allNetworkInfo.any { it.type == ConnectivityManager.TYPE_VPN && it.isConnected }
+        // The pre-M branch used the deprecated allNetworkInfo API and could
+        // never run under minSdk 26. Deleted rather than suppressed: a
+        // @Suppress("DEPRECATION") on unreachable code reads as "this path is
+        // still supported", which is the opposite of true.
+        cm.allNetworks.any { network ->
+            cm.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
         }
     } catch (_: Exception) { false }
 }

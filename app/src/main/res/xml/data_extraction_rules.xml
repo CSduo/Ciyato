@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    What may leave this device, and by which route.
+
+    Android 12 split one question into two. android:allowBackup="false" answers
+    the cloud one, and Ciyato has always said no. It does NOT answer the
+    device-to-device one: <device-transfer> defaults to copying everything, and
+    with no rules file there was nothing saying otherwise.
+
+    That default is actively harmful here. The secure vault is AES-GCM encrypted
+    with a hardware-backed AndroidKeystore key, and that key cannot leave the
+    phone that generated it. Transferring the ciphertext to a new device
+    produces files that can never be opened again — while presenting the person
+    with a successful transfer. Losing files silently is worse than not moving
+    them, so the vault is excluded by name.
+
+    Not listed, because Android already excludes it: cacheDir, which is where
+    the plaintext copy of an opened vault file is written.
+
+    Everything else — layout, workspaces, preferences — transfers, because that
+    is the part someone actually wants back on a new phone.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Belt and braces: allowBackup="false" already disables this path.
+             Stated anyway so that enabling backup later cannot silently start
+             uploading data that was never meant to reach a server. -->
+        <exclude domain="file" path="secure_vault" />
+        <exclude domain="file" path="crash_logs" />
+        <exclude domain="file" path="wallpapers" />
+    </cloud-backup>
+
+    <device-transfer>
+        <!-- Undecryptable on the target device: the Keystore key stays here. -->
+        <exclude domain="file" path="secure_vault" />
+        <!-- Diagnostics describe this device, and can name files and packages. -->
+        <exclude domain="file" path="crash_logs" />
+    </device-transfer>
+</data-extraction-rules>

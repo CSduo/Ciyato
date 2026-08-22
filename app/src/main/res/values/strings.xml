@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Ciyato</string>
-    <string name="app_description">AI Phone Organizer for Android</string>
-    <string name="onboarding_set_home">Set Ciyato as Home App</string>
-    <string name="onboarding_skip">Skip for now</string>
-    <string name="switch_back_home">Switch back to system launcher</string>
-    <string name="open_home_settings">Open Home app settings</string>
-    <string name="uninstall_guidance">To uninstall safely, first switch to another Home app, then uninstall Ciyato from App Info.</string>
-    <string name="could_not_open">Could not open app</string>
-    <string name="privacy_statement">Your data stays on your device. Ciyato organizes locally. Nothing is uploaded.</string>
-    <string name="photos_beta_notice">Photos uses Android Photo Picker. Ciyato only sees media you explicitly select.</string>
+
+    <!--
+      Nine strings were removed from here: they had no reference anywhere, in
+      Kotlin or XML, because every screen hard-codes its copy instead (F-058).
+      Two of them mattered more than the rest — "AI Phone Organizer for Android"
+      and "Your data stays on your device ... Nothing is uploaded" are the exact
+      claims corrected under F-163 and F-022. Leaving unreferenced copies here
+      would have let a future wiring-up quietly restore text already found to be
+      untrue.
+    -->
 
     <!-- App Shortcuts -->
     <string name="shortcut_focus_short">Focus Mode</string>

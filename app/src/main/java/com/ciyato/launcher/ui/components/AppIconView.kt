@@ -38,12 +38,12 @@ import androidx.compose.foundation.combinedClickable
 @Composable
 fun RealAppIcon(
     drawable: Drawable,
+    modifier: Modifier = Modifier,
     size: Dp = 52.dp,
     cornerRadius: Dp = 14.dp,
     scale: Float = 1f,
     rotation: Float = 0f,
     accentHex: String? = null,
-    modifier: Modifier = Modifier,
 ) {
     // Rasterizing a Drawable means allocating a Bitmap and running draw() — for
     // an adaptive icon that is two layers plus a mask. This is the single leaf
@@ -98,12 +98,12 @@ fun RealAppIcon(
 @Composable
 fun AppIconTile(
     app: InstalledApp,
+    modifier: Modifier = Modifier,
     iconSize: Dp = 52.dp,
     showLabel: Boolean = true,
     labelColor: Color = CiyatoSec,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -139,10 +139,10 @@ fun AppIconTile(
 @Composable
 fun AppIconView(
     app: InstalledApp,
+    modifier: Modifier = Modifier,
     size: Dp = 52.dp,
     iconShape: String = "squircle",
     onClick: () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val cornerRadius = when (iconShape) {
         "circle" -> size / 2

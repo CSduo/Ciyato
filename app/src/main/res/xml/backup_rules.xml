@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The Android 11-and-below half of the same policy.
+
+    dataExtractionRules only applies from Android 12; below that the equivalent
+    is fullBackupContent, so stating one without the other leaves the older half
+    of the supported range described by nothing. android:allowBackup="false"
+    already disables backup there, and device-to-device transfer did not exist
+    before Android 12 — so this file is belt and braces, exactly like the
+    cloud-backup block in data_extraction_rules.xml, and for the same reason:
+    turning backup on later must not silently start including the vault.
+-->
+<full-backup-content>
+    <!-- AES-GCM ciphertext whose AndroidKeystore key never leaves this device. -->
+    <exclude domain="file" path="secure_vault" />
+    <!-- Local diagnostics; they can name files and installed packages. -->
+    <exclude domain="file" path="crash_logs" />
+    <exclude domain="file" path="wallpapers" />
+</full-backup-content>

@@ -21,7 +21,6 @@ object AdaptiveIconLoader {
         val full: Drawable,
     )
 
-    @RequiresApi(Build.VERSION_CODES.O)
     fun load(context: Context, packageName: String): AdaptiveIcon? {
         return try {
             val pm = context.packageManager
@@ -36,15 +35,18 @@ object AdaptiveIconLoader {
         } catch (_: PackageManager.NameNotFoundException) { null }
     }
 
-    /** Returns the full icon drawable, preferring AdaptiveIconDrawable on API 26+. */
+    /**
+     * The full icon drawable.
+     *
+     * Adaptive icons arrived in API 26 and minSdk is 26, so the pre-O fallback
+     * this branched to could never execute. Both it and the @RequiresApi(O)
+     * above were written for an older minimum and left behind — and the
+     * annotation is worse than redundant, because it makes every caller either
+     * guard or annotate in turn to satisfy a floor the app already guarantees.
+     */
     fun loadIcon(context: Context, packageName: String): Drawable? {
         return try {
-            val pm = context.packageManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                pm.getApplicationIcon(packageName)
-            } else {
-                pm.getApplicationInfo(packageName, 0).loadIcon(pm)
-            }
+            context.packageManager.getApplicationIcon(packageName)
         } catch (_: Exception) { null }
     }
 

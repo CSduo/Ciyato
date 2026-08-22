@@ -45,8 +45,8 @@ private val DEFAULT_EVENTS = listOf(
 
 @Composable
 fun CountdownTimerWidget(
-    events: List<CountdownEvent> = DEFAULT_EVENTS,
     modifier: Modifier = Modifier,
+    events: List<CountdownEvent> = DEFAULT_EVENTS,
 ) {
     val today = remember { LocalDate.now() }
 

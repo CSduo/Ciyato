@@ -47,7 +47,7 @@ verified reachability myself. Where I disagree with the audit, the reasoning is 
 | `OnDeviceEmbeddingsHelper` | DELETE or rename | **DELETED** (B11) | TF-IDF bag-of-words called "embeddings"/"semantic"; index in memory only | Prototype value only |
 | `AIOptimizerManager` | DELETE; fold cache cleanup into Storage Cleanup | **DELETED** (B11) | RECLASSIFIED — was instantiated and wrapped; the wrapper had no caller | Cache scanner/deleter |
 | `MultiPageHomeScreen` | DELETE after verification | PENDING | Redundant pager beside the real Home pager | Generic pager snippets at most |
-| `HealthConnectWidget` | — | PENDING | A renderer, not a demonstrated Health Connect integration | — |
+| `HealthConnectWidget` | — | **DELETED** (B26) | Resolved: zero references anywhere; no Health Connect dependency in the build file, no Health Connect permission in the manifest, and no code that reads a record. Its doc claimed "Steps and heart rate from Health Connect ... Requires READ_STEPS and READ_HEART_RATE" for an integration that does not exist in any form. | Nothing. It rendered a `HealthData` object whose fields default to zero. |
 | `CiyatoNotificationListener` (in `NotificationBadge.kt`) | — | **DELETED** (16 Aug) | Second, duplicate `NotificationListenerService` shadowing the real one in `services/`; neither was declared | Real service kept and declared; `isNotificationListenerEnabled` repointed at it |
 
 ## Completed removals
@@ -59,6 +59,14 @@ verified reachability myself. Where I disagree with the audit, the reasoning is 
 | `AIOptimizerManager` (47 lines) | B11 | **RECLASSIFIED.** The audit called it "explicitly unreachable", and it is — but not for the stated reason: it *was* instantiated in `LauncherViewModel` and wrapped in `optimizeSystem()`. Nothing ever called that public entry point, so the chain compiled and looked live while being dead from the UI down. | Capability, not code: it deleted `.log`/`.tmp` files over 500KB from Ciyato's own cache. Storage Cleanup's Cache category already does this more thoroughly — internal *and* external cache dirs, with sizes shown and confirmation before deleting. |
 | `GuestModeScreen` (188 lines) | B11 | Zero references outside its own file; no route in either activity. | Nothing. Its doc promised "No access to hidden apps, files, settings, or personal data", which a launcher screen cannot enforce — anything reachable from Recents, a notification or another launcher bypasses it entirely. Android's real multi-user Guest profile provides that boundary; imitating it in-app is a security claim with nothing behind it. |
 | `CiyatoNotificationListener` duplicate class | `828f473` | Two `NotificationListenerService` subclasses existed; neither declared in the manifest, so Android bound neither and `badgeCounts` was permanently empty | `CiyatoNotificationListenerService` retained, declared in the manifest, and the enabled-check now targets it |
+
+### B26 - orphans surfaced by lint triage
+
+| Component | Disposition | Reachability proof | Reasoning |
+|---|---|---|---|
+| `RtlSupportHelper` (whole file) | **DELETED** | Zero references anywhere. | Also a false capability claim: `SUPPORTED_RTL_LANGUAGES` advertised Arabic, Hebrew, Farsi and Urdu with native display names, while the app ships exactly one English `values/strings.xml` and no translation folders. Switching locale would have produced English text in RTL layout. `android:supportsRtl="true"` already gives Compose real RTL from the system locale. |
+| 9 unused strings in `values/strings.xml` | **DELETED** | Lint `UnusedResources`, which scans Kotlin and XML both. | Remnants of an abandoned string-resource approach - every screen hard-codes its copy (F-058, still open). Two mattered: `app_description` and `privacy_statement` held the exact text corrected under F-163 and F-022, so unreferenced copies risked a future wiring-up restoring claims already found untrue. |
+| legacy launcher PNGs, `mipmap-anydpi-v26/`, `ic_launcher_art.png` | **DELETED** | `anydpi` outranks every density qualifier, and adaptive icons require API 26 which is minSdk - the density PNGs could not be selected on any supported device. | Replaced by one adaptive icon in `mipmap-anydpi/` (no version qualifier needed at minSdk 26) with a real monochrome layer. |
 
 ### B25
 

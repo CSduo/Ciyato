@@ -314,9 +314,14 @@ object FileCleanupResultStore {
         }
     }.getOrDefault(emptyMap())
 
+    // apply() is the usual advice and is wrong here. This runs on a worker
+    // thread that the system may kill at any moment, and the entire point of the
+    // checkpoint is to survive that kill so a cancelled scan resumes instead of
+    // restarting. apply() defers the write, which is exactly the case it must
+    // not lose. Suppressed rather than silenced: the behaviour is deliberate.
+    @android.annotation.SuppressLint("ApplySharedPref")
     fun saveCheckpoint(context: Context, rootUri: String, hashes: Map<String, String>) {
         val values = JSONObject().apply { hashes.forEach { (uri, hash) -> put(uri, hash) } }
-        // Commit is intentional: a cancelled worker can resume from this exact set.
         prefs(context).edit().putString(CHECKPOINT_PREFIX + rootUri, JSONObject().put("hashes", values).toString()).commit()
     }
 

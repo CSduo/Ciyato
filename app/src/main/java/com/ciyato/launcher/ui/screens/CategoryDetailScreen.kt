@@ -404,8 +404,8 @@ private fun CategoryHeroBadge(category: AppCategory, displayName: String, onMana
 private fun AppTile(
     app: InstalledApp,
     onTap: () -> Unit,
-    onLongTap: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onLongTap: (() -> Unit)? = null,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,

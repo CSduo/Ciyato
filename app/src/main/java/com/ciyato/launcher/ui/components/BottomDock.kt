@@ -39,8 +39,8 @@ import com.ciyato.launcher.ui.theme.*
 fun BottomDock(
     dockApps: List<InstalledApp>,
     onAppTap: (InstalledApp) -> Unit,
-    onRemoveApp: ((InstalledApp) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onRemoveApp: ((InstalledApp) -> Unit)? = null,
     isEditMode: Boolean = false,
     isDragActive: Boolean = false,
     hoverSlotIndex: Int? = null,

@@ -56,12 +56,10 @@ import kotlin.coroutines.resume
  *  - coverage is stated wherever a count appears, since a bounded scan cannot
  *    say anything about the photos it never read (F-102).
  */
-private fun formatBytesShort(bytes: Long): String = when {
-    bytes <= 0L -> "—"
-    bytes < 1024L * 1024L -> "${bytes / 1024L}KB"
-    bytes < 1024L * 1024L * 1024L -> "${bytes / (1024L * 1024L)}MB"
-    else -> String.format(java.util.Locale.US, "%.1fGB", bytes / (1024.0 * 1024.0 * 1024.0))
-}
+// Compact form for the dense duplicate grid; Locale.US was hard-coded here,
+// so a German phone saw "1.5GB" where the rest of the app said "1,5 GB".
+private fun formatBytesShort(bytes: Long): String =
+    com.ciyato.launcher.data.ByteFormat.format(bytes, compact = true, zeroPlaceholder = "—")
 
 @Composable
 fun DuplicatePhotoCleanupScreen(

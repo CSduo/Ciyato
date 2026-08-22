@@ -48,6 +48,7 @@ import com.ciyato.launcher.ui.theme.*
 
 @Composable
 fun WeatherAgendaRow(
+    modifier: Modifier = Modifier,
     isDense: Boolean = true,
     weatherState: WeatherState? = null,
     useFahrenheit: Boolean = false,
@@ -59,7 +60,6 @@ fun WeatherAgendaRow(
     onAgendaTap: () -> Unit = {},
     onRemoveWeather: () -> Unit = {},
     onRemoveAgenda: () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     if (!showWeather && !showAgenda) return
     val height = if (isDense) 160.dp else 190.dp
@@ -117,6 +117,7 @@ private fun BoxScope.HomeWidgetRemoveButton(onClick: () -> Unit) {
 @Composable
 fun WeatherCard(
     isDense: Boolean,
+    modifier: Modifier = Modifier,
     weatherState: WeatherState? = null,
     useFahrenheit: Boolean = false,
     /**
@@ -130,7 +131,6 @@ fun WeatherCard(
      */
     reduceMotion: Boolean = false,
     onTap: () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val padding    = if (isDense) 14.dp else 18.dp
     val tempSize   = if (isDense) 30.sp else 36.sp
@@ -373,9 +373,9 @@ private fun WeatherCardFallback(
 @Composable
 fun AgendaCard(
     isDense: Boolean,
+    modifier: Modifier = Modifier,
     events: List<com.ciyato.launcher.ui.screens.CalendarEvent> = emptyList(),
     onTap: () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val paddingH = if (isDense) 14.dp else 18.dp
     val paddingV = if (isDense) 12.dp else 16.dp

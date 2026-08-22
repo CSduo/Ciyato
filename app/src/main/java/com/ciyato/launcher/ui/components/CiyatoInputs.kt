@@ -193,11 +193,11 @@ fun CiyatoSwitch(
 @Composable
 fun CiyatoSettingSwitch(
     title: String,
+    modifier: Modifier = Modifier,
     subtitle: String = "",
     icon: ImageVector? = null,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
     accentColor: Color = CiyatoGold,
     enabled: Boolean = true,
 ) {

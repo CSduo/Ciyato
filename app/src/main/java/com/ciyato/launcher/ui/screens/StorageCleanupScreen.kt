@@ -528,6 +528,10 @@ private val DOCUMENT_MIMES = listOf(
     "text/plain",
 )
 
+// Declared at API 29 but a compile-time String constant ("external"), so it is
+// inlined at build time and works unchanged on minSdk 26. See the same note in
+// MediaLibraryRepository.
+@android.annotation.SuppressLint("InlinedApi")
 private val filesUri: Uri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
 
 /**

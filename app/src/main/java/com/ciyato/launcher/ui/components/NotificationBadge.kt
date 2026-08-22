@@ -31,10 +31,10 @@ import com.ciyato.launcher.ui.theme.CiyatoRed
 @Composable
 fun BadgedAppIcon(
     app: com.ciyato.launcher.data.InstalledApp,
+    modifier: Modifier = Modifier,
     size: Dp = 52.dp,
     badgeCount: Int = 0,
     onClick: () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier, contentAlignment = Alignment.TopEnd) {
         AppIconView(app = app, size = size, onClick = onClick)

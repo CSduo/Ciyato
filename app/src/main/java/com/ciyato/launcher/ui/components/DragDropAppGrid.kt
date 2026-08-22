@@ -22,9 +22,9 @@ import com.ciyato.launcher.data.InstalledApp
 @Composable
 fun DragDropAppGrid(
     apps: List<InstalledApp>,
+    modifier: Modifier = Modifier,
     columns: Int = 4,
     onReorder: (List<InstalledApp>) -> Unit,
-    modifier: Modifier = Modifier,
     itemContent: @Composable (app: InstalledApp, isDragging: Boolean) -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current

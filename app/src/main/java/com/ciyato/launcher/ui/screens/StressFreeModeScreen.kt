@@ -164,7 +164,7 @@ fun StressFreeModeScreen(
                                     when (label) {
                                         "Enable Do Not Disturb" -> {
                                             val nm = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
-                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && nm?.isNotificationPolicyAccessGranted == false) {
+                                            if (nm?.isNotificationPolicyAccessGranted == false) {
                                                 // Can't flip DND without this permission — send the user to grant it
                                                 // instead of claiming success we didn't achieve.
                                                 Toast.makeText(context, "Grant Do Not Disturb access to continue", Toast.LENGTH_SHORT).show()

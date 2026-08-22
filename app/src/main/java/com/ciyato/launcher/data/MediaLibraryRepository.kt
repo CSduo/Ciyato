@@ -130,6 +130,14 @@ class MediaLibraryRepository(private val context: Context) {
 
     // ── internals ─────────────────────────────────────────────────────────────
 
+    /**
+     * VOLUME_EXTERNAL is declared at API 29 but is a compile-time String
+     * constant ("external"), so javac inlines the value and nothing resolves it
+     * at runtime — the call works unchanged on API 26. Suppressed with the
+     * reason rather than left as a standing warning that reads like a real
+     * minSdk violation.
+     */
+    @android.annotation.SuppressLint("InlinedApi")
     private val filesUri: Uri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
 
     /**
@@ -247,11 +255,7 @@ class MediaLibraryRepository(private val context: Context) {
             "text/plain",
         )
 
-        fun formatBytes(bytes: Long): String = when {
-            bytes >= 1L shl 30 -> "%.1f GB".format(bytes.toDouble() / (1L shl 30))
-            bytes >= 1L shl 20 -> "%.1f MB".format(bytes.toDouble() / (1L shl 20))
-            bytes >= 1L shl 10 -> "%.0f KB".format(bytes.toDouble() / (1L shl 10))
-            else -> "$bytes B"
-        }
+        /** Delegates to [ByteFormat] so every screen renders sizes identically. */
+        fun formatBytes(bytes: Long): String = ByteFormat.format(bytes)
     }
 }

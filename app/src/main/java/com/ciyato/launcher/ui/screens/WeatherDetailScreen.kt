@@ -210,9 +210,9 @@ fun WeatherDetailScreen(
 @Composable
 fun WeatherAnimatedIcon(
     weatherCode: Int,
-    isDay: Boolean = true,
     modifier: Modifier = Modifier,
-    tint: Color = Color.Unspecified
+    isDay: Boolean = true,
+    tint: Color = Color.Unspecified,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "weatherIconAnim")
 

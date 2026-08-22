@@ -23,7 +23,6 @@ import androidx.annotation.RequiresApi
  *  STATE_ACTIVE      → weather data available
  *  STATE_UNAVAILABLE → refreshing in progress (brief, auto-resets)
  */
-@RequiresApi(Build.VERSION_CODES.N)
 class CiyatoWeatherTileService : TileService() {
 
     private val handler = Handler(Looper.getMainLooper())

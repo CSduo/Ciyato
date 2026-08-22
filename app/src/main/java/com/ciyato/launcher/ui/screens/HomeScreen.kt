@@ -359,13 +359,13 @@ private val WORKSPACE_STARTER_TEMPLATES = listOf(
 fun HomeScreen(
     viewModel: LauncherViewModel,
     onOpenDrawer: () -> Unit,
+    modifier: Modifier = Modifier,
     onOpenSearch: () -> Unit = {},
     onOpenSystemWallpaper: () -> Unit = {},
     onOpenOrganizerSettings: () -> Unit = {},
     onCategoryTap: (AppCategory) -> Unit = {},
     onWeatherTap: () -> Unit = {},
     onAgendaTap: () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val apps              by viewModel.apps.collectAsState()
     val isLoading         by viewModel.isLoading.collectAsState()

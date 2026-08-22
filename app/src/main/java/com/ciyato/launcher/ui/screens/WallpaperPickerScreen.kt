@@ -253,7 +253,11 @@ fun WallpaperPickerScreen(
                 )
             }
 
-            Text("Featured 4K Ciyato Wallpapers", color = CiyatoWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            // Called "Featured 4K" until someone measured them: every one of these
+            // is 768x1376, below 1080p and well below the screen of the phone
+            // showing it. Naming them 4K was a straightforwardly false claim in
+            // the most visible place on the screen.
+            Text("Ciyato Wallpapers", color = CiyatoWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
 
             val presetWallpapers = listOf(
                 "Neon Fluid" to com.ciyato.launcher.R.drawable.wallpaper_neon_fluid,

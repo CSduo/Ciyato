@@ -14,7 +14,6 @@ import androidx.annotation.RequiresApi
  */
 object AppShortcutsManager {
 
-    @RequiresApi(Build.VERSION_CODES.N_MR1)
     fun getShortcuts(context: Context, packageName: String): List<ShortcutInfo> {
         return try {
             val launcherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
@@ -34,7 +33,6 @@ object AppShortcutsManager {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.N_MR1)
     fun launchShortcut(context: Context, shortcut: ShortcutInfo) {
         try {
             val launcherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps

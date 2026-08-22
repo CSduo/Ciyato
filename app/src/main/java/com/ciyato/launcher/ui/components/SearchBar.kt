@@ -38,13 +38,13 @@ import com.ciyato.launcher.ui.theme.*
 fun CiyatoSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
     placeholder: String = "Search apps...",
     backgroundColor: Color = CiyatoBgEl2,
     borderColor: Color = CiyatoBorder,
     iconTint: Color = CiyatoMuted,
     textColor: Color = CiyatoWhite,
     placeholderColor: Color = CiyatoMuted,
-    modifier: Modifier = Modifier,
 ) {
     BasicTextField(
         value = query,

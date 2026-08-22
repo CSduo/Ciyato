@@ -172,7 +172,7 @@ private fun AnomalyCard(anomaly: UsageAnomaly) {
                 )
             }
             Text(
-                "z=${String.format("%.1f", anomaly.zScore)}",
+                "z=${String.format(java.util.Locale.getDefault(), "%.1f", anomaly.zScore)}",
                 color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold,
             )
         }
@@ -180,7 +180,6 @@ private fun AnomalyCard(anomaly: UsageAnomaly) {
 }
 
 private fun detectAnomalies(context: Context): List<UsageAnomaly> {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) return emptyList()
     return try {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()

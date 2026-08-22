@@ -28,7 +28,6 @@ import kotlinx.coroutines.launch
  *  STATE_ACTIVE   → session running (tap to end)
  *  STATE_INACTIVE → no session     (tap to start)
  */
-@RequiresApi(Build.VERSION_CODES.N)
 class CiyatoFocusTileService : TileService() {
 
     private val handler = Handler(Looper.getMainLooper())

@@ -248,7 +248,7 @@ private fun buildContextualSuggestions(
                 suggestions.add(AppSuggestion(
                     packageName = stat.packageName,
                     appLabel = label,
-                    reason = "Used ${String.format("%.1f", usageHours)}h this week — often at this time",
+                    reason = "Used ${String.format(java.util.Locale.getDefault(), "%.1f", usageHours)}h this week — often at this time",
                     confidence = (usageHours / 2f).coerceIn(0.4f, 0.95f),
                     timeSlot = timeSlot,
                 ))
