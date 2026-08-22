@@ -164,11 +164,12 @@ fun WeatherDetailScreen(
                     when (state) {
                         is WeatherState.NoPermission -> item {
                             WeatherPermissionCard {
+                                // Approximate only. Requesting FINE here made
+                                // Android show the "Precise / Approximate"
+                                // chooser for coordinates that get rounded to
+                                // ~1.1 km anyway.
                                 permLauncher.launch(
-                                    arrayOf(
-                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                        Manifest.permission.ACCESS_COARSE_LOCATION,
-                                    )
+                                    arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
                                 )
                             }
                         }

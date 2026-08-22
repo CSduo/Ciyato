@@ -63,14 +63,26 @@ object LocationHelper {
 
         // Request a fresh fix with an 8-second timeout.
         return withTimeoutOrNull(8_000L) {
-            requestSingleUpdate(lm, hasPrecisePermission(context))
+            // Network provider only: the result is coarsened to two decimals
+            // regardless, so waking GPS would spend battery for accuracy that
+            // is immediately discarded.
+            requestSingleUpdate(lm, preferGps = false)
         }?.toLatLon()
     }
 
     fun hasPermission(context: Context): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
 
+    /**
+     * Whether the OS granted precise location anyway.
+     *
+     * Ciyato no longer requests ACCESS_FINE_LOCATION — every coordinate is
+     * rounded to ~1.1 km before use, so GPS accuracy is discarded the moment it
+     * is obtained. Someone who granted it to an older build still has it, and
+     * this reports that honestly rather than assuming; nothing prefers the GPS
+     * provider on the strength of it any more.
+     */
     fun hasPrecisePermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED

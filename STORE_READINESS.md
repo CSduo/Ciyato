@@ -1,33 +1,84 @@
-# Ciyato Store Readiness Notes
+# Ciyato — Play Store readiness
 
-Date: 2026-07-09
+**This file is checked against the shipping manifest by a test.**
+`StoreReadinessDocTest` parses `AndroidManifest.xml` and fails the build if the
+permission table below does not match it exactly. The previous version of this
+document claimed the app had "no full-gallery media permission, no broad storage
+permission, no fine location, no microphone, no calendar … and no notification
+listener" while the manifest declared every one of those (F-183). Policy work
+done from that file would have produced a false Play data-safety declaration.
 
-## Current Android posture
+A document describing shipping configuration cannot be maintained by hand, so
+this one is no longer trusted to be — it is enforced.
 
-- Ciyato is an Android launcher and local phone organizer. The current deliverable is an Android APK, not an iOS build.
-- The manifest keeps runtime-sensitive access narrow: no full-gallery media permission, no broad storage permission, no fine location, no background location, no microphone, no calendar, no boot receiver, no foreground service, and no notification listener in the beta manifest.
-- Files use Android Storage Access Framework instead of `MANAGE_EXTERNAL_STORAGE`.
-- Photos use Android Photo Picker instead of full photo-library access.
-- Weather requests approximate foreground location only after the user opens Weather and sees an explanation.
-- App discovery uses `QUERY_ALL_PACKAGES` because launcher/search functionality must see installed apps. This needs a Play Console Permissions Declaration Form and store-listing copy that clearly explains installed-app discovery as core launcher functionality.
+Last verified: 2026-08-23 · `versionCode` 2608231 · `versionName` 1.1.0
 
-## Policy alignment checks
+## Versioning
 
-- Android runtime permission UX follows contextual permission guidance: explain the feature, ask only when the user invokes that feature, allow cancellation, and degrade gracefully on denial.
-- Android package visibility is documented as sensitive. Google Play allows broad visibility only when the app's core user-facing purpose requires it and requires a declaration in Play Console.
-- Android all-files access is intentionally avoided. Google Play recommends privacy-friendly alternatives such as SAF or MediaStore unless all-files access is core and approved.
-- Apple App Store guidance requires consent, clear purpose strings, data minimization, and alternatives when users deny access. A separate iOS implementation would need iOS-specific privacy strings and App Store review work.
+`versionCode` is derived, not hand-bumped: `YYMMDDn` from the release date and
+the build number within that day (see `ciyatoVersionCode` in `app/build.gradle.kts`).
+It is strictly increasing by construction and stays inside Play's ceiling until
+2121. A malformed date fails the build, because a version code cannot be
+corrected after upload.
 
-## Release caveats
+## Declared permissions — all 15
 
-- Google Play acceptance cannot be guaranteed by code alone; the Play listing, privacy policy, Data Safety form, and `QUERY_ALL_PACKAGES` declaration must be truthful and consistent with the APK.
-- iPhone installation is not possible with this APK. iOS requires a separate native iOS project or cross-platform build output.
-- Final UX acceptance still needs a physical Android device because emulator runtime testing was intentionally not used in this pass.
+| Permission | Why it is declared | Play consideration |
+|---|---|---|
+| `INTERNET` | Weather, air quality, reverse geocoding, breach check | Normal |
+| `ACCESS_NETWORK_STATE` | Skip network work while offline | Normal |
+| `ACCESS_COARSE_LOCATION` | Weather and air quality for the current area | Runtime. **Approximate only** — coordinates are rounded to two decimals (~1.1 km) before any request leaves the device |
+| `QUERY_ALL_PACKAGES` | A launcher must enumerate installed apps to draw a drawer and search them | **Requires a Permissions Declaration Form.** Core functionality; listing copy must explain installed-app discovery |
+| `MANAGE_EXTERNAL_STORAGE` | The file manager browses internal storage; SAF cannot grant the internal root since Android 11 | **Requires an All-files-access declaration.** Highest-scrutiny item here |
+| `READ_EXTERNAL_STORAGE` | Same, on API 29 and below | Runtime, legacy path |
+| `READ_MEDIA_IMAGES` | Photos library | Runtime |
+| `READ_MEDIA_VIDEO` | Photos library includes videos | Runtime |
+| `READ_MEDIA_AUDIO` | Audio category in file browsing | Runtime |
+| `READ_MEDIA_VISUAL_USER_SELECTED` | Honours the Android 14 "Select photos" partial grant instead of demanding all-or-nothing | Runtime, privacy-positive |
+| `READ_CALENDAR` | Agenda widget and the Calendar screen | Runtime |
+| `RECORD_AUDIO` | Voice commands, and only while that screen is open | Runtime. Declare in data safety as not collected or transmitted |
+| `REQUEST_DELETE_PACKAGES` | "Uninstall" in the app long-press menu | Normal; the OS still confirms |
+| `SET_WALLPAPER` | Applying a wallpaper from Wallpaper Studio | Normal |
+| `VIBRATE` | Haptics on drag, drop and long-press | Normal |
 
-## Official references
+### Removed, and why
 
-- Google Play `QUERY_ALL_PACKAGES` policy: https://support.google.com/googleplay/android-developer/answer/10158779
-- Android package visibility: https://developer.android.com/training/package-visibility
-- Android runtime permissions: https://developer.android.com/training/permissions/requesting
-- Google Play all-files access policy: https://support.google.com/googleplay/android-developer/answer/10467955
-- Apple App Review Guidelines, privacy: https://developer.apple.com/app-store/review/guidelines/
+- **`ACCESS_FINE_LOCATION`** — used to prefer the GPS provider, but every
+  coordinate is coarsened to ~1.1 km before use. Precise location was collected,
+  paid for in battery and in a scarier permission prompt, then discarded. It also
+  obliged a "precise location" data-safety entry for a benefit nobody received.
+- **`FOREGROUND_SERVICE`** — declared while the app contains no `startForeground`,
+  no `ForegroundInfo`, and no foreground service. A permission the app cannot
+  exercise is a review liability and nothing else.
+
+## Declared services — all 3
+
+| Service | Bound by | Notes |
+|---|---|---|
+| `CiyatoNotificationListenerService` | `BIND_NOTIFICATION_LISTENER_SERVICE` | Powers app-icon notification badges. **Requires explicit user enablement in system settings**; the app cannot self-grant it. Disclose in the listing |
+| `CiyatoWeatherTileService` | `BIND_QUICK_SETTINGS_TILE` | Quick Settings tile |
+| `CiyatoFocusTileService` | `BIND_QUICK_SETTINGS_TILE` | Quick Settings tile |
+
+No broadcast receivers are declared by the app. Boot rescheduling for periodic
+work comes from WorkManager's own manifest entry, not one of ours.
+
+## Data leaving the device
+
+- **Weather / air quality / reverse geocoding** — coarsened coordinates only.
+- **Breach checker** — the first five characters of a SHA-1 hash, with
+  `Add-Padding` enabled so response size does not reveal the query.
+- **Nothing else.** Workspace layout, app inventory, file and photo metadata,
+  vault contents and crash logs stay local. `android:allowBackup="false"`, and
+  `data_extraction_rules.xml` excludes the vault from device-to-device transfer
+  because its Keystore key cannot leave the phone.
+
+## Still outstanding before submission
+
+These are device- or account-gated and are not code work:
+
+- Upload signing key generated and the release build signed with it.
+- Play Console: Permissions Declaration Form for `QUERY_ALL_PACKAGES`, and the
+  All-files-access declaration for `MANAGE_EXTERNAL_STORAGE`.
+- Data safety form filled from the table above.
+- Predictive back and 16 KB page-size validation on hardware (F-045, F-188).
+- Instrumentation suite executed on a device (F-053).

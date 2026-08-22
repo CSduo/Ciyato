@@ -1,3 +1,4 @@
+import org.gradle.api.tasks.PathSensitivity
 // `java` resolves to the Android/Gradle extension inside this script, so the
 // package cannot be referenced inline — import the type explicitly.
 import java.util.Properties
@@ -75,6 +76,24 @@ val hasUploadKey: Boolean =
         uploadKeyAlias != null && uploadKeyPassword != null &&
         File(uploadStorePath).exists()
 
+/**
+ * YYMMDDn as an Int - e.g. 2026-08-23 build 1 becomes 2608231.
+ *
+ * Stays below Play's 2,100,000,000 ceiling until the year 2121 and is strictly
+ * increasing by construction. A malformed date fails the build rather than
+ * silently yielding a code that could regress: a version code cannot be fixed
+ * after upload, because that number is spent.
+ */
+fun ciyatoVersionCode(releaseDate: String, buildOfDay: Int): Int {
+    val parts = releaseDate.split("-")
+    require(parts.size == 3) { "releaseDate must be yyyy-MM-dd, was '$releaseDate'" }
+    val nums = parts.map { it.toIntOrNull() ?: error("releaseDate must be numeric, was '$releaseDate'") }
+    val (year, month, day) = nums
+    require(month in 1..12 && day in 1..31) { "releaseDate is not a real date: '$releaseDate'" }
+    require(buildOfDay in 0..9) { "buildOfDay must be a single digit, was $buildOfDay" }
+    return (((year % 100) * 10000 + month * 100 + day) * 10) + buildOfDay
+}
+
 android {
     namespace = "com.ciyato.launcher"
     compileSdk = 36
@@ -83,8 +102,18 @@ android {
         applicationId = "com.ciyato.launcher"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0-beta"
+        // Monotonic and derived, not hand-bumped.
+        //
+        // versionCode sat at 1 across the whole of the product's evolution
+        // (F-004). Play requires a strictly increasing code per upload, and a
+        // crash report or an upgrade test naming "version 1" identifies nothing
+        // when dozens of builds share it.
+        //
+        // The scheme is date-based: YYMMDDn, where n is the build within that
+        // day. It cannot go backwards while the clock does not, needs no shared
+        // counter, and the number itself says when the build was cut.
+        versionCode = ciyatoVersionCode(releaseDate = "2026-08-23", buildOfDay = 1)
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -245,4 +274,18 @@ tasks.whenTaskAdded {
             if (apkSrc.exists()) { apkSrc.copyTo(apkDst, overwrite = true); println("✅ APK ready: ${apkDst.absolutePath}") }
         }
     }
+}
+
+// StoreReadinessDocTest reads AndroidManifest.xml and STORE_READINESS.md straight
+// from disk, which Gradle cannot see. Without these declarations the unit-test
+// task stays "up to date" when only those files change - so editing the manifest
+// alone would skip the very test that exists to catch that edit. Verified by
+// adding a permission and watching the run be skipped before this was added.
+tasks.withType<Test>().configureEach {
+    inputs.file(rootProject.file("app/src/main/AndroidManifest.xml"))
+        .withPropertyName("shippingManifest")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file("STORE_READINESS.md"))
+        .withPropertyName("storeReadinessDoc")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }
