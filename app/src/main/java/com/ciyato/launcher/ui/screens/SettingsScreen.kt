@@ -605,6 +605,12 @@ fun SettingsScreen(
 
     // ── Bedtime hour picker dialog ────────────────────────────────────────────
     if (showBedtimeDialog) {
+        // The slider used to call setBedtimeHour() on every drag event, so a
+        // single adjustment wrote to DataStore dozens of times and "Done" had
+        // nothing left to confirm — the value was already saved, and dismissing
+        // the dialog by tapping outside kept a change the user never confirmed.
+        // The drag is local now; Done commits, dismissing discards.
+        var pendingBedtime by remember(bedtimeHour) { mutableIntStateOf(bedtimeHour) }
         AlertDialog(
             onDismissRequest = { showBedtimeDialog = false },
             containerColor   = CiyatoBgEl,
@@ -613,17 +619,26 @@ fun SettingsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Hide apps after:", color = CiyatoSec, fontSize = 13.sp)
                     Slider(
-                        value = bedtimeHour.toFloat(), onValueChange = { viewModel.setBedtimeHour(it.toInt()) },
+                        value = pendingBedtime.toFloat(),
+                        onValueChange = { pendingBedtime = it.toInt() },
                         valueRange = 18f..23f, steps = 4,
                         colors = SliderDefaults.colors(thumbColor = CiyatoGold, activeTrackColor = CiyatoGold),
                     )
-                    Text("${bedtimeHour}:00", color = CiyatoGold, fontWeight = FontWeight.Bold,
+                    Text("${pendingBedtime}:00", color = CiyatoGold, fontWeight = FontWeight.Bold,
                         modifier = Modifier.align(Alignment.CenterHorizontally))
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showBedtimeDialog = false }) {
+                TextButton(onClick = {
+                    viewModel.setBedtimeHour(pendingBedtime)
+                    showBedtimeDialog = false
+                }) {
                     Text("Done", color = CiyatoGold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBedtimeDialog = false }) {
+                    Text("Cancel", color = CiyatoSec)
                 }
             },
         )
@@ -933,24 +948,6 @@ private fun SettingsOptionRow(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SettingsSlider(
-    icon: ImageVector, title: String, value: Float, range: ClosedFloatingPointRange<Float>,
-    label: String, onValueChange: (Float) -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CiyatoBgEl)
-        .border(1.dp, CiyatoSubtleBorder, RoundedCornerShape(18.dp)).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(icon, null, tint = CiyatoSec, modifier = Modifier.size(22.dp))
-            Text(title, color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.weight(1f))
-            Text(label, color = CiyatoGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        }
-        Slider(value = value, onValueChange = onValueChange, valueRange = range,
-            colors = SliderDefaults.colors(thumbColor = CiyatoGold, activeTrackColor = CiyatoGold, inactiveTrackColor = CiyatoBgEl2))
     }
 }
 

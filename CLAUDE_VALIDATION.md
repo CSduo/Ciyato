@@ -78,7 +78,7 @@ Command: `./gradlew --no-daemon testDebugUnitTest lintDebug`
 | Gate | Result | Notes |
 |---|---|---|
 | `compileDebugKotlin` | PASS | verified repeatedly through 16 Aug |
-| `testDebugUnitTest` | PASS | plus 24 regressions added since (backup outcome, focus lifetime, search date ranges) |
+| `testDebugUnitTest` | PASS — **147 tests, 0 failures, 0 errors**, verified 22 Aug | plus 33 regressions added since (backup outcome, focus lifetime, search date ranges, breach-response parsing) |
 | `lintDebug` | PASS (0 errors) — verified, 22 Aug | **2 errors at baseline.** `NewApi` windowLightNavigationBar moved to `values-v27`. `QueryAllPackagesPermission` is suppressed on that single manifest element with a written rationale — a launcher is a documented exception, and the Play declaration is recorded in PLAY_RELEASE_EVIDENCE.md. Correction: an earlier revision of this row claimed PASS *before* the second error was actually handled; lint was still failing the build at that point. 142 warnings remain, untriaged. |
 | `assembleDebug` | PASS | APK produced at `Ciyato.apk` |
 | CI end-to-end | **FAIL at baseline** | died before Gradle on a non-existent `ciyato-android/` directory (F-001); workflow repaired, awaiting first green run |

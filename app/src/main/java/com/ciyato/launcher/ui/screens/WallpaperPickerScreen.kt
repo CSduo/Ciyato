@@ -489,10 +489,13 @@ private fun ImageBackgroundControls(
                 }
             }
             Text("Ciyato image background", color = CiyatoWhite, fontWeight = FontWeight.SemiBold)
-            WallpaperStudioSlider("Crop scale", scale, 1f..1.6f, "${(scale * 100).toInt()}%", onScaleChanged)
-            WallpaperStudioSlider("Vertical position", offset, -1f..1f, "${(offset * 100).toInt()}%", onOffsetChanged)
-            WallpaperStudioSlider("Dim", dim.toFloat(), 0f..80f, "$dim%") { onDimChanged(it.toInt()) }
-            WallpaperStudioSlider("Blur", blur.toFloat(), 0f..20f, "$blur") { onBlurChanged(it.toInt()) }
+            // valueText is a function of the LIVE value, not a string built from
+            // the persisted one, so the readout tracks the thumb during a drag
+            // even though nothing is written until release.
+            WallpaperStudioSlider("Crop scale", scale, 1f..1.6f, { "${(it * 100).toInt()}%" }, onScaleChanged)
+            WallpaperStudioSlider("Vertical position", offset, -1f..1f, { "${(it * 100).toInt()}%" }, onOffsetChanged)
+            WallpaperStudioSlider("Dim", dim.toFloat(), 0f..80f, { "${it.toInt()}%" }) { onDimChanged(it.toInt()) }
+            WallpaperStudioSlider("Blur", blur.toFloat(), 0f..20f, { "${it.toInt()}" }) { onBlurChanged(it.toInt()) }
             TextButton(onClick = onRemove, modifier = Modifier.align(Alignment.End)) {
                 Text("Remove Ciyato image", color = CiyatoSec)
             }
@@ -500,19 +503,44 @@ private fun ImageBackgroundControls(
     }
 }
 
+/**
+ * A settings slider that persists on release, not on every frame.
+ *
+ * These were wired straight through: `value` came from a DataStore-backed flow
+ * and `onValueChange` wrote back to DataStore. A drag emits roughly sixty events
+ * a second, so each one triggered an atomic file rewrite AND the thumb could only
+ * move after that round-trip completed — which is why the sliders stuttered and
+ * appeared to snap back under the finger.
+ *
+ * The drag is now local state; the value is committed once, when the gesture
+ * ends. Sixty writes per second become one per adjustment.
+ */
 @Composable
 private fun WallpaperStudioSlider(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
-    valueText: String,
+    valueText: (Float) -> String,
     onValueChanged: (Float) -> Unit,
 ) {
+    // Re-seeded whenever the persisted value changes from elsewhere, but stable
+    // during a drag because nothing is written until release.
+    var live by remember(value) { mutableFloatStateOf(value) }
+    var dragging by remember { mutableStateOf(false) }
+    val shown = if (dragging) live else value
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = CiyatoSec, fontSize = 13.sp, modifier = Modifier.width(116.dp))
         Slider(
-            value = value,
-            onValueChange = onValueChanged,
+            value = shown,
+            onValueChange = {
+                dragging = true
+                live = it
+            },
+            onValueChangeFinished = {
+                dragging = false
+                onValueChanged(live)
+            },
             valueRange = range,
             modifier = Modifier.weight(1f),
             colors = SliderDefaults.colors(
@@ -521,7 +549,7 @@ private fun WallpaperStudioSlider(
                 inactiveTrackColor = CiyatoBgEl2,
             ),
         )
-        Text(valueText, color = CiyatoMuted, fontSize = 11.sp, modifier = Modifier.width(38.dp))
+        Text(valueText(shown), color = CiyatoMuted, fontSize = 11.sp, modifier = Modifier.width(38.dp))
     }
 }
 

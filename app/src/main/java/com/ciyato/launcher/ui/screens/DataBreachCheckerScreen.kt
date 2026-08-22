@@ -12,12 +12,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.data.NetworkClient
+import androidx.compose.ui.text.input.ImeAction
+import com.ciyato.launcher.ui.components.CiyatoPasswordField
 import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
@@ -31,7 +30,12 @@ import java.security.MessageDigest
  * DataBreachCheckerScreen — Suggestion #85
  * Checks if a password has appeared in known data breaches
  * using the HaveIBeenPwned k-anonymity API (only first 5 chars of SHA-1 sent).
- * Zero privacy risk — the full hash never leaves the device.
+ *
+ * Two separate protections, both required for the privacy claim on screen:
+ *  - k-anonymity: only a 5-character hash prefix is sent, so the service sees a
+ *    bucket of roughly 800 hashes and never the password or its full hash.
+ *  - response padding: requested via the Add-Padding header, so the response
+ *    size does not reveal which prefix was queried to an on-path observer.
  */
 
 sealed class BreachResult {
@@ -53,7 +57,6 @@ fun DataBreachCheckerScreen(
 ) {
     val scope = rememberCoroutineScope()
     var password by remember { mutableStateOf("") }
-    var showPassword by remember { mutableStateOf(false) }
     var isChecking by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<BreachResult?>(null) }
     var error by remember { mutableStateOf("") }
@@ -67,14 +70,18 @@ fun DataBreachCheckerScreen(
             // policy and always closes the connection, even on error.
             val body = NetworkClient.fetchText(
                 "https://api.pwnedpasswords.com/range/$prefix",
-                headers = mapOf("User-Agent" to "Ciyato-Launcher"),
+                headers = mapOf(
+                    "User-Agent" to "Ciyato-Launcher",
+                    // Without this, every prefix returns a differently-sized
+                    // response, so anyone who can see the encrypted traffic can
+                    // infer which prefix was asked for from the byte count alone.
+                    // k-anonymity protects the hash; padding protects the query.
+                    // The screen claims the check is privacy-safe — this is part
+                    // of what makes that claim true.
+                    "Add-Padding" to "true",
+                ),
             )
-            val match = body.lineSequence().firstOrNull { it.startsWith(suffix, ignoreCase = true) }
-            val breachResult = if (match != null) {
-                BreachResult.Found(match.substringAfter(":").trim().toIntOrNull() ?: 0)
-            } else {
-                BreachResult.NotFound
-            }
+            val breachResult = parseBreachResponse(body, suffix)
             CheckOutcome.Answered(breachResult)
         } catch (_: UnknownHostException) {
             CheckOutcome.Failed("You're offline. Check your connection and try again.")
@@ -82,6 +89,22 @@ fun DataBreachCheckerScreen(
             CheckOutcome.Failed("The breach-check service returned an error (HTTP ${e.code}). Try again shortly.")
         } catch (_: Exception) {
             CheckOutcome.Failed("Could not reach the breach-check service. Try again.")
+        }
+    }
+
+    // One definition of "start the check", shared by the button and the
+    // keyboard's Go key, so the two can never drift apart.
+    val canCheck = password.isNotBlank() && !isChecking
+    fun runCheck() {
+        isChecking = true
+        result = null
+        error = ""
+        scope.launch {
+            when (val outcome = checkPassword(password)) {
+                is CheckOutcome.Answered -> result = outcome.result
+                is CheckOutcome.Failed   -> error = outcome.reason
+            }
+            isChecking = false
         }
     }
 
@@ -118,42 +141,22 @@ fun DataBreachCheckerScreen(
                 }
             }
 
-            OutlinedTextField(
+            // The design system's own password field, rather than a second
+            // hand-rolled one. It was unused and — until this change — did not
+            // mask its input at all; putting the real screen on it means that
+            // cannot quietly break again.
+            CiyatoPasswordField(
                 value = password,
                 onValueChange = { password = it; result = null; error = "" },
-                label = { Text("Password to check") },
-                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
-                trailingIcon = {
-                    IconButton(onClick = { showPassword = !showPassword }) {
-                        Icon(
-                            if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            null, tint = CiyatoMuted,
-                        )
-                    }
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = CiyatoGold,
-                    focusedLabelColor = CiyatoGold,
-                    cursorColor = CiyatoGold,
-                ),
+                label = "Password to check",
+                imeAction = ImeAction.Go,
+                onImeAction = { if (canCheck) runCheck() },
                 modifier = Modifier.fillMaxWidth(),
             )
 
             Button(
-                onClick = {
-                    isChecking = true
-                    result = null
-                    error = ""
-                    scope.launch {
-                        when (val outcome = checkPassword(password)) {
-                            is CheckOutcome.Answered -> result = outcome.result
-                            is CheckOutcome.Failed   -> error = outcome.reason
-                        }
-                        isChecking = false
-                    }
-                },
-                enabled = password.isNotBlank() && !isChecking,
+                onClick = ::runCheck,
+                enabled = canCheck,
                 colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold),
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -203,6 +206,29 @@ fun DataBreachCheckerScreen(
         }
     }
 }
+
+/**
+ * Finds [suffix] in a pwnedpasswords range response.
+ *
+ * Extracted from the composable so it can be tested: with padding enabled the
+ * response deliberately contains synthetic hashes, and telling those apart from
+ * real hits is now a correctness requirement rather than a detail. A padded
+ * entry carries an occurrence count of zero; counting one as a hit would tell
+ * someone their password was breached "0 times" — alarming and wrong.
+ *
+ * Matching is case-insensitive because the API's casing is not contractual, and
+ * malformed lines are skipped rather than being allowed to abort the scan.
+ */
+internal fun parseBreachResponse(body: String, suffix: String): BreachResult =
+    body.lineSequence()
+        .mapNotNull { line ->
+            val trimmed = line.trim()
+            if (!trimmed.startsWith(suffix, ignoreCase = true)) return@mapNotNull null
+            trimmed.substringAfter(':', "").trim().toIntOrNull()
+        }
+        .firstOrNull { it > 0 }
+        ?.let { BreachResult.Found(it) }
+        ?: BreachResult.NotFound
 
 private fun sha1(text: String): String {
     val md = MessageDigest.getInstance("SHA-1")

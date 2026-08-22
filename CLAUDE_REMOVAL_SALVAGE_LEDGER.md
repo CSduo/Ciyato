@@ -60,6 +60,17 @@ verified reachability myself. Where I disagree with the audit, the reasoning is 
 | `GuestModeScreen` (188 lines) | B11 | Zero references outside its own file; no route in either activity. | Nothing. Its doc promised "No access to hidden apps, files, settings, or personal data", which a launcher screen cannot enforce — anything reachable from Recents, a notification or another launcher bypasses it entirely. Android's real multi-user Guest profile provides that boundary; imitating it in-app is a security claim with nothing behind it. |
 | `CiyatoNotificationListener` duplicate class | `828f473` | Two `NotificationListenerService` subclasses existed; neither declared in the manifest, so Android bound neither and `badgeCounts` was permanently empty | `CiyatoNotificationListenerService` retained, declared in the manifest, and the enabled-check now targets it |
 
+### B22 — the unused half of the input design system
+
+Reachability was measured per component rather than per file, because the file itself is live:
+`CiyatoSettingSwitch` has 10 call sites and `CiyatoSwitch` is used internally by it.
+
+| Component | Disposition | Reachability proof | Reasoning |
+|---|---|---|---|
+| `CiyatoSlider` | **DELETED** (43 lines) | Zero call sites anywhere in the tree. | Not merely unused — a trap. Its contract fires `onValueChange` on every drag frame, which is precisely the defect fixed in the two real sliders this batch. The next screen to adopt it would have reintroduced per-frame DataStore writes. The two live sliders have materially different layouts, so there was nothing to absorb. |
+| `SettingsSlider` (private, `SettingsScreen.kt`) | **DELETED** (16 lines) | Zero call sites; private, so the file itself is proof. | Same per-frame contract, dead. |
+| `CiyatoPasswordField` | **SALVAGED** | Zero call sites, while `DataBreachCheckerScreen` hand-rolled its own password field — the duplication the design system exists to prevent. | Deleting it would have left the duplicate and buried a P0: the component did not mask its input (see N-01). Fixed and adopted by the breach screen instead, so the design-system field is now exercised by a real screen. |
+
 ## Preserved infrastructure (do not delete while refactoring)
 
 The audit is explicit that these are good decisions to keep: SAF-first storage, system-owned

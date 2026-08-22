@@ -50,6 +50,7 @@ fun CiyatoInputField(
     singleLine: Boolean = true,
     maxLines: Int = 1,
     enabled: Boolean = true,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val borderColor by animateColorAsState(
@@ -88,6 +89,7 @@ fun CiyatoInputField(
                 )
             }) else null,
             isError = isError,
+            visualTransformation = visualTransformation,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
             keyboardActions = KeyboardActions(onAny = { onImeAction() }),
             singleLine = singleLine,
@@ -229,51 +231,18 @@ fun CiyatoSettingSwitch(
     }
 }
 
- /**
- * Ciyato Slider — silver-tinted range input.
- */
-@Composable
-fun CiyatoSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
-    steps: Int = 0,
-    label: String = "",
-    valueLabel: String = "",
-    accentColor: Color = CiyatoGold,
-) {
-    Column(modifier = modifier) {
-        if (label.isNotBlank() || valueLabel.isNotBlank()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (label.isNotBlank()) Text(label, style = labelL, color = CiyatoSec)
-                if (valueLabel.isNotBlank()) Text(valueLabel, style = labelL, color = accentColor)
-            }
-            Spacer(Modifier.height(6.dp))
-        }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = valueRange,
-            steps = steps,
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor            = accentColor,
-                activeTrackColor      = accentColor,
-                inactiveTrackColor    = CiyatoBgEl2,
-                activeTickColor       = accentColor.copy(alpha = 0.5f),
-                inactiveTickColor     = CiyatoMuted.copy(alpha = 0.3f),
-            )
-        )
-    }
-}
-
 /**
- * Ciyato Password Field — secure text input with reveal toggle.
+ * Ciyato Password Field — masked text input with a reveal toggle.
+ *
+ * This did not mask anything. It set a password keyboard and rendered an
+ * eye icon, but [CiyatoInputField] had no visualTransformation parameter, so the
+ * password was drawn in clear text at all times and `showPassword` only chose
+ * which icon to display. Both transformation classes were already imported here
+ * and never referenced — the masking was intended and lost.
+ *
+ * It survived because nothing called it. That is the danger of an unused
+ * component in a shared design system: the first screen to reach for "the
+ * password field" would have shipped a visible password.
  */
 @Composable
 fun CiyatoPasswordField(
@@ -295,6 +264,7 @@ fun CiyatoPasswordField(
         trailingIcon = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
         onTrailingIconClick = { showPassword = !showPassword },
         isError = isError,
+        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardType = KeyboardType.Password,
         imeAction = imeAction,
         onImeAction = onImeAction,
