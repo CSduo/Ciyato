@@ -483,6 +483,7 @@ private fun FilesHomeContent(
                             cleanupError = cleanupError,
                             cleanupNotice = cleanupNotice,
                             isCleanupScanning = isCleanupScanning,
+                            canScanDuplicates = rootUri != null,
                             onScanDuplicates = onScanDuplicates,
                             onOpenBrowser = onOpenBrowser,
                             onReviewDuplicates = onReviewDuplicates,
@@ -673,6 +674,16 @@ private fun CleanupReviewCard(
     cleanupError: String?,
     cleanupNotice: String?,
     isCleanupScanning: Boolean,
+    /**
+     * Whether duplicate scanning can actually run here.
+     *
+     * Carried as a value rather than inferred inside the button, so the control
+     * and the work share one condition. The audit's rule for F-089 is that a
+     * control must either start observable work or be visibly unavailable with
+     * a reason — an enabled button that explains itself only after being tapped
+     * still fails it.
+     */
+    canScanDuplicates: Boolean,
     onScanDuplicates: () -> Unit,
     onOpenBrowser: () -> Unit,
     onReviewDuplicates: () -> Unit,
@@ -748,7 +759,7 @@ private fun CleanupReviewCard(
             }
             Button(
                 onClick = onScanDuplicates,
-                enabled = !isCleanupScanning,
+                enabled = canScanDuplicates && !isCleanupScanning,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = CiyatoGold,
                     contentColor = CiyatoBg,
@@ -757,6 +768,17 @@ private fun CleanupReviewCard(
                 ),
             ) {
                 Text(if (cleanupResult == null) "Scan duplicate candidates" else "Scan again")
+            }
+            if (!canScanDuplicates) {
+                // Why it is greyed out, next to the greyed-out control, before
+                // it is tapped rather than after.
+                Text(
+                    "Duplicate scanning compares files inside one chosen folder. " +
+                        "Pick a folder in Files Browser to enable it.",
+                    color = CiyatoMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                )
             }
             if (cleanupResult?.groups?.isNotEmpty() == true) {
                 Text(

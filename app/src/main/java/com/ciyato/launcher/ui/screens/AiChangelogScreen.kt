@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.ciyato.launcher.ui.components.CiyatoTopBar
+import com.ciyato.launcher.data.UsageAverages
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.text.SimpleDateFormat
@@ -231,21 +232,25 @@ private fun buildChangelog(context: Context): List<PhoneChangeEntry> {
         val todayStats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, todayStart, now)
         val weekStats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, weekAgo, todayStart)
 
-        // SUM per package, then divide.
+        // The baseline, and the number of days it is actually built from.
         //
-        // queryUsageStats(INTERVAL_DAILY, ...) returns one entry PER DAY per
-        // package. The previous code used associate{}, which keeps only the last
-        // entry for each key and discards the rest — so "weekly average" was one
-        // arbitrary day's foreground time divided by seven (F-124). Every
-        // "% more than your weekly average" line was therefore comparing today
-        // against roughly a seventh of a single day, and the percentages it
-        // printed were fiction.
-        val weekTotals = HashMap<String, Long>()
-        weekStats.forEach { stat ->
-            weekTotals[stat.packageName] =
-                (weekTotals[stat.packageName] ?: 0L) + stat.totalTimeInForeground
-        }
-        val weekAvg = weekTotals.mapValues { (_, total) -> total / 7f }
+        // Two separate bugs lived in this expression (F-124). associate{} kept
+        // one arbitrary bucket per package and discarded the rest, so a "weekly
+        // average" was a single day divided by seven. Summing fixed that and
+        // left the divisor assumed: `/ 7f` on a phone holding three days of
+        // history understates every average by 2.3x, and today then reads as a
+        // surge against it. UsageAverages measures the divisor instead, and is
+        // unit-tested because this arithmetic decides what the user is told.
+        val baseline = UsageAverages.baseline(
+            weekStats.map {
+                UsageAverages.Bucket(
+                    packageName = it.packageName,
+                    foregroundMs = it.totalTimeInForeground,
+                    timestampMs = it.firstTimeStamp,
+                )
+            },
+        )
+        val weekAvg = baseline.averageMsPerDay
 
         // Today can also span several buckets, so it is summed the same way.
         val todayTotals = HashMap<String, Long>()
@@ -259,26 +264,33 @@ private fun buildChangelog(context: Context): List<PhoneChangeEntry> {
                 pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
             } catch (_: Exception) { return@forEach }
 
+            // Below three observed days there is no baseline worth comparing
+            // against, so nothing "unusual" is claimed. Silence beats a
+            // confident percentage computed from one day of history.
+            if (!baseline.isComparable) return@forEach
+
             val avg = weekAvg[packageName] ?: 0f
-            val ratio = if (avg > 0) todayMs / avg else 0f
+            val ratio = UsageAverages.ratio(todayMs, avg)
+            val period = baseline.periodLabel()
 
             when {
                 avg < 60_000 && todayMs > 300_000 -> entries.add(PhoneChangeEntry(
                     emoji = "🆕",
                     title = "First time using $label",
-                    description = "You opened $label for the first time this week — ${todayMs / 60_000} min today.",
+                    description = "First time you've opened $label in the last " +
+                        "${baseline.daysCovered} days — ${todayMs / 60_000} min today.",
                     changeType = ChangeType.NEW_INSTALL,
                 ))
-                ratio > 2.5f && todayMs > 600_000 -> entries.add(PhoneChangeEntry(
+                ratio != null && ratio > 2.5f && todayMs > 600_000 -> entries.add(PhoneChangeEntry(
                     emoji = "📈",
                     title = "$label usage surged",
-                    description = "${(ratio * 100 - 100).toInt()}% more than your weekly average.",
+                    description = "${(ratio * 100 - 100).toInt()}% more than your $period.",
                     changeType = ChangeType.USAGE_UP,
                 ))
-                ratio < 0.2f && avg > 300_000 -> entries.add(PhoneChangeEntry(
+                ratio != null && ratio < 0.2f && avg > 300_000 -> entries.add(PhoneChangeEntry(
                     emoji = "📉",
                     title = "Less $label today",
-                    description = "You used it much less than usual. Taking a break?",
+                    description = "Well below your $period. Taking a break?",
                     changeType = ChangeType.USAGE_DOWN,
                 ))
             }

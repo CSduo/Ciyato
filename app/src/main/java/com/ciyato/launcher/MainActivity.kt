@@ -1,5 +1,6 @@
 package com.ciyato.launcher
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -15,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -61,9 +63,45 @@ class MainActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_START_DESTINATION = "start_destination"
+
+        /**
+         * The one place an incoming destination string becomes a route.
+         *
+         * onCreate and onNewIntent both resolve through this, so a deep link
+         * cannot mean one thing on a cold start and another on a warm one —
+         * the "share one route contract" half of F-071.
+         *
+         * Returns null when the caller named nothing, which is the signal to
+         * fall back to onboarding state rather than to a route.
+         */
+        fun routeForDestination(destination: String?): String? = when (destination) {
+            "overview", "files", "photos", "search", "settings", "agenda" -> destination
+            // Aliases kept for intents created before the rename.
+            "home", "dashboard" -> "overview"
+            "shared" -> "photos"
+            else -> null
+        }
     }
 
     private val viewModel: LauncherViewModel by viewModels()
+
+    /**
+     * A destination delivered to an instance that is already running.
+     *
+     * MainActivity is singleTop, so the launcher's explicit intents for
+     * Settings/Files/Photos/Agenda are handed to the existing instance rather
+     * than creating a new one. The route was only ever read in onCreate, so
+     * those taps silently did nothing whenever the organizer was already open —
+     * you pressed Files and stayed where you were (F-182).
+     */
+    private val redirectDestination = mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Keep getIntent() truthful for anything else that reads it later.
+        setIntent(intent)
+        redirectDestination.value = intent.getStringExtra(EXTRA_START_DESTINATION)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -90,12 +128,12 @@ class MainActivity : FragmentActivity() {
                 // An explicit destination (app shortcut, Settings deep link) never
                 // depends on onboarding state, so it resolves immediately. Only the
                 // plain launch has to wait for DataStore.
-                val startDest: String? = when (requestedDestination) {
-                    "home", "files", "photos", "search", "settings", "agenda" -> requestedDestination
-                    "dashboard" -> "home"
-                    "shared" -> "photos"
-                    else -> onboardingDone?.let { done -> if (done) "home" else "onboarding" }
-                }
+                // There is exactly one destination named Home in this product
+                // now, and it is the launcher workspace rather than this shell
+                // (F-071). "home" survives only as an alias so a pinned shortcut
+                // or saved intent from before the rename still lands sensibly.
+                val startDest: String? = routeForDestination(requestedDestination)
+                    ?: onboardingDone?.let { done -> if (done) "overview" else "onboarding" }
 
                 // Don't compose the NavHost until the answer is known.
                 //
@@ -142,15 +180,34 @@ class MainActivity : FragmentActivity() {
 
                 val currentBackStackEntry by navController.currentBackStackEntryAsState()
                 val activeRoute = currentBackStackEntry?.destination?.route
-                val tabRoutes = listOf("home", "files", "search", "photos", "settings")
+                val tabRoutes = listOf("overview", "files", "search", "photos", "settings")
                 val tabItems = listOf(
-                    CiyatoNavItem(Icons.Default.Home, "Home"),
+                    // Was Icons.Default.Home / "Home". This tab opens the
+                    // organizer's storage-and-categories dashboard, while Android
+                    // HOME opens the launcher workspace — two different products
+                    // wearing the same name and icon, which is what made the
+                    // entry path change what "Home" meant (F-071, F-073).
+                    CiyatoNavItem(Icons.Default.Dashboard, "Overview"),
                     CiyatoNavItem(Icons.Default.FolderOpen, "Files"),
                     CiyatoNavItem(Icons.Default.Search, "Search"),
                     CiyatoNavItem(Icons.Default.PhotoLibrary, "Photos"),
                     CiyatoNavItem(Icons.Default.Settings, "Settings"),
                 )
                 val selectedTab = tabRoutes.indexOf(activeRoute).coerceAtLeast(0)
+
+                // Acts on a destination delivered to an already-running
+                // instance. Cleared once consumed so a configuration change does
+                // not re-navigate and throw away where the person has since gone.
+                val redirect by redirectDestination
+                LaunchedEffect(redirect) {
+                    val target = routeForDestination(redirect) ?: return@LaunchedEffect
+                    navController.navigate(target) {
+                        popUpTo(navController.graph.startDestinationId) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                    redirectDestination.value = null
+                }
 
                 Scaffold(
                     contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -187,13 +244,13 @@ class MainActivity : FragmentActivity() {
                     composable("onboarding") {
                         OnboardingScreen(onDone = {
                             viewModel.setOnboardingDone()
-                            navController.navigate("home") {
+                            navController.navigate("overview") {
                                 popUpTo("onboarding") { inclusive = true }
                             }
                         })
                     }
 
-                    composable("home") {
+                    composable("overview") {
                         DashboardScreen(
                             viewModel = viewModel,
                             onOpenFiles = { navController.navigate("files") { launchSingleTop = true } },

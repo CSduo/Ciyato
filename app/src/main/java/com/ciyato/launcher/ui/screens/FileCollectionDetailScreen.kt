@@ -253,8 +253,24 @@ fun FileCollectionDetailScreen(
                     // "choose a folder" card, and the picker it offered is the one
                     // Android forbids from granting internal storage (F-090). The
                     // person was sent in a circle past working content.
-                    selectedFolderUri == null && folderStack.isEmpty() && !isLoading -> {
-                        item { GrantAccessCard(collectionTitle, collectionColor, onEnable = { folderPickerLauncher.launch(null) }) }
+                    // The `selectedFolderUri == null` clause that used to sit here
+                    // hid this branch in the one case that needs it most. When a
+                    // SAF grant is revoked the URI is still set but the folder is
+                    // gone, so the screen showed "Folder access is no longer
+                    // available. Choose the folder again to continue." with no
+                    // control anywhere to choose it — instructions for an action
+                    // the screen did not offer. Gating purely on whether a
+                    // readable root exists covers both the never-granted and the
+                    // lost-access cases, and the card explains which one it is.
+                    folderStack.isEmpty() && !isLoading -> {
+                        item {
+                            GrantAccessCard(
+                                title = collectionTitle,
+                                color = collectionColor,
+                                lostAccessReason = accessMessage,
+                                onEnable = { folderPickerLauncher.launch(null) },
+                            )
+                        }
                         item { SafExplainerCard() }
                     }
 
@@ -397,8 +413,21 @@ fun FileCollectionDetailScreen(
     }
 }
 
+/**
+ * Asks for a folder — or offers to reconnect one that was lost.
+ *
+ * @param lostAccessReason non-null when a source existed and stopped working
+ *   (grant revoked, SD card removed, folder deleted). The distinction matters:
+ *   "enable access" is confusing wording for someone who already enabled it, and
+ *   the recovery action is the same picker either way.
+ */
 @Composable
-private fun GrantAccessCard(title: String, color: Color, onEnable: () -> Unit) {
+private fun GrantAccessCard(
+    title: String,
+    color: Color,
+    onEnable: () -> Unit,
+    lostAccessReason: String? = null,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -408,9 +437,13 @@ private fun GrantAccessCard(title: String, color: Color, onEnable: () -> Unit) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Enable $title Access", color = CiyatoWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Text(
-            "Choose a folder you want Ciyato to browse. Ciyato only reads what you select and never deletes or modifies files automatically.",
+            if (lostAccessReason != null) "Reconnect $title" else "Enable $title Access",
+            color = CiyatoWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp,
+        )
+        Text(
+            lostAccessReason
+                ?: "Choose a folder you want Ciyato to browse. Ciyato only reads what you select and never deletes or modifies files automatically.",
             color = CiyatoSec,
             fontSize = 13.sp,
             lineHeight = 20.sp,

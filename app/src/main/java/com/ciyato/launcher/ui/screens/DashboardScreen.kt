@@ -133,9 +133,13 @@ fun DashboardScreen(
     ) {
         item {
             Column {
-                Text("Ciyato Files", color = CiyatoWhite, fontWeight = FontWeight.Bold, fontSize = 26.sp)
+                // "Ciyato Files" while a separate Files tab sits in the same
+                // bar, on a tab that was itself called Home. The screen is the
+                // organizer's overview — storage, categories, quick actions —
+                // so it says that (F-071, F-073).
+                Text("Ciyato Organizer", color = CiyatoWhite, fontWeight = FontWeight.Bold, fontSize = 26.sp)
                 Spacer(Modifier.height(2.dp))
-                Text("Everything organized.", color = CiyatoGold, fontSize = 13.sp)
+                Text("Storage, categories and cleanup.", color = CiyatoGold, fontSize = 13.sp)
             }
         }
 
