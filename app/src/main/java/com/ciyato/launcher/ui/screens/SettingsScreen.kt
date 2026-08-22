@@ -73,6 +73,7 @@ fun SettingsScreen(
     onNavigateToAutoBackup: () -> Unit,
     onNavigateToDuplicateShortcuts: () -> Unit,
     onNavigateToWidgetHost: () -> Unit,
+    onNavigateToInsights: () -> Unit,
 ) {
     val context = LocalContext.current
     val view    = LocalView.current
@@ -251,30 +252,16 @@ fun SettingsScreen(
             // ── Smart Insights ───────────────────────────────────────────────
             item { SectionHeader("Labs", "Experimental. These use rough signals and can be wrong.") }
             item {
+                // Was four separate rows — Smart Suggestions, Usage Anomalies,
+                // Today's Summary and Voice Commands — each at the same weight as
+                // "Set Ciyato as Home", and the first three each asking for Usage
+                // Access independently (F-130). One entry, one grant.
                 CiyatoListCard(
-                    title = "Smart Suggestions",
-                    subtitle = "App suggestions based on your time-of-day usage patterns",
-                    icon = Icons.Default.AutoAwesome,
+                    title = "Insights",
+                    subtitle = "Screen time, daily summary, frequent apps and unusual usage",
+                    icon = Icons.Default.Insights,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToContextualSuggestions() }
-                )
-            }
-            item {
-                CiyatoListCard(
-                    title = "Usage Anomalies",
-                    subtitle = "Flags apps whose usage today is unusually high or low",
-                    icon = Icons.AutoMirrored.Filled.TrendingUp,
-                    iconColor = CiyatoGold,
-                    onClick = { onNavigateToAnomalyDetection() }
-                )
-            }
-            item {
-                CiyatoListCard(
-                    title = "Today's Summary",
-                    subtitle = "A digest of new installs and notable usage changes today",
-                    icon = Icons.Default.Description,
-                    iconColor = CiyatoGold,
-                    onClick = { onNavigateToAiChangelog() }
+                    onClick = { onNavigateToInsights() },
                 )
             }
             item {
@@ -283,11 +270,9 @@ fun SettingsScreen(
                     subtitle = "Open apps and control Ciyato with your voice",
                     icon = Icons.Default.Mic,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToVoiceCommands() }
+                    onClick = { onNavigateToVoiceCommands() },
                 )
             }
-
-            // ── Weather ───────────────────────────────────────────────────────
             item { SectionHeader("Weather glance") }
             item {
                 SettingsOptionRow(

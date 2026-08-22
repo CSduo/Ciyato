@@ -281,6 +281,7 @@ class MainActivity : FragmentActivity() {
                             onNavigateToAutoBackup = { navController.navigate("auto_backup") },
                             onNavigateToDuplicateShortcuts = { navController.navigate("duplicate_shortcuts") },
                             onNavigateToWidgetHost = { navController.navigate("widget_host") },
+                            onNavigateToInsights = { navController.navigate("insights") },
                         )
                     }
 
@@ -358,6 +359,18 @@ class MainActivity : FragmentActivity() {
                     }
                     composable("recent_files") {
                         RecentFilesScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("insights") {
+                        InsightsScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenScreenTime = { navController.navigate("app_usage") { launchSingleTop = true } },
+                            onOpenTodaySummary = { navController.navigate("ai_changelog") { launchSingleTop = true } },
+                            onOpenSuggestions = { navController.navigate("contextual_suggestions") { launchSingleTop = true } },
+                            onOpenAnomalies = { navController.navigate("anomaly_detection") { launchSingleTop = true } },
+                        )
+                    }
+                    composable("app_usage") {
+                        AppUsageStatsScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
                     }
                     composable("contextual_suggestions") {
                         ContextualSuggestionsScreen(viewModel = viewModel, onBack = { navController.popBackStack() })

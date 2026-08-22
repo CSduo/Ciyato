@@ -154,6 +154,8 @@ private sealed class LauncherDest {
     object AutoBackup         : LauncherDest()   // Suggestion 67 — photo backup, manual + WorkManager schedule
     object DuplicateShortcuts : LauncherDest()   // Apps placed in more than one smart category
     object WidgetHost         : LauncherDest()   // Suggestion 15 — AppWidgetHost placement
+    object Insights           : LauncherDest()   // One entry for everything built on Usage Access
+    object AppUsage           : LauncherDest()   // Screen Time — was an orphan (F-154)
 }
 
 /**
@@ -172,7 +174,7 @@ private val ARGLESS_DESTS: List<LauncherDest> = listOf(
     LauncherDest.VoiceCommands, LauncherDest.AnomalyDetection, LauncherDest.AiChangelog,
     LauncherDest.DataBreachChecker, LauncherDest.SafeBrowsing, LauncherDest.SearchHistory,
     LauncherDest.StickyNotes, LauncherDest.AutoBackup, LauncherDest.DuplicateShortcuts,
-    LauncherDest.WidgetHost,
+    LauncherDest.WidgetHost, LauncherDest.Insights, LauncherDest.AppUsage,
 )
 
 private val DEST_BY_KEY: Map<String, LauncherDest> =
@@ -356,6 +358,20 @@ private fun LauncherRoot(
             onNavigateToAutoBackup     = { dest = LauncherDest.AutoBackup },
             onNavigateToDuplicateShortcuts = { dest = LauncherDest.DuplicateShortcuts },
             onNavigateToWidgetHost     = { dest = LauncherDest.WidgetHost },
+            onNavigateToInsights       = { dest = LauncherDest.Insights },
+        )
+
+        is LauncherDest.AppUsage -> AppUsageStatsScreen(
+            viewModel = viewModel,
+            onBack = { dest = LauncherDest.Insights },
+        )
+
+        is LauncherDest.Insights -> InsightsScreen(
+            onBack = { dest = LauncherDest.Settings },
+            onOpenScreenTime = { dest = LauncherDest.AppUsage },
+            onOpenTodaySummary = { dest = LauncherDest.AiChangelog },
+            onOpenSuggestions = { dest = LauncherDest.ContextualSuggestions },
+            onOpenAnomalies = { dest = LauncherDest.AnomalyDetection },
         )
 
         is LauncherDest.Search -> SearchScreen(
