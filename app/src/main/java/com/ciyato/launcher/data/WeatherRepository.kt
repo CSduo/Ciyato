@@ -130,21 +130,18 @@ object WeatherRepository {
     )
 
     /**
-     * Opens the phone's own weather app instead of duplicating one.
-     * Returns false when no weather app is installed so the caller can fall
-     * back to Ciyato's built-in forecast screen.
+     * The phone's own weather app, if it has one, so Ciyato does not duplicate it.
+     *
+     * This used to start the app itself, which made it one more launch path
+     * outside the single policy every other launch goes through — a locked or
+     * Focus-blocked weather app opened anyway when tapped from the weather tile.
+     * Finding the package and letting the caller launch it keeps that decision
+     * in one place. Returns null when nothing suitable is installed, so the
+     * caller can fall back to Ciyato's own forecast screen.
      */
-    fun launchSystemWeatherApp(context: android.content.Context): Boolean {
+    fun findSystemWeatherPackage(context: android.content.Context): String? {
         val pm = context.packageManager
-        for (pkg in SYSTEM_WEATHER_PACKAGES) {
-            val intent = pm.getLaunchIntentForPackage(pkg) ?: continue
-            return runCatching {
-                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
-                true
-            }.getOrDefault(false)
-        }
-        return false
+        return SYSTEM_WEATHER_PACKAGES.firstOrNull { pm.getLaunchIntentForPackage(it) != null }
     }
 
     /** WMO weather code → human label. */

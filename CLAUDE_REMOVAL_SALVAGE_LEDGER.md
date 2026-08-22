@@ -60,6 +60,13 @@ verified reachability myself. Where I disagree with the audit, the reasoning is 
 | `GuestModeScreen` (188 lines) | B11 | Zero references outside its own file; no route in either activity. | Nothing. Its doc promised "No access to hidden apps, files, settings, or personal data", which a launcher screen cannot enforce — anything reachable from Recents, a notification or another launcher bypasses it entirely. Android's real multi-user Guest profile provides that boundary; imitating it in-app is a security claim with nothing behind it. |
 | `CiyatoNotificationListener` duplicate class | `828f473` | Two `NotificationListenerService` subclasses existed; neither declared in the manifest, so Android bound neither and `badgeCounts` was permanently empty | `CiyatoNotificationListenerService` retained, declared in the manifest, and the enabled-check now targets it |
 
+### B25
+
+| Component | Disposition | Reachability proof | Reasoning |
+|---|---|---|---|
+| `AppLockGate` | **SALVAGED — feature built** | Zero callers, and no `lockedApps` preference existed at all. | Archiving was the audit's fallback, not its preference. The gate itself was sound; what was missing was a policy, storage and an entry point. Now wired through one launch gate. |
+| `QuickSwitchManager` (whole file) | **DELETED** | Zero references anywhere. | An unreachable "switch to previous app" helper that also launched by raw intent, so wiring it up later would have quietly reintroduced a launch path outside the policy. |
+
 ### B24 — the theming that had no consumer
 
 | Component | Disposition | Reachability proof | Reasoning |

@@ -134,6 +134,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val wallpaperBlur      = settings.wallpaperBlur      .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
     val tempUnit           = settings.tempUnit           .stateIn(viewModelScope, SharingStarted.Eagerly, WeatherRepository.localeDefaultUnit())
     val hiddenApps         = settings.hiddenApps         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val lockedApps         = settings.lockedApps         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val removedApps        = settings.removedApps        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val dockPackages       = settings.dockPackages       .stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val categoryRenames    = settings.categoryRenames    .stateIn(viewModelScope, SharingStarted.Eagerly, "{}")
@@ -1503,11 +1504,74 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── App launch ────────────────────────────────────────────────────────────
 
-    fun launchApp(app: InstalledApp) {
+    /**
+     * The single gate every Ciyato launch passes through.
+     *
+     * App Lock existed as an unreachable composable with no preference behind
+     * it and no caller (F-021, F-148). It is a real feature now, and the reason
+     * it lives here rather than in each screen is the acceptance criterion the
+     * audit set: every Ciyato launch path must hit the same policy. All sixteen
+     * launch sites already call [launchApp], so they are gated without changing
+     * any of them — and a seventeenth added later is gated by default, which a
+     * per-screen check could never promise.
+     *
+     * What it cannot do is stated in the UI rather than implied away: this gates
+     * launches that start in Ciyato. Recents, notifications, system search and
+     * another launcher all open the app without passing through here, because no
+     * launcher can intercept those. Anyone who needs a real boundary needs the
+     * app's own lock or a work profile.
+     */
+    fun isLocked(pkg: String): Boolean = pkg in parsePackageCsv(lockedApps.value)
+
+    private val _pendingLockedApp = MutableStateFlow<InstalledApp?>(null)
+    /** Non-null while a locked app is waiting on authentication. */
+    val pendingLockedApp: StateFlow<InstalledApp?> = _pendingLockedApp.asStateFlow()
+
+    fun cancelPendingLock() { _pendingLockedApp.value = null }
+
+    /** Called by the gate once the OS reports a successful authentication. */
+    fun confirmPendingLock() {
+        val app = _pendingLockedApp.value ?: return
+        _pendingLockedApp.value = null
+        launchApp(app, alreadyAuthenticated = true)
+    }
+
+    fun setAppLocked(pkg: String, locked: Boolean) = viewModelScope.launch {
+        val current = parsePackageCsv(settings.lockedApps.first()).toMutableSet()
+        if (locked) current.add(pkg) else current.remove(pkg)
+        settings.setLockedApps(current.joinToString(","))
+    }
+
+    /**
+     * Launch by package name, through the same policy as everything else.
+     *
+     * Screens that only hold a package name were building their own launch
+     * intents, which meant they bypassed Focus blocking and App Lock alike —
+     * the exact hole the audit's "every Ciyato launch path shares one policy"
+     * criterion exists to close. Resolution uses the full installed list, not
+     * the filtered one, so a hidden app is still launchable when a surface
+     * legitimately offers it.
+     *
+     * Returns false when the package is not installed, so callers can say so
+     * instead of failing silently.
+     */
+    fun launchPackage(pkg: String): Boolean {
+        val app = allApps.value.firstOrNull { it.packageName == pkg } ?: return false
+        launchApp(app)
+        return true
+    }
+
+    fun launchApp(app: InstalledApp, alreadyAuthenticated: Boolean = false) {
         if (isCategoryBlocked(app.category)) {
             // Scoped honestly: Ciyato declined to open it. It is not blocked
             // at the OS level and remains reachable elsewhere.
             _toastEvent.value = Event("Focus is on — Ciyato won't open ${app.label}")
+            return
+        }
+        // Checked after Focus so a blocked app is refused outright rather than
+        // asking for a fingerprint and then refusing anyway.
+        if (!alreadyAuthenticated && isLocked(app.packageName)) {
+            _pendingLockedApp.value = app
             return
         }
         val context = getApplication<Application>()

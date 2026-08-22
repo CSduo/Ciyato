@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.ciyato.launcher.viewmodel.LauncherViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,12 +29,39 @@ import com.ciyato.launcher.data.InstalledApp
 import com.ciyato.launcher.ui.theme.*
 
 /**
- * AppLockScreen — Suggestion #78
- * Biometric / PIN lock for individual apps.
- * Call authenticate() before launching a locked app.
+ * App Lock — authentication before Ciyato opens a locked app.
+ *
+ * [AppLockGate] existed with no preference behind it and no caller at all
+ * (F-021, F-148). It is wired now, and deliberately in one place: the ViewModel
+ * holds back the launch and publishes the pending app, [AppLockHost] renders the
+ * gate at both Compose roots, and every launch surface in the app is covered
+ * without any of them knowing about locking.
+ *
+ * The scope is stated wherever a user meets this feature, never implied away: it
+ * gates launches that start in Ciyato. Recents, notifications, system search and
+ * other launchers do not pass through Ciyato and will not ask. No launcher can
+ * change that.
  */
 
 enum class AuthState { IDLE, AUTHENTICATING, SUCCESS, FAILED }
+
+/**
+ * Renders the gate whenever a locked app is waiting on authentication.
+ *
+ * Placed once at each Compose root rather than at each launch site, so a launch
+ * surface added later is gated by default instead of by remembering to.
+ */
+@Composable
+fun AppLockHost(viewModel: LauncherViewModel) {
+    val pending by viewModel.pendingLockedApp.collectAsState()
+    pending?.let { app ->
+        AppLockGate(
+            app = app,
+            onAuthenticated = viewModel::confirmPendingLock,
+            onDismiss = viewModel::cancelPendingLock,
+        )
+    }
+}
 
 @Composable
 fun AppLockGate(
@@ -96,7 +124,10 @@ fun AppLockGate(
 
             Text("${app.label} is locked", color = CiyatoWhite, fontSize = 20.sp,
                 fontWeight = FontWeight.SemiBold)
-            Text("Authenticate to open this app", color = CiyatoMuted, fontSize = 14.sp)
+            Text(
+                "Unlock to open it from Ciyato",
+                color = CiyatoMuted, fontSize = 14.sp,
+            )
 
             if (failMessage != null) {
                 Text(failMessage!!, color = CiyatoRed, fontSize = 14.sp)
@@ -121,9 +152,25 @@ fun AppLockGate(
                     Text("Authenticate", color = Color.Black, fontWeight = FontWeight.SemiBold)
                 }
             } else {
-                Text("Biometric authentication not available on this device.",
-                    color = CiyatoMuted, fontSize = 13.sp,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                // No biometric and no screen lock enrolled. Refusing outright
+                // would strand the app behind a gate that can never be passed,
+                // so say why and let the launch through — the lock is a Ciyato
+                // convenience, not a security boundary, and pretending otherwise
+                // here would only lock someone out of their own phone.
+                Text(
+                    "This device has no fingerprint, face unlock or screen lock set up, " +
+                        "so Ciyato cannot ask for one. Set a screen lock in Android " +
+                        "Settings to make this work.",
+                    color = CiyatoMuted, fontSize = 13.sp, lineHeight = 18.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                Button(
+                    onClick = onAuthenticated,
+                    colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Open anyway", color = Color.Black, fontWeight = FontWeight.SemiBold)
+                }
             }
 
             TextButton(onClick = onDismiss) {

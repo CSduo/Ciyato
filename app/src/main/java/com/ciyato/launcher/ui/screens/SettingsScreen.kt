@@ -60,6 +60,7 @@ fun SettingsScreen(
     onNavigateToTheme: () -> Unit,
     onNavigateToWallpaper: () -> Unit,
     onNavigateToHiddenApps: () -> Unit,
+    onNavigateToLockedApps: () -> Unit,
     onNavigateToRemovedApps: () -> Unit,
     onNavigateToContextualSuggestions: () -> Unit,
     onNavigateToVoiceCommands: () -> Unit,
@@ -93,6 +94,7 @@ fun SettingsScreen(
     val filesRootUri       by viewModel.filesRootUri.collectAsState()
     val photoMediaUris     by viewModel.photoMediaUris.collectAsState()
     val hiddenAppsCsv      by viewModel.hiddenApps.collectAsState()
+    val lockedAppsCsv      by viewModel.lockedApps.collectAsState()
     val removedAppsCsv     by viewModel.removedApps.collectAsState()
     val locationGranted    = LocationHelper.hasPermission(context)
 
@@ -499,6 +501,15 @@ fun SettingsScreen(
                 )
             }
 
+            item {
+                CiyatoListCard(
+                    title = "App Lock",
+                    subtitle = "${countCsv(lockedAppsCsv)} require unlocking when opened from Ciyato",
+                    icon = Icons.Default.Lock,
+                    iconColor = CiyatoSec,
+                    onClick = onNavigateToLockedApps,
+                )
+            }
             item {
                 CiyatoListCard(
                     title = "Hidden Apps",

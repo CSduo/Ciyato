@@ -68,6 +68,12 @@ fun AppContextMenu(
     var showAppearanceEditor by remember { mutableStateOf(false) }
     var confirmRemoveFromDisplay by remember { mutableStateOf(false) }
     var confirmUnpinFromDock by remember { mutableStateOf(false) }
+    var showLockExplainer by remember { mutableStateOf(false) }
+    // Collected rather than read through derivedStateOf: lockedApps is a
+    // StateFlow, and reading .value inside derivedStateOf does not subscribe to
+    // it, so the label would not update when the set changes.
+    val lockedCsv by viewModel.lockedApps.collectAsState()
+    val isLocked = app.packageName in viewModel.parsePackageCsv(lockedCsv)
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -148,6 +154,16 @@ fun AppContextMenu(
                         color = CiyatoSec,
                         action = {
                             if (isHidden) viewModel.unhideApp(app) else viewModel.hideApp(app)
+                            onDismiss()
+                        }
+                    ))
+                    add(ContextMenuItem(
+                        icon = if (isLocked) Icons.Default.LockOpen else Icons.Default.Lock,
+                        label = if (isLocked) "Remove lock" else "Require unlock",
+                        color = CiyatoSec,
+                        action = {
+                            if (isLocked) viewModel.setAppLocked(app.packageName, false)
+                            else showLockExplainer = true
                             onDismiss()
                         }
                     ))
@@ -377,6 +393,37 @@ fun AppContextMenu(
     }
     var showNewCategoryDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
+
+    if (showLockExplainer) {
+        AlertDialog(
+            onDismissRequest = { showLockExplainer = false },
+            containerColor = CiyatoBgEl,
+            title = { Text("Require unlock for ${app.label}?", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
+            text = {
+                // Said plainly and before the fact. A launcher cannot lock an app
+                // system-wide, and an "App Lock" that implies it would be a
+                // security promise with nothing behind it (F-021, F-148).
+                Text(
+                    "Ciyato will ask for your fingerprint, face or screen lock before opening " +
+                        "${app.label} from anywhere in Ciyato." + "\n\n" +
+                        "It cannot lock ${app.label} everywhere. Opening it from Recents, a " +
+                        "notification, system search or another launcher does not pass through " +
+                        "Ciyato, so none of those will ask. For a real lock, use the app's own " +
+                        "setting if it has one.",
+                    color = CiyatoSec, fontSize = 13.sp, lineHeight = 18.sp,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.setAppLocked(app.packageName, true)
+                    showLockExplainer = false
+                }) { Text("Require unlock", color = CiyatoGold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLockExplainer = false }) { Text("Cancel", color = CiyatoSec) }
+            },
+        )
+    }
 
     if (showCategorySelector) {
         AlertDialog(

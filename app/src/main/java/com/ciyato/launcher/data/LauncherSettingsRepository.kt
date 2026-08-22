@@ -76,6 +76,7 @@ class LauncherSettingsRepository(private val context: Context) {
 
         // ── Organization (#23, #24, #25) ──────────────────────────────────────
         val KEY_HIDDEN_APPS            = stringPreferencesKey("hidden_apps")        // comma-separated packageNames
+        val KEY_LOCKED_APPS            = stringPreferencesKey("locked_apps")        // comma-separated packageNames
         val KEY_REMOVED_APPS           = stringPreferencesKey("removed_apps")       // display-only removal
         val KEY_DOCK_PACKAGES          = stringPreferencesKey("dock_packages")      // ordered CSV package names
         val KEY_DOCK_INITIALIZED       = booleanPreferencesKey("dock_initialized") // true once seeded/edited; distinguishes "never set" from "intentionally emptied"
@@ -243,6 +244,7 @@ class LauncherSettingsRepository(private val context: Context) {
     val weatherCacheAt:         Flow<Long>    = pref(KEY_WEATHER_CACHE_AT,        0L)
 
     val hiddenApps:             Flow<String>  = pref(KEY_HIDDEN_APPS,             "")
+    val lockedApps:             Flow<String>  = pref(KEY_LOCKED_APPS,             "")
     val removedApps:            Flow<String>  = pref(KEY_REMOVED_APPS,            "")
     val dockPackages:           Flow<String>  = pref(KEY_DOCK_PACKAGES,           "")
     val dockInitialized:        Flow<Boolean> = pref(KEY_DOCK_INITIALIZED,        false)
@@ -367,6 +369,7 @@ class LauncherSettingsRepository(private val context: Context) {
     }
 
     suspend fun setHiddenApps(csv: String)             = set(KEY_HIDDEN_APPS,             csv)
+    suspend fun setLockedApps(csv: String)             = set(KEY_LOCKED_APPS,             csv)
     suspend fun setRemovedApps(csv: String)            = set(KEY_REMOVED_APPS,            csv)
     suspend fun setDockPackages(csv: String)            = set(KEY_DOCK_PACKAGES,           csv)
     suspend fun setDockInitialized(v: Boolean)          = set(KEY_DOCK_INITIALIZED,        v)

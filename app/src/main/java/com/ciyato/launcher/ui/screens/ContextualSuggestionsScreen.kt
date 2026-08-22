@@ -166,7 +166,7 @@ fun ContextualSuggestionsScreen(
                         Text(slot, color = CiyatoGold, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     }
                     items(slotSuggestions, key = { it.packageName }) { suggestion ->
-                        SuggestionCard(suggestion = suggestion)
+                        SuggestionCard(suggestion = suggestion, viewModel = viewModel)
                     }
                 }
             }
@@ -175,7 +175,7 @@ fun ContextualSuggestionsScreen(
 }
 
 @Composable
-private fun SuggestionCard(suggestion: AppSuggestion) {
+private fun SuggestionCard(suggestion: AppSuggestion, viewModel: LauncherViewModel) {
     val context = LocalContext.current
     Card(
         colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
@@ -183,16 +183,15 @@ private fun SuggestionCard(suggestion: AppSuggestion) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                try {
-                    val intent = context.packageManager.getLaunchIntentForPackage(suggestion.packageName)
-                    if (intent != null) {
-                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(intent)
-                    } else {
-                        android.widget.Toast.makeText(context, "Cannot launch app", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                } catch (_: Exception) {
-                    android.widget.Toast.makeText(context, "Could not launch app", android.widget.Toast.LENGTH_SHORT).show()
+                // Was a hand-rolled launch intent, which skipped both Focus
+                // blocking and App Lock — a suggestion card could open an app
+                // the rest of Ciyato refuses to open.
+                if (!viewModel.launchPackage(suggestion.packageName)) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "${suggestion.appLabel} isn't installed any more",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
                 }
             },
     ) {

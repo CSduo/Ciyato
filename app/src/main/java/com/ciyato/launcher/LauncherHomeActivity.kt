@@ -81,6 +81,9 @@ class LauncherHomeActivity : FragmentActivity() {
                     activity = this@LauncherHomeActivity,
                     shortcutRequest = shortcutRequest,
                 )
+                // Above everything, so a locked app is gated from every launcher
+                // surface without any of them knowing about App Lock.
+                com.ciyato.launcher.ui.screens.AppLockHost(viewModel)
             }
         }
     }
@@ -134,6 +137,7 @@ private sealed class LauncherDest {
     object ThemeStudio        : LauncherDest()
     object WallpaperStudio    : LauncherDest()
     object HiddenApps         : LauncherDest()
+    object LockedApps         : LauncherDest()   // App Lock management
     object RemovedApps        : LauncherDest()
     data class CategoryDetail(val category: AppCategory) : LauncherDest()
     object WeatherDetail      : LauncherDest()
@@ -167,6 +171,7 @@ private sealed class LauncherDest {
 private val ARGLESS_DESTS: List<LauncherDest> = listOf(
     LauncherDest.Home, LauncherDest.Drawer, LauncherDest.Settings, LauncherDest.Search,
     LauncherDest.ThemeStudio, LauncherDest.WallpaperStudio, LauncherDest.HiddenApps,
+    LauncherDest.LockedApps,
     LauncherDest.RemovedApps, LauncherDest.WeatherDetail, LauncherDest.Agenda,
     LauncherDest.FocusSession, LauncherDest.PermissionAudit, LauncherDest.StorageCleanup,
     LauncherDest.RecentFiles, LauncherDest.ContextualSuggestions,
@@ -301,7 +306,12 @@ private fun LauncherRoot(
                 // The phone's own weather app is the primary target; Ciyato's
                 // forecast screen only covers phones without one, or setup.
                 val hasWeather = viewModel.weatherState.value is com.ciyato.launcher.data.WeatherRepository.WeatherState.Success
-                val opened = hasWeather && com.ciyato.launcher.data.WeatherRepository.launchSystemWeatherApp(context)
+                val weatherPkg = if (hasWeather) {
+                    com.ciyato.launcher.data.WeatherRepository.findSystemWeatherPackage(context)
+                } else null
+                // Launched through the viewmodel so Focus blocking and App Lock
+                // apply here as they do everywhere else.
+                val opened = weatherPkg != null && viewModel.launchPackage(weatherPkg)
                 if (!opened) dest = LauncherDest.WeatherDetail
             },
             onAgendaTap     = { dest = LauncherDest.Agenda },
@@ -343,6 +353,7 @@ private fun LauncherRoot(
             onNavigateToTheme          = { dest = LauncherDest.ThemeStudio },
             onNavigateToWallpaper      = { dest = LauncherDest.WallpaperStudio },
             onNavigateToHiddenApps     = { dest = LauncherDest.HiddenApps },
+            onNavigateToLockedApps     = { dest = LauncherDest.LockedApps },
             onNavigateToRemovedApps    = { dest = LauncherDest.RemovedApps },
             onNavigateToContextualSuggestions = { dest = LauncherDest.ContextualSuggestions },
             onNavigateToVoiceCommands  = { dest = LauncherDest.VoiceCommands },
@@ -430,6 +441,11 @@ private fun LauncherRoot(
         )
 
         is LauncherDest.StorageCleanup -> StorageCleanupScreen( // Suggestion 26
+            viewModel = viewModel,
+            onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.LockedApps -> LockedAppsScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )
