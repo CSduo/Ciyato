@@ -302,13 +302,21 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             settings.setWorkspaceLayoutV2(workspaceLayout)
             settings.setWorkspaceCount(parsed.visualOrder.size + 1)
         }
-        settings.setCategoryOrder(categoryOrder)
-        settings.setCategoryTilesSizes(tileSizes)
-        settings.setCustomCategories(customCategories)
-        settings.setCustomCategoryIcons(customCategoryIcons)
-        settings.setCustomCategoryPresentations(customCategoryPresentations)
-        settings.setAppCategoryOverrides(appCategoryOverrides)
-        settings.setHiddenHomeCategories(hiddenHomeCategories)
+        // Undo restores a snapshot, so it has to land as a snapshot. These were
+        // seven separate writes, which meant an interrupted or contended undo
+        // could leave a mixture of the state before the edit and the state
+        // after it — arguably worse than not undoing at all (F-042).
+        settings.editCategories {
+            CategoryMutations.Snapshot(
+                names = customCategories,
+                overrides = appCategoryOverrides,
+                icons = customCategoryIcons,
+                presentations = customCategoryPresentations,
+                tileSizes = tileSizes,
+                order = categoryOrder,
+                hidden = hiddenHomeCategories,
+            )
+        }
         repo.loadApps()
     }
     fun setPage0Apps(v: String)            = viewModelScope.launch { settings.setPage0Apps(v) }
@@ -397,41 +405,17 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         name: String,
         presentation: CustomCategoryPresentation = CustomCategoryPresentation.GROUP,
     ) = viewModelScope.launch {
-        val current = parsePackageCsv(customCategories.value).toMutableList()
-        if (name !in current) {
-            current.add(name)
-            settings.setCustomCategories(current.joinToString(","))
-            settings.setCustomCategoryPresentations(
-                CustomCategoryPresentationStore.update(
-                    settings.customCategoryPresentations.first(),
-                    name,
-                    presentation,
-                ),
-            )
+        // Read inside the transaction rather than from the cached StateFlow.
+        // `customCategories.value` is a stale snapshot by definition — two rapid
+        // adds could both read a list without the other and the second would
+        // overwrite the first.
+        settings.editCategories { snapshot ->
+            CategoryMutations.add(snapshot, name, presentation)
         }
     }
 
     fun removeCustomCategory(name: String) = viewModelScope.launch {
-        val current = parsePackageCsv(customCategories.value).toMutableList()
-        current.remove(name)
-        settings.setCustomCategories(current.joinToString(","))
-        
-        // Cleanup overrides mapped to this custom category
-        val overrides = try { JSONObject(appCategoryOverrides.value) } catch(_: Exception) { JSONObject() }
-        val toRemove = mutableListOf<String>()
-        overrides.keys().forEach { key ->
-            if (overrides.getString(key) == name) {
-                toRemove.add(key)
-            }
-        }
-        toRemove.forEach { overrides.remove(it) }
-        settings.setAppCategoryOverrides(overrides.toString())
-        val icons = try { JSONObject(customCategoryIcons.value) } catch (_: Exception) { JSONObject() }
-        icons.remove(name)
-        settings.setCustomCategoryIcons(icons.toString())
-        settings.setCustomCategoryPresentations(
-            CustomCategoryPresentationStore.remove(settings.customCategoryPresentations.first(), name),
-        )
+        settings.editCategories { snapshot -> CategoryMutations.remove(snapshot, name) }
         repo.loadApps()
     }
 
@@ -499,52 +483,20 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     ) = viewModelScope.launch {
         val current = currentName.trim()
         val replacement = requestedName.trim().take(24)
-        val categoryNames = parsePackageCsv(settings.customCategories.first())
-        if (current !in categoryNames || replacement.isBlank() ||
-            (replacement != current && replacement in categoryNames)
-        ) return@launch
 
-        settings.setCustomCategories(
-            categoryNames.map { if (it == current) replacement else it }.joinToString(","),
-        )
-
-        val overrides = jsonObject(settings.appCategoryOverrides.first())
-        overrides.keys().asSequence().toList().forEach { packageName ->
-            if (overrides.optString(packageName) == current) overrides.put(packageName, replacement)
+        // One transaction, not seven. A category is one concept spread over
+        // seven preference keys, and renaming it used to write each in its own
+        // edit{} — so an interruption or a concurrent edit could leave it
+        // renamed in the drawer but not in the layout, or listed in the order
+        // under a name that no longer existed (F-042). Validation happens inside
+        // the transaction too, against the same snapshot that gets written, so
+        // the check cannot pass against state that changed before the write.
+        val applied = settings.editCategories { snapshot ->
+            CategoryMutations.rename(snapshot, current, replacement, icon, presentation)
         }
-        settings.setAppCategoryOverrides(overrides.toString())
-
-        val icons = jsonObject(settings.customCategoryIcons.first())
-        val resolvedIcon = icon ?: icons.optString(current, "folder")
-        icons.remove(current)
-        icons.put(replacement, resolvedIcon)
-        settings.setCustomCategoryIcons(icons.toString())
-
-        val presentationMap = if (replacement == current) {
-            settings.customCategoryPresentations.first()
-        } else {
-            CustomCategoryPresentationStore.rename(
-                settings.customCategoryPresentations.first(),
-                current,
-                replacement,
-            )
-        }
-        settings.setCustomCategoryPresentations(
-            presentation?.let {
-                CustomCategoryPresentationStore.update(presentationMap, replacement, it)
-            } ?: presentationMap,
-        )
-
-        val tileSizes = jsonObject(settings.categoryTilesSizes.first())
-        val size = tileSizes.optString(current, "")
-        tileSizes.remove(current)
-        if (size.isNotBlank()) tileSizes.put(replacement, size)
-        settings.setCategoryTilesSizes(tileSizes.toString())
-
-        settings.setCategoryOrder(replaceCategoryInCsv(settings.categoryOrder.first(), current, replacement))
-        settings.setHiddenHomeCategories(
-            replaceCategoryInCsv(settings.hiddenHomeCategories.first(), current, replacement),
-        )
+        // The layout is a separate document with its own mutex; only touch it
+        // once the category keys have actually committed.
+        if (!applied) return@launch
 
         updateLayout { layout ->
             layout.copy(workspaces = layout.workspaces.map { workspace ->
@@ -562,35 +514,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun mergeCustomCategories(sourceName: String, destinationName: String) = viewModelScope.launch {
         val source = sourceName.trim()
         val destination = destinationName.trim()
-        val categoryNames = parsePackageCsv(settings.customCategories.first())
-        if (source == destination || source !in categoryNames || destination !in categoryNames) return@launch
 
-        settings.setCustomCategories(categoryNames.filterNot { it == source }.joinToString(","))
-
-        val overrides = jsonObject(settings.appCategoryOverrides.first())
-        overrides.keys().asSequence().toList().forEach { packageName ->
-            if (overrides.optString(packageName) == source) overrides.put(packageName, destination)
+        // Same reasoning as renameCustomCategory: merging touches every category
+        // key, and a half-applied merge is worse than no merge — apps reassigned
+        // to a destination that the names list says does not exist (F-042).
+        val applied = settings.editCategories { snapshot ->
+            CategoryMutations.merge(snapshot, source, destination)
         }
-        settings.setAppCategoryOverrides(overrides.toString())
-
-        val icons = jsonObject(settings.customCategoryIcons.first())
-        icons.remove(source)
-        settings.setCustomCategoryIcons(icons.toString())
-        settings.setCustomCategoryPresentations(
-            CustomCategoryPresentationStore.remove(settings.customCategoryPresentations.first(), source),
-        )
-
-        val tileSizes = jsonObject(settings.categoryTilesSizes.first())
-        if (!tileSizes.has(destination) && tileSizes.has(source)) {
-            tileSizes.put(destination, tileSizes.optString(source))
-        }
-        tileSizes.remove(source)
-        settings.setCategoryTilesSizes(tileSizes.toString())
-
-        settings.setCategoryOrder(replaceCategoryInCsv(settings.categoryOrder.first(), source, destination))
-        settings.setHiddenHomeCategories(
-            replaceCategoryInCsv(settings.hiddenHomeCategories.first(), source, destination),
-        )
+        if (!applied) return@launch
 
         updateLayout { layout ->
             layout.copy(workspaces = layout.workspaces.map { workspace ->
@@ -1182,6 +1113,15 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun jsonObject(raw: String): JSONObject = runCatching { JSONObject(raw) }.getOrDefault(JSONObject())
+
+    /**
+     * Drops [name] from a category CSV, preserving the order of the rest.
+     *
+     * Deleting a category previously left its name behind in the order list and
+     * the hidden set — entries pointing at something that no longer existed.
+     */
+    private fun removeCategoryFromCsv(raw: String, name: String): String =
+        parsePackageCsv(raw).filterNot { it == name }.joinToString(",")
 
     private fun replaceCategoryInCsv(raw: String, source: String, destination: String): String =
         parsePackageCsv(raw)

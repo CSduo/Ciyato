@@ -508,6 +508,55 @@ class LauncherSettingsRepository(private val context: Context) {
             }
             .map { it[key] ?: default }
 
+    /**
+     * Every preference describing a category, as one mutable snapshot.
+     *
+     * A category is one concept spread across seven keys. Renaming one meant
+     * seven independent `edit {}` calls, so a rename was seven transactions
+     * rather than one: interrupt it in the middle, or race two of them, and the
+     * category ends up renamed in the drawer but not in the layout, or present
+     * in the order list under a name that no longer exists (F-042). The audit
+     * calls for transactional multi-row state; this is that transaction.
+     */
+
+    /**
+     * Read-modify-write across every category key, atomically.
+     *
+     * DataStore serialises `edit {}` and hands the block the current snapshot,
+     * so this closes the read-modify-write race as well as the partial-write
+     * one — the two failure modes F-042 names. Return false to abort with
+     * nothing changed, which is what validation failures should do rather than
+     * leaving half an edit behind.
+     *
+     * @return true when the mutation was applied.
+     */
+    suspend fun editCategories(
+        mutate: (CategoryMutations.Snapshot) -> CategoryMutations.Snapshot?,
+    ): Boolean {
+        var applied = false
+        context.dataStore.edit { p ->
+            val before = CategoryMutations.Snapshot(
+                names = p[KEY_CUSTOM_CATEGORIES] ?: "",
+                overrides = p[KEY_APP_CATEGORY_OVERRIDES] ?: "{}",
+                icons = p[KEY_CUSTOM_CATEGORY_ICONS] ?: "{}",
+                presentations = p[KEY_CUSTOM_CATEGORY_PRESENTATIONS] ?: "{}",
+                tileSizes = p[KEY_CATEGORY_TILES_SIZES] ?: "{}",
+                order = p[KEY_CATEGORY_ORDER] ?: "",
+                hidden = p[KEY_HIDDEN_HOME_CATEGORIES] ?: "",
+            )
+            val after = mutate(before) ?: return@edit
+            p[KEY_CUSTOM_CATEGORIES] = after.names
+            p[KEY_APP_CATEGORY_OVERRIDES] = after.overrides
+            p[KEY_CUSTOM_CATEGORY_ICONS] = after.icons
+            p[KEY_CUSTOM_CATEGORY_PRESENTATIONS] = after.presentations
+            p[KEY_CATEGORY_TILES_SIZES] = after.tileSizes
+            p[KEY_CATEGORY_ORDER] = after.order
+            p[KEY_HIDDEN_HOME_CATEGORIES] = after.hidden
+            applied = true
+        }
+        return applied
+    }
+
     private suspend fun <T> set(key: Preferences.Key<T>, value: T) =
         context.dataStore.edit { it[key] = value }
 }

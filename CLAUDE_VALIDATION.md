@@ -78,7 +78,7 @@ Command: `./gradlew --no-daemon testDebugUnitTest lintDebug`
 | Gate | Result | Notes |
 |---|---|---|
 | `compileDebugKotlin` | PASS | verified repeatedly through 16 Aug |
-| `testDebugUnitTest` | PASS — **172 tests, 0 failures, 0 errors**, verified 22 Aug | plus 40 regressions added since (backup outcome, focus lifetime, search date ranges, breach-response parsing, photo month bucketing) |
+| `testDebugUnitTest` | PASS — **190 tests, 0 failures, 0 errors**, verified 22 Aug | plus 40 regressions added since (backup outcome, focus lifetime, search date ranges, breach-response parsing, photo month bucketing) |
 | `lintDebug` | PASS (0 errors, **62 warnings**, all dependency-version notices) - re-verified 22 Aug after B27 | **2 errors at baseline.** `NewApi` windowLightNavigationBar moved to `values-v27`. `QueryAllPackagesPermission` is suppressed on that single manifest element with a written rationale — a launcher is a documented exception, and the Play declaration is recorded in PLAY_RELEASE_EVIDENCE.md. Correction: an earlier revision of this row claimed PASS *before* the second error was actually handled; lint was still failing the build at that point. Warnings triaged in full (B26): 141 -> 62. Eleven of fifteen categories eliminated; **all 62 remaining are dependency-version notices** (`GradleDependency`, `AndroidGradlePluginVersion`, `UseTomlInstead`), which report that newer library versions exist and flag no defect. Nothing is suppressed without a written reason - the two `InlinedApi` and one `ApplySharedPref` suppressions each carry the argument for why lint is wrong at that site. |
 | `assembleDebug` | PASS | APK produced at `Ciyato.apk` |
 | CI end-to-end | **FAIL at baseline** | died before Gradle on a non-existent `ciyato-android/` directory (F-001); workflow repaired, awaiting first green run |
@@ -159,7 +159,8 @@ recomposition, workspace title no longer re-parsing the layout per recomposition
 | Revoked SAF grant | reconnect offered, state preserved, no raw-path fallback | not run |
 | Denied / revoked media permission | distinct from empty; no false zero | not run |
 | I/O failure mid-backup | idempotent retry; watermark never advances past failed data | fix landed; untested |
-| Corrupt persisted workspace/vault state | never silently reset user data | not run |
+| Corrupt persisted workspace/vault state | never silently reset user data | **partly covered** — `CategoryMutations` unit-tests malformed category JSON (edit still lands, unreadable blob falls back to empty rather than aborting). Workspace/vault fixtures still not run |
+| Simultaneous category edits (F-042) | all intended changes preserved | **not run** — needs a real DataStore, so instrumentation-only. The single-transaction shape and the totality of each mutation are unit-tested; the serialisation guarantee is DataStore's documented `edit {}` contract |
 | Cancelled worker | resumable | not run |
 | No intent handler | explained, not silent | partially handled |
 | Network failure | fresh/stale/unavailable; Home unaffected | not run |
