@@ -60,6 +60,20 @@ verified reachability myself. Where I disagree with the audit, the reasoning is 
 | `GuestModeScreen` (188 lines) | B11 | Zero references outside its own file; no route in either activity. | Nothing. Its doc promised "No access to hidden apps, files, settings, or personal data", which a launcher screen cannot enforce — anything reachable from Recents, a notification or another launcher bypasses it entirely. Android's real multi-user Guest profile provides that boundary; imitating it in-app is a security claim with nothing behind it. |
 | `CiyatoNotificationListener` duplicate class | `828f473` | Two `NotificationListenerService` subclasses existed; neither declared in the manifest, so Android bound neither and `badgeCounts` was permanently empty | `CiyatoNotificationListenerService` retained, declared in the manifest, and the enabled-check now targets it |
 
+### B35 - the unreachable third of the UI
+
+A whole-tree reachability sweep (every declared composable/object/class checked
+against every other file, plus the manifest for classes Kotlin never names)
+found **seven complete screens and seven widget components with no entry point**.
+
+| Component | Disposition | Reachability proof | Reasoning |
+|---|---|---|---|
+| `SecureFileVaultScreen` (16.4 KB) | **WIRED UP, not removed** | Zero Kotlin references, zero manifest references - unreachable since it was written. | The opposite call from the rest, and the important one. It is complete and working: AES-256-GCM under an AndroidKeystore key, biometric gate, import and decrypt. And `STORE_READINESS.md` and `data_extraction_rules.xml` **both describe it as shipping** - both written by me in B34, documenting a feature no user could open. Deleting it would have made the docs true by making the product poorer. Now reachable from Settings in both shells. |
+| `PrivacyDashboardScreen` (11.5 KB) | **SALVAGED then DELETED** | Zero references. Duplicates `PermissionAuditScreen` (live, 2 routes): both group apps by declared sensitive permissions. | Same shape as the Photos duplication (F-077). Its unique element - a link to Android's own Privacy Dashboard - moved into the live screen first, and is the more useful half: the OS reports permissions actually *used*, where Ciyato can only read what is *declared*. |
+| `HiddenVaultScreen` (6.6 KB) | **DELETED** | Zero references; superseded by `AppVisibilityScreen(mode = Hidden)`, which owns the route and the launcher destination. | Nothing unique. |
+| `AgendaScreen` (5.7 KB) | **DELETED** | Zero references; the `agenda` route opens `CalendarAgendaScreen`. | Nothing unique. |
+| 7 widget components (~25 KB) - Media controls, Battery, Stock/Crypto, Countdown, World clock, News headline, Daily affirmation | **DELETED** | Zero references each. `WidgetHostScreen` is routed and live and **hosts none of them**. | Rendered mock-ups: a stock widget with no market data, a news widget with no feed. Building the host to match would mean building seven integrations; keeping them claimed seven features that did not exist. |
+
 ### B26 - orphans surfaced by lint triage
 
 | Component | Disposition | Reachability proof | Reasoning |
