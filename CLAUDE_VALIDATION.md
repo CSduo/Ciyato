@@ -5,7 +5,7 @@ failures; nothing here is marked passing on the strength of a green compile alon
 
 Baseline: `5773448cbd2d189055021b319d54c74ae2c779bf` · tag `baseline-audit-5773448`.
 
-## API 36 migration status (branch `api36-migration`)
+## API 36 migration status — MERGED to master (`de6de8b`)
 
 | Gate | Result |
 |---|---|
@@ -26,7 +26,7 @@ configuration: `PackageInfo.applicationInfo` is nullable as of the API 36 SDK.
 |---|---|---|
 | JDK | `C:\Users\ADMIN\.jdks\ms-21.0.11` (21.0.11 LTS) | Temurin **17** |
 | Gradle | wrapper at repo root | wrapper at repo root |
-| compileSdk / targetSdk | **36 / 36** on `api36-migration`; 34/34 on master until merged | same |
+| compileSdk / targetSdk | **36 / 36** | same |
 
 **Toolchain discrepancy to resolve:** the specification asks for JDK 17; local builds have been
 green on 21. Both are valid for AGP 8.x, but local and CI should not differ indefinitely — a
@@ -123,7 +123,7 @@ open rather than being quietly assumed.
 | Rotation on Home mid-edit | edit state and selection survive | not run |
 | Process death during a Focus session | session survives via absolute end-time | **fixed** (F-121) — now derived from a persisted end instant; unit-tested, untested on device |
 | Reboot with periodic backup scheduled | WorkManager restores the job | fix landed 16 Aug (`RECEIVE_BOOT_COMPLETED` restored); untested on device |
-| Launcher recreation | route/subdestination restored | **known broken** (F-068, F-181) — `remember`-only |
+| Launcher recreation | route/subdestination restored | **fixed** (F-068, F-181) — `rememberSaveable` with a String-key Saver; untested on device |
 
 ## Performance
 

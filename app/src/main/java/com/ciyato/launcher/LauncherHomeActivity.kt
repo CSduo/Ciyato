@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.fragment.app.FragmentActivity
@@ -155,6 +156,52 @@ private sealed class LauncherDest {
     object WidgetHost         : LauncherDest()   // Suggestion 15 — AppWidgetHost placement
 }
 
+/**
+ * Every destination that carries no arguments, keyed by its own class name.
+ *
+ * Built as a list rather than a hand-written `when` so a new destination cannot
+ * be added and silently left out of state restoration — the only way to miss one
+ * is to forget it here, next to the declarations themselves.
+ */
+private val ARGLESS_DESTS: List<LauncherDest> = listOf(
+    LauncherDest.Home, LauncherDest.Drawer, LauncherDest.Settings, LauncherDest.Search,
+    LauncherDest.ThemeStudio, LauncherDest.WallpaperStudio, LauncherDest.HiddenApps,
+    LauncherDest.RemovedApps, LauncherDest.WeatherDetail, LauncherDest.Agenda,
+    LauncherDest.FocusSession, LauncherDest.PermissionAudit, LauncherDest.StorageCleanup,
+    LauncherDest.PhotoCollections, LauncherDest.RecentFiles, LauncherDest.ContextualSuggestions,
+    LauncherDest.VoiceCommands, LauncherDest.AnomalyDetection, LauncherDest.AiChangelog,
+    LauncherDest.DataBreachChecker, LauncherDest.SafeBrowsing, LauncherDest.SearchHistory,
+    LauncherDest.StickyNotes, LauncherDest.AutoBackup, LauncherDest.DuplicateShortcuts,
+    LauncherDest.WidgetHost,
+)
+
+private val DEST_BY_KEY: Map<String, LauncherDest> =
+    ARGLESS_DESTS.associateBy { it::class.simpleName.orEmpty() }
+
+private const val CATEGORY_DEST_PREFIX = "category:"
+
+private fun LauncherDest.toKey(): String = when (this) {
+    is LauncherDest.CategoryDetail -> CATEGORY_DEST_PREFIX + category.name
+    else -> this::class.simpleName.orEmpty()
+}
+
+/**
+ * Rebuilds a destination from its saved key, falling back to Home.
+ *
+ * Falling back rather than throwing matters: a key written by an older build may
+ * name a destination that no longer exists, and landing on Home is a far better
+ * outcome than crashing on launch.
+ */
+private fun launcherDestFromKey(key: String): LauncherDest {
+    if (key.startsWith(CATEGORY_DEST_PREFIX)) {
+        val category = runCatching {
+            AppCategory.valueOf(key.removePrefix(CATEGORY_DEST_PREFIX))
+        }.getOrNull()
+        return if (category != null) LauncherDest.CategoryDetail(category) else LauncherDest.Home
+    }
+    return DEST_BY_KEY[key] ?: LauncherDest.Home
+}
+
 // ── Root composable ───────────────────────────────────────────────────────────
 
 @Composable
@@ -164,7 +211,20 @@ private fun LauncherRoot(
     shortcutRequest: LauncherShortcutRequest,
 ) {
     val context = LocalContext.current
-    var dest by remember { mutableStateOf<LauncherDest>(LauncherDest.Home) }
+    // Survives activity recreation.
+    //
+    // This was a plain `remember`, so any configuration change — rotation, font
+    // scale, theme, unfolding a device, or the system recreating the launcher
+    // after reclaiming memory — silently threw the person back to Home from
+    // wherever they actually were (F-068, F-181). Saved as a String key because
+    // LauncherDest is a sealed class and not Parcelable; the key round-trips
+    // through the saved-instance bundle.
+    var dest by rememberSaveable(
+        stateSaver = androidx.compose.runtime.saveable.Saver(
+            save = { value: LauncherDest -> value.toKey() },
+            restore = { key: String -> launcherDestFromKey(key) },
+        ),
+    ) { mutableStateOf<LauncherDest>(LauncherDest.Home) }
     val useSystemWallpaper by viewModel.useSystemWallpaper.collectAsState()
 
     LaunchedEffect(shortcutRequest.sequence) {
