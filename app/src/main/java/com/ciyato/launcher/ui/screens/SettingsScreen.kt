@@ -213,7 +213,11 @@ fun SettingsScreen(
                 item {
                     CiyatoListCard(
                         title = "Bedtime Hour",
-                        subtitle = "${bedtimeHour}:00 — apps hidden after this time",
+                        // Was "apps hidden after this time", which described a
+                        // window with no end — and the code agreed, switching
+                        // bedtime off at midnight. Now both say the same thing.
+                        subtitle = "Distracting categories hidden from " +
+                            com.ciyato.launcher.data.TimeAwareLayout.bedtimeWindowLabel(bedtimeHour),
                         icon = Icons.Default.Bedtime,
                         iconColor = CiyatoBlue,
                         onClick = { showBedtimeDialog = true }

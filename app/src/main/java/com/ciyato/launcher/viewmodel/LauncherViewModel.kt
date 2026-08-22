@@ -755,12 +755,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val gridSize = settings.gridSize.stateIn(viewModelScope, SharingStarted.Eagerly, "6x5")
 
     /** Parsed (columns, rows) with sane bounds. Default 6×5 is the default layout. */
-    fun gridColsRows(): Pair<Int, Int> {
-        val parts = gridSize.value.split("x")
-        val cols = parts.getOrNull(0)?.trim()?.toIntOrNull()?.coerceIn(3, 8) ?: 6
-        val rows = parts.getOrNull(1)?.trim()?.toIntOrNull()?.coerceIn(3, 8) ?: 5
-        return cols to rows
-    }
+    fun gridColsRows(): Pair<Int, Int> = WorkspacePaging.parseGridSize(gridSize.value)
 
     /**
      * Make the layout model agree with the grid the screen actually draws.
@@ -1052,12 +1047,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      *  their [WorkspaceLayout.visualOrder] position. Giving Home a real, stable id
      *  here (instead of the old index-based lookup, which had no slot for page 1
      *  at all) is what lets every grid operation below actually persist on Home. */
-    private fun workspaceIdForPage(layout: WorkspaceLayout, pageIndex: Int): String? = when {
-        pageIndex == 1 -> WorkspaceLayout.HOME_WORKSPACE_ID
-        pageIndex == 0 -> layout.visualOrder.getOrNull(0)
-        pageIndex >= 2 -> layout.visualOrder.getOrNull(pageIndex - 1)
-        else -> null
-    }
+    // Page/workspace arithmetic lives in WorkspacePaging so its inverse in
+    // HomeCanvas.kt can be tested against it (F-041).
+    private fun workspaceIdForPage(layout: WorkspaceLayout, pageIndex: Int): String? =
+        WorkspacePaging.idForPage(layout, pageIndex)
 
     /** Same page→position mapping as [workspaceIdForPage], but as a raw
      *  [WorkspaceLayout.visualOrder] index for callers that are inserting a new
@@ -1065,11 +1058,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      *  position, so (unlike [workspaceIdForPage]) it has nothing to return for
      *  page 1; callers never invoke this for page 1 in practice ("+ Workspace"
      *  only renders on non-Home pages). */
-    private fun visualIndexForPage(pageIndex: Int): Int? = when {
-        pageIndex == 0 -> 0
-        pageIndex >= 2 -> pageIndex - 1
-        else -> null
-    }
+    private fun visualIndexForPage(pageIndex: Int): Int? =
+        WorkspacePaging.visualIndexForPage(pageIndex)
 
     private fun currentWorkspaceLayout(): WorkspaceLayout =
         WorkspaceStore.parse(workspaceLayoutV2.value) ?: legacyWorkspaceLayout()
@@ -1402,25 +1392,18 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val currentDayOfWeek: Int get() = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
 
     /** Returns the "featured" categories for the current time of day. */
-    fun timeAwareCategories(): List<AppCategory> {
-        val hour = currentHour
-        val isWeekend = currentDayOfWeek in listOf(Calendar.SATURDAY, Calendar.SUNDAY)
-        return when {
-            hour < 7              -> listOf(AppCategory.DAILY, AppCategory.UTILITIES, AppCategory.PRODUCTIVITY)
-            hour < 12             -> listOf(AppCategory.WORK, AppCategory.PRODUCTIVITY, AppCategory.COMMUNICATION)
-            hour < 14             -> listOf(AppCategory.SOCIAL, AppCategory.ENTERTAINMENT, AppCategory.DAILY)
-            hour < 18 && !isWeekend -> listOf(AppCategory.WORK, AppCategory.PRODUCTIVITY, AppCategory.FINANCE)
-            hour < 18 && isWeekend  -> listOf(AppCategory.ENTERTAINMENT, AppCategory.SOCIAL, AppCategory.TRAVEL)
-            hour < 22             -> listOf(AppCategory.ENTERTAINMENT, AppCategory.SOCIAL, AppCategory.CREATIVITY)
-            else                  -> listOf(AppCategory.DAILY, AppCategory.ENTERTAINMENT, AppCategory.UTILITIES)
-        }
-    }
+    fun timeAwareCategories(): List<AppCategory> =
+        TimeAwareLayout.featuredCategories(currentHour, TimeAwareLayout.isWeekend(currentDayOfWeek))
 
-    /** True if bedtime mode should be active right now. */
-    fun isBedtimeNow(): Boolean {
-        if (!bedtimeMode.value) return false
-        return currentHour >= bedtimeHour.value
-    }
+    /**
+     * True if bedtime mode should be active right now.
+     *
+     * The rule moved to [TimeAwareLayout] so it could be tested at an arbitrary
+     * hour instead of only at the hour the test happens to run — which is how
+     * the midnight bug survived.
+     */
+    fun isBedtimeNow(): Boolean =
+        TimeAwareLayout.isBedtime(currentHour, bedtimeHour.value, bedtimeMode.value)
 
     // ── Focus sessions (Suggestion 75) ────────────────────────────────────────
 

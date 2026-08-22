@@ -32,7 +32,11 @@ import kotlin.math.roundToInt
  * the surface that renders freely-positioned items.
  */
 
-internal fun workspacePagerPage(visualIndex: Int): Int = if (visualIndex == 0) 0 else visualIndex + 1
+// The inverse of WorkspacePaging.visualIndexForPage. It used to be an
+// independent copy of the arithmetic in a different file from the two functions
+// it inverts, with nothing asserting they agreed (F-041).
+internal fun workspacePagerPage(visualIndex: Int): Int =
+    com.ciyato.launcher.data.WorkspacePaging.pageForVisualIndex(visualIndex)
 
 private const val WORKSPACE_EDGE_DROP_THRESHOLD_PX = 120f
 
