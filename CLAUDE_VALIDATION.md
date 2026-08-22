@@ -83,10 +83,24 @@ Command: `./gradlew --no-daemon testDebugUnitTest lintDebug`
 | `assembleDebug` | PASS | APK produced at `Ciyato.apk` |
 | CI end-to-end | **FAIL at baseline** | died before Gradle on a non-existent `ciyato-android/` directory (F-001); workflow repaired, awaiting first green run |
 
-Known test-quality problems already identified in the audit, to be fixed rather than counted as
-coverage: `searchInput_filtersApps` is a vacuous assertion (F-051), the Home app-grid test is too
-generic to fail meaningfully (F-052), and instrumentation coverage is far too sparse for a
-platform-sensitive launcher (F-053). **A test that cannot fail is not evidence.**
+### Instrumentation test quality
+
+`HomeScreenTest` was rewritten (F-051, F-052). The two vacuous assertions are gone:
+
+- `searchInput_filtersApps` ended in `assertCountIsAtLeast(0)` — always true, so the test typed a
+  character and verified nothing while its name claimed it proved filtering. Replaced by
+  `searchInput_narrowsResults`, which asserts a relation (after <= before) using a deliberately
+  unmatchable query, so it holds on any device yet fails if filtering stops working.
+- `appGrid_isDisplayed` accepted any single node with `Role.Button` — the search bar alone passed
+  it. Replaced by `appGrid_showsMultipleLaunchableItems`, which requires several clickable nodes.
+
+A test for clearing the query was added, since restore-after-filter is where filtering usually
+breaks.
+
+**These compile but have NOT been executed** — instrumentation needs a device, and device testing
+belongs to the owner. Compiling is not passing, and they are not counted as coverage here until
+something runs them. F-053 (coverage far too sparse for a platform-sensitive launcher) remains
+open.
 
 ## Device / emulator matrix
 
