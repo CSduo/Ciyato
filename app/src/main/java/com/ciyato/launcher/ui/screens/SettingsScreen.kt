@@ -61,6 +61,7 @@ fun SettingsScreen(
     onNavigateToWallpaper: () -> Unit,
     onNavigateToHiddenApps: () -> Unit,
     onNavigateToLockedApps: () -> Unit,
+    onNavigateToSecureVault: () -> Unit,
     onNavigateToRemovedApps: () -> Unit,
     onNavigateToContextualSuggestions: () -> Unit,
     onNavigateToVoiceCommands: () -> Unit,
@@ -505,6 +506,20 @@ fun SettingsScreen(
                 )
             }
 
+            item {
+                CiyatoListCard(
+                    // The vault was fully built — AES-256-GCM under an
+                    // AndroidKeystore key, biometric gate, import and decrypt —
+                    // and had no entry point anywhere in the app. It was
+                    // unreachable, while STORE_READINESS.md and the backup rules
+                    // both described it as a shipping feature.
+                    title = "Secure Vault",
+                    subtitle = "Encrypt files behind your fingerprint or screen lock",
+                    icon = Icons.Default.Lock,
+                    iconColor = CiyatoSec,
+                    onClick = onNavigateToSecureVault,
+                )
+            }
             item {
                 CiyatoListCard(
                     title = "App Lock",

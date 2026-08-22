@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.UnknownHostException
 import java.security.MessageDigest
+import androidx.compose.ui.semantics.semantics
 
 /**
  * DataBreachCheckerScreen — Suggestion #85
@@ -175,7 +176,12 @@ fun DataBreachCheckerScreen(
             if (currentResult != null) {
                 val bg = if (currentResult is BreachResult.Found) Color(0xFFF44336).copy(alpha = 0.15f) else CiyatoGreen.copy(alpha = 0.15f)
                 val icon = if (currentResult is BreachResult.Found) Icons.Default.Warning else Icons.Default.CheckCircle
-                val title = if (currentResult is BreachResult.Found) "⚠️ Password Compromised" else "✅ Password Safe"
+                // No emoji in the verdict. A glyph is the least reliable place to
+                // put a security result: TalkBack either skips it or announces
+                // "warning sign", it renders differently on every OEM, and it
+                // carries nothing for anyone who cannot distinguish red from
+                // green. The words and the icon do the work (F-059).
+                val title = if (currentResult is BreachResult.Found) "Password compromised" else "Password not found in any breach"
                 val msg = if (currentResult is BreachResult.Found) {
                     "This password appeared in ${currentResult.count.toIntFormatted()} known breaches. Change it immediately."
                 } else {
@@ -185,9 +191,16 @@ fun DataBreachCheckerScreen(
                     colors = CardDefaults.cardColors(containerColor = bg),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
+                    Row(
+                        Modifier.padding(14.dp).semantics(mergeDescendants = true) {},
+                        verticalAlignment = Alignment.Top,
+                    ) {
                         Icon(
                             imageVector = icon,
+                            // Null on purpose: the row merges its semantics
+                            // below, so the title and message are announced once
+                            // as a sentence rather than the icon being read out
+                            // separately before them.
                             contentDescription = null,
                             tint = if (currentResult is BreachResult.Found) Color(0xFFF44336) else CiyatoGreen
                         )

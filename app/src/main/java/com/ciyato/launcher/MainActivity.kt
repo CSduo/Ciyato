@@ -334,6 +334,7 @@ class MainActivity : FragmentActivity() {
                             // their Settings rows were enabled and inert (F-072).
                             onNavigateToStorageCleanup = { navController.navigate("storage_cleanup") },
                             onNavigateToLockedApps = { navController.navigate("locked_apps") },
+                            onNavigateToSecureVault = { navController.navigate("secure_vault") },
                             onNavigateToRecentFiles = { navController.navigate("recent_files") },
                             onNavigateToContextualSuggestions = { navController.navigate("contextual_suggestions") },
                             onNavigateToVoiceCommands = { navController.navigate("voice_commands") },
@@ -416,6 +417,9 @@ class MainActivity : FragmentActivity() {
                     // that invisible at compile time; SettingsScreen now requires
                     // every action, so a dead row cannot be reintroduced.
 
+                    composable("secure_vault") {
+                        SecureFileVaultScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
+                    }
                     composable("locked_apps") {
                         LockedAppsScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
                     }

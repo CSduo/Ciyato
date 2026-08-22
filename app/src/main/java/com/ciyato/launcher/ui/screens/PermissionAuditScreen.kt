@@ -30,6 +30,10 @@ import com.ciyato.launcher.ui.components.RealAppIcon
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.ui.components.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material.icons.filled.Shield
+import android.os.Build
 
 /**
  * PermissionAuditScreen — Suggestion #139.
@@ -94,6 +98,57 @@ fun PermissionAuditScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                // Salvaged from PrivacyDashboardScreen, which duplicated this
+                // screen's job (grouping apps by declared sensitive permissions)
+                // while being unreachable from anywhere. This link was the one
+                // thing it had that this screen did not, and it is the more
+                // useful half: Android's own dashboard reports permissions
+                // actually *used* recently, where this screen can only read what
+                // is *declared* in a manifest.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(CiyatoBgEl)
+                                .clickable {
+                                    runCatching {
+                                        context.startActivity(
+                                            Intent(Settings.ACTION_PRIVACY_SETTINGS)
+                                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                        )
+                                    }
+                                }
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Default.Shield,
+                                contentDescription = null,
+                                tint = CiyatoBlue,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Android Privacy Dashboard",
+                                    color = CiyatoWhite,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                )
+                                Text(
+                                    "Which permissions apps actually used recently — this screen " +
+                                        "can only show what they declare.",
+                                    color = CiyatoMuted,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp,
+                                )
+                            }
+                        }
+                    }
+                }
+
                 items(filtered, key = { it.app.packageName }) { audited ->
                     AuditAppCard(
                         audited = audited,
