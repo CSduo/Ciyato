@@ -141,7 +141,6 @@ private sealed class LauncherDest {
     object FocusSession       : LauncherDest()   // Suggestion 75
     object PermissionAudit    : LauncherDest()   // Suggestion 139
     object StorageCleanup     : LauncherDest()   // Suggestion 26
-    object PhotoCollections   : LauncherDest()   // Real screenshots/recent/videos/large/memories collections
     object RecentFiles        : LauncherDest()   // Recent files browser + file tagging
     object ContextualSuggestions : LauncherDest()  // Suggestion 30
     object VoiceCommands      : LauncherDest()   // Suggestion 39
@@ -170,7 +169,7 @@ private val ARGLESS_DESTS: List<LauncherDest> = listOf(
     LauncherDest.ThemeStudio, LauncherDest.WallpaperStudio, LauncherDest.HiddenApps,
     LauncherDest.RemovedApps, LauncherDest.WeatherDetail, LauncherDest.Agenda,
     LauncherDest.FocusSession, LauncherDest.PermissionAudit, LauncherDest.StorageCleanup,
-    LauncherDest.PhotoCollections, LauncherDest.RecentFiles, LauncherDest.ContextualSuggestions,
+    LauncherDest.RecentFiles, LauncherDest.ContextualSuggestions,
     LauncherDest.VoiceCommands, LauncherDest.AnomalyDetection, LauncherDest.AiChangelog,
     LauncherDest.DataBreachChecker, LauncherDest.SafeBrowsing, LauncherDest.SearchHistory,
     LauncherDest.StickyNotes, LauncherDest.AutoBackup, LauncherDest.DuplicateShortcuts,
@@ -248,7 +247,6 @@ private fun LauncherRoot(
         dest = when (dest) {
             is LauncherDest.PermissionAudit,
             is LauncherDest.StorageCleanup,
-            is LauncherDest.PhotoCollections,
             is LauncherDest.RecentFiles,
             is LauncherDest.HiddenApps,
             is LauncherDest.RemovedApps,
@@ -340,7 +338,6 @@ private fun LauncherRoot(
             },
             onNavigateToPermissionAudit= { dest = LauncherDest.PermissionAudit },
             onNavigateToStorageCleanup = { dest = LauncherDest.StorageCleanup },
-            onNavigateToPhotoCollections = { dest = LauncherDest.PhotoCollections },
             onNavigateToRecentFiles    = { dest = LauncherDest.RecentFiles },
             onNavigateToFocus          = { dest = LauncherDest.FocusSession },
             onNavigateToTheme          = { dest = LauncherDest.ThemeStudio },
@@ -433,11 +430,6 @@ private fun LauncherRoot(
         )
 
         is LauncherDest.StorageCleanup -> StorageCleanupScreen( // Suggestion 26
-            viewModel = viewModel,
-            onBack    = { dest = LauncherDest.Settings },
-        )
-
-        is LauncherDest.PhotoCollections -> PhotoCollectionsScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )

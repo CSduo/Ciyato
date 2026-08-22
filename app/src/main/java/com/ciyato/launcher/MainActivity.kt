@@ -269,7 +269,6 @@ class MainActivity : FragmentActivity() {
                             // The fourteen below had no route and no callback, so
                             // their Settings rows were enabled and inert (F-072).
                             onNavigateToStorageCleanup = { navController.navigate("storage_cleanup") },
-                            onNavigateToPhotoCollections = { navController.navigate("photo_collections") },
                             onNavigateToRecentFiles = { navController.navigate("recent_files") },
                             onNavigateToContextualSuggestions = { navController.navigate("contextual_suggestions") },
                             onNavigateToVoiceCommands = { navController.navigate("voice_commands") },
@@ -354,9 +353,6 @@ class MainActivity : FragmentActivity() {
 
                     composable("storage_cleanup") {
                         StorageCleanupScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
-                    }
-                    composable("photo_collections") {
-                        PhotoCollectionsScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
                     }
                     composable("recent_files") {
                         RecentFilesScreen(viewModel = viewModel, onBack = { navController.popBackStack() })

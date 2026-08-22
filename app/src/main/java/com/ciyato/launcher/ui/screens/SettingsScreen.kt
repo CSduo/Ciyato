@@ -52,7 +52,6 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToPermissionAudit: () -> Unit,
     onNavigateToStorageCleanup: () -> Unit,
-    onNavigateToPhotoCollections: () -> Unit,
     onNavigateToRecentFiles: () -> Unit,
     onNavigateToFocus: () -> Unit,
     onNavigateToFiles: () -> Unit,
@@ -316,15 +315,6 @@ fun SettingsScreen(
             }
             item {
                 CiyatoListCard(
-                    title = "Photo Collections",
-                    subtitle = "Screenshots, recent, videos, large photos, and month-by-month memories",
-                    icon = Icons.Default.PhotoLibrary,
-                    iconColor = CiyatoGold,
-                    onClick = { onNavigateToPhotoCollections() }
-                )
-            }
-            item {
-                CiyatoListCard(
                     title = "Photo Backup",
                     subtitle = "Back up photos to a folder you choose, automatically or on demand",
                     icon = Icons.Default.Backup,
@@ -352,11 +342,18 @@ fun SettingsScreen(
             }
             item {
                 CiyatoListCard(
-                    title = "Photos Access",
-                    subtitle = "${PhotoLibraryStore.parseUris(photoMediaUris).size} selected item(s). Android Photo Picker only.",
+                    title = "Photos",
+                    // Was "Photos Access", subtitled "N selected item(s). Android
+                    // Photo Picker only" — a description of the curated picker
+                    // that is now only the no-permission fallback, not the
+                    // product. The elvis after onNavigateToPhotos() was also
+                    // dead: the callback returns Unit, so openAppSettings could
+                    // never run. It is a leftover from when nav callbacks were
+                    // nullable.
+                    subtitle = "Your gallery in collections — screenshots, recent, videos, large files, and month by month",
                     icon = Icons.Default.PhotoLibrary,
                     iconColor = CiyatoBlue,
-                    onClick = { onNavigateToPhotos() ?: openAppSettings(context) }
+                    onClick = onNavigateToPhotos
                 )
             }
             if (PhotoLibraryStore.parseUris(photoMediaUris).isNotEmpty()) {

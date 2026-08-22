@@ -27,12 +27,26 @@ import kotlinx.coroutines.withContext
  */
 object PhotoDeviceLibrary {
 
+    /**
+     * One item in the device media library — a photo or a video.
+     *
+     * The name is historical. It carried photos only, which is why anything that
+     * wanted videos had to build a second, parallel gallery instead of reusing
+     * this one (F-077, F-112). Videos are ordinary members here now: the grid,
+     * collections, selection and trash all operate on this type, so supporting
+     * them is a property of the model rather than of one screen.
+     */
     data class DeviceImage(
         val uri: Uri,
         val name: String,
         val bucket: String,
         val takenAtMs: Long,
         val sizeBytes: Long,
+        /** MediaStore row id — needed to ask the OS for a decoded video frame. */
+        val id: Long = 0L,
+        val isVideo: Boolean = false,
+        /** Zero for photos, and for videos MediaStore could not measure. */
+        val durationMs: Long = 0L,
     )
 
     data class DeviceCollection(
@@ -65,6 +79,7 @@ object PhotoDeviceLibrary {
 
     /** Reads the row the cursor is parked on, using [IMAGE_PROJECTION]'s column order. */
     private fun Cursor.readImage(): DeviceImage = DeviceImage(
+        id = getLong(0),
         uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, getLong(0)),
         name = getString(1) ?: "",
         bucket = getString(2) ?: "Other",
@@ -261,11 +276,126 @@ object PhotoDeviceLibrary {
                 count = it.size,
             )
         }
-        return listOfNotNull(recentCollection, largestCollection) + bucketCollections
+        val videos = images.filter { it.isVideo }
+        val videoCollection = videos.takeIf { it.isNotEmpty() }?.let {
+            DeviceCollection(
+                key = "videos",
+                title = "Videos",
+                coverUri = it.first().uri,
+                count = it.size,
+            )
+        }
+        // Month buckets — the "Memories" grouping that used to justify a second
+        // gallery screen existing. Newest month first, and months with a single
+        // item are left out: a "memory" of one photo is just that photo, already
+        // visible in the grid.
+        val monthCollections = images
+            .groupBy { monthKey(it.takenAtMs) }
+            .filterKeys { it.isNotEmpty() }
+            .filterValues { it.size > 1 }
+            .entries
+            .sortedByDescending { it.value.first().takenAtMs }
+            .map { (month, monthImages) ->
+                DeviceCollection(
+                    key = "month:$month",
+                    title = monthLabel(month),
+                    coverUri = monthImages.first().uri,
+                    count = monthImages.size,
+                )
+            }
+        return listOfNotNull(recentCollection, largestCollection, videoCollection) +
+            bucketCollections + monthCollections
+    }
+
+    /** Stable sortable month key, e.g. "2026-08". Empty when the date is unusable. */
+    internal fun monthKey(takenAtMs: Long): String {
+        if (takenAtMs <= 0L) return ""
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = takenAtMs }
+        return "%04d-%02d".format(cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH) + 1)
+    }
+
+    /** "2026-08" to "August 2026", falling back to the raw key if it is malformed. */
+    internal fun monthLabel(key: String): String {
+        val year = key.substringBefore('-').toIntOrNull() ?: return key
+        val month = key.substringAfter('-', "").toIntOrNull() ?: return key
+        if (month !in 1..12) return key
+        val name = java.text.DateFormatSymbols.getInstance().months.getOrNull(month - 1)
+        return if (name.isNullOrBlank()) key else "$name $year"
     }
 
     /** Below this, deleting one photo isn't worth anyone's attention. */
     private const val LARGE_PHOTO_BYTES = 5L * 1024 * 1024
+
+    /** A video expressed as an ordinary library item. */
+    private fun DeviceVideo.asMedia(): DeviceImage = DeviceImage(
+        id = id,
+        uri = uri,
+        name = name,
+        bucket = bucket,
+        takenAtMs = takenAtMs,
+        sizeBytes = sizeBytes,
+        isVideo = true,
+        durationMs = durationMs,
+    )
+
+    /**
+     * [imageStream] with videos merged in once they are read.
+     *
+     * The photo stream's early slice is preserved deliberately: photos are what
+     * fills the visible rows of a gallery, and waiting on a second MediaStore
+     * table before painting anything would trade a real responsiveness win for
+     * completeness nobody can see yet. Videos arrive as a later emission and the
+     * list re-sorts around them.
+     */
+    fun mediaStream(
+        context: Context,
+        firstBatch: Int = 180,
+        limit: Int = DEFAULT_IMAGE_LIMIT,
+    ): Flow<List<DeviceImage>> = flow {
+        var photos = emptyList<DeviceImage>()
+        imageStream(context, firstBatch, limit).collect { batch ->
+            photos = batch
+            emit(batch)
+        }
+        val videos = loadVideos(context).map { it.asMedia() }
+        if (videos.isNotEmpty()) {
+            emit((photos + videos).sortedByDescending { it.takenAtMs }.take(limit))
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * Everything MediaStore can see, photos and videos, for honest coverage
+     * reporting. Counts both tables because the library shows both — reporting
+     * only the image count would under-state the library the moment a video
+     * exists, which is the same class of dishonesty as F-107.
+     */
+    suspend fun mediaCount(context: Context): Int = withContext(Dispatchers.IO) {
+        fun countOf(collection: Uri): Int = runCatching {
+            context.contentResolver.query(collection, arrayOf(MediaStore.MediaColumns._ID), null, null, null)
+                ?.use { it.count } ?: 0
+        }.getOrDefault(0)
+        countOf(MediaStore.Images.Media.EXTERNAL_CONTENT_URI) +
+            countOf(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+    }
+
+    /**
+     * The whole device library — photos and videos together, newest first.
+     *
+     * Both tables are read and merged rather than concatenated, because a gallery
+     * ordered photos-then-videos is not a gallery. The cap is applied after the
+     * merge so it means "the newest N items", not "N photos plus whatever videos
+     * happened to fit".
+     *
+     * A failure in one table does not lose the other: each load already returns
+     * an empty list rather than throwing, so a device with no video permission
+     * still shows its photos.
+     */
+    suspend fun loadMedia(context: Context, limit: Int = DEFAULT_IMAGE_LIMIT): List<DeviceImage> =
+        withContext(Dispatchers.IO) {
+            val photos = loadImages(context, limit)
+            val videos = loadVideos(context).map { it.asMedia() }
+            (photos + videos).sortedByDescending { it.takenAtMs }.take(limit)
+        }
 
     fun imagesForCollection(images: List<DeviceImage>, key: String): List<DeviceImage> = when {
         key == "recent" -> {
@@ -274,6 +404,11 @@ object PhotoDeviceLibrary {
         }
         key == "largest" ->
             images.filter { it.sizeBytes >= LARGE_PHOTO_BYTES }.sortedByDescending { it.sizeBytes }
+        key == "videos" -> images.filter { it.isVideo }
+        key.startsWith("month:") -> {
+            val month = key.removePrefix("month:")
+            images.filter { monthKey(it.takenAtMs) == month }
+        }
         key.startsWith("bucket:") -> {
             val title = key.removePrefix("bucket:")
             images.filter { normalizedBucket(it.bucket, it.name) == title }

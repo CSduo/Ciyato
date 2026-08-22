@@ -60,6 +60,12 @@ verified reachability myself. Where I disagree with the audit, the reasoning is 
 | `GuestModeScreen` (188 lines) | B11 | Zero references outside its own file; no route in either activity. | Nothing. Its doc promised "No access to hidden apps, files, settings, or personal data", which a launcher screen cannot enforce — anything reachable from Recents, a notification or another launcher bypasses it entirely. Android's real multi-user Guest profile provides that boundary; imitating it in-app is a security claim with nothing behind it. |
 | `CiyatoNotificationListener` duplicate class | `828f473` | Two `NotificationListenerService` subclasses existed; neither declared in the manifest, so Android bound neither and `badgeCounts` was permanently empty | `CiyatoNotificationListenerService` retained, declared in the manifest, and the enabled-check now targets it |
 
+### B23 — the second photo gallery
+
+| Component | Disposition | Reachability proof | What was preserved |
+|---|---|---|---|
+| `PhotoCollectionsScreen` (24 KB) | **DELETED** | Three live entry points — a Settings row, a launcher destination, and a nav route — all of which now open Photos. Reachable, but redundant: it duplicated permission handling, partial-access detection and collection building against the same MediaStore. | Its two genuine capabilities. Videos are ordinary library items now, and month buckets ("Memories") are built by `PhotoDeviceLibrary.collections()`. The video-thumbnail decode path it introduced is reused by the Photos grid. |
+
 ### B22 — the unused half of the input design system
 
 Reachability was measured per component rather than per file, because the file itself is live:

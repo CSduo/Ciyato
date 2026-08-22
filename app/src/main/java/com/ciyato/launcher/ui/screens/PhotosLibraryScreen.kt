@@ -73,7 +73,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.Image
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -312,7 +315,7 @@ fun PhotosLibraryScreen(
     // is never reset on refresh so a delete doesn't blank the grid behind a
     // "Scanning…" message; the list simply updates under you.
     LaunchedEffect(access, reloadToken) {
-        PhotoDeviceLibrary.imageStream(context).collect { batch ->
+        PhotoDeviceLibrary.mediaStream(context).collect { batch ->
             images = batch
             loaded = true
         }
@@ -320,7 +323,7 @@ fun PhotosLibraryScreen(
 
     LaunchedEffect(access, reloadToken) {
         trashed = PhotoDeviceLibrary.loadTrashedImages(context)
-        libraryTotal = PhotoDeviceLibrary.libraryCount(context)
+        libraryTotal = PhotoDeviceLibrary.mediaCount(context)
     }
 
     val collections = remember(images) { PhotoDeviceLibrary.collections(images) }
@@ -389,9 +392,12 @@ fun PhotosLibraryScreen(
                             // capped at DEFAULT_IMAGE_LIMIT, so a 12,000-photo
                             // library reported 3,000 as though that were all of
                             // it (F-107). Say which it is.
+                            // "items", not "photos": the library holds videos
+                            // too now, and counting both under a photo label
+                            // would misreport it the moment a video exists.
                             libraryTotal > images.size ->
-                                "Newest ${images.size} of ${libraryTotal} photos"
-                            else -> "${images.size} photos on this device"
+                                "Newest ${images.size} of ${libraryTotal} items"
+                            else -> "${images.size} items on this device"
                         },
                     onBack = {
                         if (openCollection != null) openCollection = null else onBack()
@@ -501,7 +507,10 @@ fun PhotosLibraryScreen(
                                 scanScope.launch {
                                     aiResult = PhotoAiLabeler.categorize(
                                         context = context,
-                                        images = images,
+                                        // Photos only: the labeler decodes still
+                                        // images, so every video handed to it
+                                        // would be a guaranteed failed decode.
+                                        images = images.filter { !it.isVideo },
                                         onProgress = { done, total -> aiProgress = done to total },
                                     )
                                     aiProgress = null
@@ -613,11 +622,15 @@ private fun collectionTitle(key: String, collections: List<PhotoDeviceLibrary.De
 
 /** Runs an open/edit/share hand-off and says so out loud when nothing can take it. */
 private fun runPhotoAction(context: Context, image: DeviceImage, action: String) {
-    if (PhotoDeviceLibrary.launchPhotoAction(context, image.uri, action)) return
+    // The MIME type decides which apps the chooser offers. Handing a video URI
+    // to the image/* default would offer photo viewers that cannot play it.
+    val mime = if (image.isVideo) "video/*" else "image/*"
+    if (PhotoDeviceLibrary.launchPhotoAction(context, image.uri, action, mimeType = mime)) return
+    val noun = if (image.isVideo) "video" else "photo"
     val message = when (action) {
-        Intent.ACTION_EDIT -> "No photo editor installed on this phone"
-        Intent.ACTION_SEND -> "No app can share this photo"
-        else -> "No app can open this photo"
+        Intent.ACTION_EDIT -> "No $noun editor installed on this phone"
+        Intent.ACTION_SEND -> "No app can share this $noun"
+        else -> "No app can open this $noun"
     }
     Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
 }
@@ -741,6 +754,23 @@ private fun PhotoGrid(
     }
 }
 
+/**
+ * Video length as m:ss, or h:mm:ss once it passes an hour.
+ *
+ * A zero or missing duration renders nothing rather than "0:00" — MediaStore
+ * genuinely fails to measure some files, and a confident 0:00 on a video that
+ * plays fine is a small lie the badge does not need to tell.
+ */
+private fun formatDuration(ms: Long): String {
+    if (ms <= 0L) return ""
+    val totalSeconds = ms / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
+    else "%d:%02d".format(minutes, seconds)
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PhotoThumb(
@@ -754,28 +784,66 @@ private fun PhotoThumb(
     // against the background instead of washing the photo out, so you can
     // still tell what you picked.
     val inset by animateFloatAsState(if (isSelected) 0.86f else 1f, label = "photoSelect")
+    // Coil cannot decode a video URI, so a video needs a frame asked of the OS.
+    // Only videos pay for it — photos take the direct path unchanged.
+    var videoFrame by remember(image.uri) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(image.uri) {
+        if (image.isVideo) {
+            videoFrame = PhotoDeviceLibrary.loadVideoThumbnail(context, image.uri, image.id)
+        }
+    }
     Box(Modifier.aspectRatio(1f), contentAlignment = Alignment.TopEnd) {
-        AsyncImage(
-            model = image.uri,
-            contentDescription = image.name,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = inset
-                    scaleY = inset
-                }
-                .clip(RoundedCornerShape(8.dp))
-                .background(CiyatoBgEl)
-                .combinedClickable(
-                    // Once a selection is running, a plain tap extends it.
-                    // Launching a viewer mid-selection would lose the set.
-                    onClick = {
-                        if (selecting) onToggle() else runPhotoAction(context, image, Intent.ACTION_VIEW)
-                    },
-                    onLongClick = onToggle,
-                ),
-        )
+        val thumbModifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                scaleX = inset
+                scaleY = inset
+            }
+            .clip(RoundedCornerShape(8.dp))
+            .background(CiyatoBgEl)
+            .combinedClickable(
+                // Once a selection is running, a plain tap extends it.
+                // Launching a viewer mid-selection would lose the set.
+                onClick = {
+                    if (selecting) onToggle() else runPhotoAction(context, image, Intent.ACTION_VIEW)
+                },
+                onLongClick = onToggle,
+            )
+        val frame = videoFrame
+        when {
+            image.isVideo && frame != null -> Image(
+                bitmap = frame.asImageBitmap(),
+                contentDescription = image.name,
+                contentScale = ContentScale.Crop,
+                modifier = thumbModifier,
+            )
+            // A video whose frame has not arrived (or cannot be decoded) still
+            // has to be tappable and selectable, so it renders as a placeholder
+            // rather than being skipped.
+            image.isVideo -> Box(thumbModifier, contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Movie, contentDescription = null, tint = CiyatoMuted, modifier = Modifier.size(24.dp))
+            }
+            else -> AsyncImage(
+                model = image.uri,
+                contentDescription = image.name,
+                contentScale = ContentScale.Crop,
+                modifier = thumbModifier,
+            )
+        }
+        val durationLabel = if (image.isVideo) formatDuration(image.durationMs) else ""
+        if (durationLabel.isNotEmpty()) {
+            Text(
+                durationLabel,
+                color = CiyatoWhite,
+                fontSize = 10.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(5.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 4.dp, vertical = 1.dp),
+            )
+        }
         if (isSelected) {
             Icon(
                 Icons.Default.CheckCircle,
