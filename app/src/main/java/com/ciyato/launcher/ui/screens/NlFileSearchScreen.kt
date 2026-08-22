@@ -42,6 +42,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 /**
  * NlFileSearchScreen — Suggestion #27
@@ -295,7 +297,7 @@ fun NlFileSearchScreen(
 
             if (hasSearched && results.isNotEmpty()) {
                 item {
-                    Text("${results.size} accessible result${if (results.size == 1) "" else "s"}", color = CiyatoMuted, fontSize = 13.sp)
+                    Text(pluralStringResource(R.plurals.count_accessible_results, results.size, results.size), color = CiyatoMuted, fontSize = 13.sp)
                 }
                 // Was "Top match", which implies a relevance score. Results are
                     // ordered by recency, so the label now says that (F-201).

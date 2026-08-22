@@ -43,6 +43,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 /**
  * StorageCleanupScreen — real, on-device storage analysis and deletion.
@@ -268,7 +270,7 @@ private fun CleanupCategoryDetail(
                 title = result.category.label,
                 subtitle = if (result.items.size < result.totalCount)
                     "Showing largest ${result.items.size} of ${result.totalCount}"
-                else "${result.totalCount} item${if (result.totalCount == 1) "" else "s"}",
+                else pluralStringResource(R.plurals.count_items, result.totalCount, result.totalCount),
                 onBack = onBack,
             )
         },
@@ -411,7 +413,8 @@ private fun CleanupCategoryCard(result: CategoryResult, onClick: () -> Unit) {
     CiyatoListCard(
         title = result.category.label,
         subtitle = if (result.totalCount == 0) "${result.category.description} — none found"
-            else "${result.totalCount} item${if (result.totalCount == 1) "" else "s"} · ${result.category.description}",
+            else pluralStringResource(R.plurals.count_items, result.totalCount, result.totalCount) +
+                " · ${result.category.description}",
         icon = result.category.icon,
         iconColor = result.category.accent,
         trailing = { Text(MediaLibraryRepository.formatBytes(result.totalBytes), color = CiyatoWhite, style = headingS) },

@@ -39,6 +39,8 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 /**
  * RecentFilesScreen — real, on-device recent-file browser with per-file tagging.
@@ -157,7 +159,7 @@ fun RecentFilesScreen(
                             if (files.size >= RECENT_FILES_LIMIT)
                                 "Showing the $RECENT_FILES_LIMIT most recent files — this device may have more"
                             else
-                                "${files.size} recent file${if (files.size == 1) "" else "s"}",
+                                pluralStringResource(R.plurals.count_recent_files, files.size, files.size),
                             color = CiyatoMuted,
                             style = bodyS,
                         )

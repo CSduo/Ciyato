@@ -561,7 +561,17 @@ object PhotoDeviceLibrary {
         target.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         return runCatching {
             context.startActivity(
-                Intent.createChooser(target, "Share ${list.size} photos")
+                // Not a live bug — the size == 1 case returns above — but the
+                // wording should not depend on that guard staying there, and the
+                // chooser title is user-visible text like any other.
+                Intent.createChooser(
+                    target,
+                    context.resources.getQuantityString(
+                        com.ciyato.launcher.R.plurals.share_photos_title,
+                        list.size,
+                        list.size,
+                    ),
+                )
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         }.isSuccess

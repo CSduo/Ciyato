@@ -39,6 +39,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 /**
  * Review screen for photos that LOOK alike.
@@ -194,10 +196,13 @@ fun DuplicatePhotoCleanupScreen(
                     Text(
                         scan?.let { s ->
                             if (s.wasBounded) {
-                                "Checked the ${s.scanned} most recent of ${s.libraryTotal} photos. " +
+                                "Checked the ${s.scanned} most recent of " +
+                                pluralStringResource(R.plurals.count_photos, s.libraryTotal, s.libraryTotal) + ". " +
                                     "Older photos were not examined."
                             } else {
-                                "Checked all ${s.scanned} photos on this device."
+                                "Checked all " +
+                                pluralStringResource(R.plurals.count_photos, s.scanned, s.scanned) +
+                                " on this device."
                             }
                         } ?: "",
                         color = CiyatoMuted, fontSize = 12.sp,
@@ -249,9 +254,9 @@ fun DuplicatePhotoCleanupScreen(
                         Text(
                             scan?.let { s ->
                                 val coverage = if (s.wasBounded) {
-                                    "newest ${s.scanned} of ${s.libraryTotal} photos"
+                                    "newest ${s.scanned} of " + pluralStringResource(R.plurals.count_photos, s.libraryTotal, s.libraryTotal)
                                 } else {
-                                    "all ${s.scanned} photos"
+                                    "all " + pluralStringResource(R.plurals.count_photos, s.scanned, s.scanned)
                                 }
                                 "Matched by appearance across the $coverage. Similar is not " +
                                     "identical — check each group before trashing."
@@ -279,7 +284,7 @@ fun DuplicatePhotoCleanupScreen(
                     ) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "${group.photos.size} photos look alike",
+                                pluralStringResource(R.plurals.count_photos, group.photos.size, group.photos.size) + " look alike",
                                 color = CiyatoWhite, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                             )
                             Text(

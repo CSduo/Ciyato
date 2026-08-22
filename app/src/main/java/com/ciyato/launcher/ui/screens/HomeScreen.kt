@@ -94,6 +94,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 // Automatic Home content is limited to the approved six. The remaining
 // classifications are available in the App Library or through manual placement.
@@ -3515,7 +3517,10 @@ private fun WorkspaceOverviewDialog(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                     Text(
-                                        "Workspace ${workspace.creationOrder} · ${workspace.appPackages.size} shortcuts · ${workspace.categoryKeys.size} categories",
+                                        "Workspace ${workspace.creationOrder} · " +
+                        pluralStringResource(R.plurals.count_shortcuts, workspace.appPackages.size, workspace.appPackages.size) +
+                        " · " +
+                        pluralStringResource(R.plurals.count_categories, workspace.categoryKeys.size, workspace.categoryKeys.size),
                                         color = CiyatoMuted,
                                         fontSize = 11.sp,
                                         maxLines = 1,

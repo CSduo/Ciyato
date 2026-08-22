@@ -45,6 +45,8 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,7 +84,7 @@ fun CategoryDetailScreen(
         topBar = {
             CiyatoTopBar(
                 title = categoryDisplayName,
-                subtitle = "${categoryApps.size} apps",
+                subtitle = pluralStringResource(R.plurals.count_apps, categoryApps.size, categoryApps.size),
                 onBack = onBack,
                 subtitleColor = CiyatoGold,
                 actions = {

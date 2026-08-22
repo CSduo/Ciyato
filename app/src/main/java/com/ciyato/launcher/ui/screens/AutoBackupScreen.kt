@@ -31,6 +31,8 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 /**
  * AutoBackupScreen — Suggestion #67
@@ -225,7 +227,7 @@ fun AutoBackupScreen(
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text("Last backup: $lastBackupLabel", color = CiyatoWhite, fontSize = 13.sp)
-                            Text("$lastCount photo${if (lastCount == 1) "" else "s"} copied that run", color = CiyatoMuted, fontSize = 12.sp)
+                            Text(pluralStringResource(R.plurals.count_photos_copied, lastCount, lastCount), color = CiyatoMuted, fontSize = 12.sp)
                         }
                     }
                 }

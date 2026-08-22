@@ -59,6 +59,8 @@ import com.ciyato.launcher.ui.theme.CiyatoSec
 import com.ciyato.launcher.ui.theme.CiyatoShapes
 import com.ciyato.launcher.ui.theme.CiyatoWhite
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 private data class AppLibraryGroup(
     val category: AppCategory,
@@ -239,7 +241,7 @@ private fun AppLibraryGroupTile(group: AppLibraryGroup, onClick: () -> Unit) {
         }
         Column {
             Text(group.label, color = CiyatoWhite, fontWeight = FontWeight.Medium, fontSize = 15.sp, maxLines = 1)
-            Text("${group.apps.size} apps", color = CiyatoMuted, fontSize = 12.sp)
+            Text(pluralStringResource(R.plurals.count_apps, group.apps.size, group.apps.size), color = CiyatoMuted, fontSize = 12.sp)
         }
     }
 }
@@ -288,7 +290,7 @@ private fun AppLibraryGroupSheet(
                 .padding(start = 20.dp, end = 20.dp, bottom = 30.dp),
         ) {
             Text(group.label, color = CiyatoWhite, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-            Text("${group.apps.size} apps", color = CiyatoMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 3.dp))
+            Text(pluralStringResource(R.plurals.count_apps, group.apps.size, group.apps.size), color = CiyatoMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 3.dp))
             HorizontalDivider(color = CiyatoBorder, modifier = Modifier.padding(vertical = 16.dp))
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),

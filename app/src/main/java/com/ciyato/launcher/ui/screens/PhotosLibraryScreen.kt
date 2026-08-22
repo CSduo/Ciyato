@@ -106,6 +106,8 @@ import com.ciyato.launcher.ui.theme.CiyatoSubtleBorder
 import com.ciyato.launcher.ui.theme.CiyatoWhite
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 private enum class LibraryTab(val label: String) {
     COLLECTIONS("Collections"), GRID("Grid"), TIMELINE("Timeline"), TRASH("Trash")
@@ -387,7 +389,9 @@ fun PhotosLibraryScreen(
                     subtitle = openCollection?.let { key -> collectionTitle(key, collections) }
                         ?: when {
                             viewingTrash -> "${trashed.size} waiting to be cleared"
-                            access == MediaAccess.PARTIAL -> "${images.size} photos you shared with Ciyato"
+                            access == MediaAccess.PARTIAL ->
+                                pluralStringResource(R.plurals.count_photos, images.size, images.size) +
+                                    " you shared with Ciyato"
                             // Was "N photos on this device" printed from a list
                             // capped at DEFAULT_IMAGE_LIMIT, so a 12,000-photo
                             // library reported 3,000 as though that were all of
@@ -396,8 +400,11 @@ fun PhotosLibraryScreen(
                             // too now, and counting both under a photo label
                             // would misreport it the moment a video exists.
                             libraryTotal > images.size ->
-                                "Newest ${images.size} of ${libraryTotal} items"
-                            else -> "${images.size} items on this device"
+                                "Newest ${images.size} of " +
+                                    pluralStringResource(R.plurals.count_items, libraryTotal, libraryTotal)
+                            else ->
+                                pluralStringResource(R.plurals.count_items, images.size, images.size) +
+                                    " on this device"
                         },
                     onBack = {
                         if (openCollection != null) openCollection = null else onBack()
@@ -593,7 +600,7 @@ fun PhotosLibraryScreen(
             title = { Text("Empty trash?", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
             text = {
                 Text(
-                    "${trashed.size} ${if (trashed.size == 1) "photo" else "photos"} will be deleted " +
+                    pluralStringResource(R.plurals.count_photos, trashed.size, trashed.size) + " will be deleted " +
                         "for good. This can't be undone.",
                     color = CiyatoSec,
                     fontSize = 13.sp,
@@ -694,7 +701,7 @@ private fun AiScanBanner(
             Text(
                 when {
                     progress != null && progress.second > 0 ->
-                        "Scanning ${progress.first}/${progress.second} photos on-device…"
+                        "Scanning ${progress.first}/${progress.second} on-device…"
                     progress != null -> "Starting scan…"
                     // Coverage stated on the SUCCESS path too, not only when
                     // nothing matched. Labelling is capped at
@@ -702,10 +709,13 @@ private fun AiScanBanner(
                     // N photos — presenting them as the whole library implied a
                     // completeness the scan never had (F-104).
                     hasResults ->
-                        "Grouped from your newest ${result!!.scannedCount} photos. " +
+                        "Grouped from your newest " +
+                            pluralStringResource(R.plurals.count_photos, result!!.scannedCount, result.scannedCount) + ". " +
                             "Runs on this phone — free, private, offline."
                     result != null ->
-                        "Scanned your newest ${result.scannedCount} photos — nothing grouped confidently yet."
+                        "Scanned your newest " +
+                            pluralStringResource(R.plurals.count_photos, result.scannedCount, result.scannedCount) +
+                            " — nothing grouped confidently yet."
                     else -> "Group photos by what's in them — free, on-device, private."
                 },
                 color = CiyatoMuted,
@@ -963,7 +973,7 @@ private fun TrashNotice(count: Int, onEmpty: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "$count ${if (count == 1) "photo clears" else "photos clear"} automatically after 30 days.",
+            pluralStringResource(R.plurals.trash_auto_clear, count, count),
             color = CiyatoSec,
             fontSize = 12.sp,
             modifier = Modifier.weight(1f),
@@ -1117,7 +1127,7 @@ private fun CollectionCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text("$count items", color = CiyatoSec, fontSize = 12.sp)
+            Text(pluralStringResource(R.plurals.count_items, count, count), color = CiyatoSec, fontSize = 12.sp)
         }
     }
 }

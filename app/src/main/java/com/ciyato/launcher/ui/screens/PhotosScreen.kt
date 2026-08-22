@@ -92,6 +92,8 @@ import com.ciyato.launcher.ui.theme.CiyatoWhite
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.text.DateFormat
 import java.util.Date
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 private enum class PhotosMode(val label: String) {
     GRID("Grid"),
@@ -135,7 +137,9 @@ fun PhotosScreen(
     ) { uris ->
         if (uris.isNotEmpty()) {
             viewModel.addPhotoUris(uris.map(Uri::toString))
-            statusMessage = "${uris.size} item${if (uris.size == 1) "" else "s"} added to Ciyato Photos."
+            statusMessage = context.resources.getQuantityString(
+                        R.plurals.count_items_added, uris.size, uris.size,
+                    )
             mode = PhotosMode.GRID
         }
     }
@@ -674,7 +678,7 @@ private fun CollectionRow(title: String, count: Int, cover: AuthorizedMedia?, on
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(title, color = CiyatoWhite, fontWeight = FontWeight.Medium)
-            Text("$count item${if (count == 1) "" else "s"}", color = CiyatoMuted, fontSize = 12.sp)
+            Text(pluralStringResource(R.plurals.count_items, count, count), color = CiyatoMuted, fontSize = 12.sp)
         }
     }
 }
@@ -699,7 +703,7 @@ private fun RevokedMediaNotice(count: Int, onRemove: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Icon(Icons.Default.ImageNotSupported, contentDescription = null, tint = CiyatoMuted)
-        Text("$count selected item${if (count == 1) " is" else "s are"} no longer available.", color = CiyatoSec, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        Text(pluralStringResource(R.plurals.selected_items_unavailable, count, count), color = CiyatoSec, fontSize = 12.sp, modifier = Modifier.weight(1f))
         TextButton(onClick = onRemove) { Text("Remove", color = CiyatoGold) }
     }
 }
@@ -764,7 +768,7 @@ private fun CreateCollectionDialog(selectionCount: Int, onDismiss: () -> Unit, o
         title = { Text("Create collection") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("$selectionCount selected item${if (selectionCount == 1) "" else "s"} will stay on your device.")
+                Text(pluralStringResource(R.plurals.count_items_stay, selectionCount, selectionCount))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },

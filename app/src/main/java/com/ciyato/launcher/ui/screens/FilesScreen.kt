@@ -95,6 +95,8 @@ import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
 import java.util.UUID
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 private const val FILE_SCAN_LIMIT = 2_000
 
@@ -360,8 +362,14 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
                 refreshNonce += 1
                 cleanupNotice = when {
                     deletion.deleted.isEmpty() -> "No files were removed. Check folder access and try again."
-                    deletion.failed.isEmpty() -> "Removed ${deletion.deleted.size} selected duplicate ${if (deletion.deleted.size == 1) "copy" else "copies"}. Run another scan to verify the folder."
-                    else -> "Removed ${deletion.deleted.size} selected ${if (deletion.deleted.size == 1) "copy" else "copies"}; ${deletion.failed.size} could not be removed because Android no longer allowed it."
+                    deletion.failed.isEmpty() ->
+                        context.resources.getQuantityString(
+                            R.plurals.removed_duplicate_copies, deletion.deleted.size, deletion.deleted.size,
+                        ) + " Run another scan to verify the folder."
+                    else ->
+                        context.resources.getQuantityString(
+                            R.plurals.removed_copies_partial, deletion.deleted.size, deletion.deleted.size,
+                        ) + "; ${deletion.failed.size} could not be removed because Android no longer allowed it."
                 }
             },
         )
@@ -711,7 +719,8 @@ private fun CleanupReviewCard(
                 cleanupError != null -> Text(cleanupError, color = CiyatoRed, fontSize = 13.sp, lineHeight = 19.sp)
                 cleanupResult != null && cleanupResult.groups.isNotEmpty() -> {
                     Text(
-                        "${cleanupResult.groups.size} verified duplicate group${if (cleanupResult.groups.size == 1) "" else "s"} found. Up to ${formatScopeBytes(cleanupResult.reclaimableBytes)} can be reclaimed after you inspect individual files.",
+                        pluralStringResource(R.plurals.count_duplicate_groups, cleanupResult.groups.size, cleanupResult.groups.size) +
+                        " found. Up to ${formatScopeBytes(cleanupResult.reclaimableBytes)} can be reclaimed after you inspect individual files.",
                         color = CiyatoSec,
                         fontSize = 13.sp,
                         lineHeight = 19.sp,
@@ -735,7 +744,8 @@ private fun CleanupReviewCard(
                 )
                 largeFiles.isNotEmpty() -> {
                     Text(
-                        "${largeFiles.size} large accessible file${if (largeFiles.size == 1) "" else "s"} over ${formatScopeBytes(LARGE_FILE_THRESHOLD_BYTES)}. Open Files Browser to inspect and delete only items Android permits.",
+                        pluralStringResource(R.plurals.count_large_files, largeFiles.size, largeFiles.size) +
+                        " over ${formatScopeBytes(LARGE_FILE_THRESHOLD_BYTES)}. Open Files Browser to inspect and delete only items Android permits.",
                         color = CiyatoSec,
                         fontSize = 13.sp,
                         lineHeight = 19.sp,
@@ -847,7 +857,8 @@ private fun DuplicateCleanupReviewDialog(
                 }
                 deletionError?.let { Text(it, color = CiyatoRed, fontSize = 12.sp, lineHeight = 18.sp) }
                 Text(
-                    "${deletionTargets.size} selected duplicate ${if (deletionTargets.size == 1) "copy" else "copies"} can be removed after confirmation.",
+                    pluralStringResource(R.plurals.count_copies, deletionTargets.size, deletionTargets.size) +
+                        " selected can be removed after confirmation.",
                     color = CiyatoMuted,
                     fontSize = 12.sp,
                 )
@@ -873,7 +884,9 @@ private fun DuplicateCleanupReviewDialog(
             title = { Text("Delete selected copies?", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
             text = {
                 Text(
-                    "Android will be asked to permanently delete ${deletionTargets.size} selected duplicate ${if (deletionTargets.size == 1) "copy" else "copies"}. This cannot be undone.",
+                    "Android will be asked to permanently delete " +
+                        pluralStringResource(R.plurals.count_copies, deletionTargets.size, deletionTargets.size) +
+                        " selected. This cannot be undone.",
                     color = CiyatoSec,
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
@@ -920,7 +933,9 @@ private fun DuplicateGroupReviewCard(
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                "Duplicate group ${groupIndex + 1}: ${group.files.size} copies, ${formatScopeBytes(group.bytesPerFile)} each",
+                "Duplicate group ${groupIndex + 1}: " +
+                        pluralStringResource(R.plurals.count_copies, group.files.size, group.files.size) +
+                        ", ${formatScopeBytes(group.bytesPerFile)} each",
                 color = CiyatoWhite,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -1101,7 +1116,7 @@ private fun FilesCategoryDetail(
         topBar = {
             CiyatoTopBar(
                 title = title,
-                subtitle = "${files.size} ${if (files.size == 1) "file" else "files"} in this scope",
+                subtitle = pluralStringResource(R.plurals.count_files, files.size, files.size) + " in this scope",
                 onBack = onBack,
             )
         },

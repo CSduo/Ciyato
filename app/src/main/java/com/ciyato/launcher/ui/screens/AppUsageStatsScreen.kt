@@ -33,6 +33,8 @@ import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.util.concurrent.TimeUnit
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 /**
  * AppUsageStatsScreen — Suggestion #19
@@ -163,7 +165,7 @@ fun AppUsageStatsScreen(
                             fontSize = 36.sp,
                             fontWeight = FontWeight.ExtraBold,
                         )
-                        Text("across ${stats.size} apps", color = CiyatoSec, fontSize = 13.sp)
+                        Text("across " + pluralStringResource(R.plurals.count_apps, stats.size, stats.size), color = CiyatoSec, fontSize = 13.sp)
                     }
                 }
             }

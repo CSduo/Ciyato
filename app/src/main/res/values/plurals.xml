@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Counted nouns.
+
+    The app had two habits side by side: about seven places wrote
+    `if (n == 1) "file" else "files"` inline, and about twenty wrote "$n files"
+    and lived with "1 files", "1 apps", "1 photos", "1 copies" on screen. The
+    inline form is correct English but is the wrong mechanism — it hard-codes an
+    English two-form rule into Kotlin, and languages with one, three or six
+    plural categories cannot be expressed by it at all (F-058).
+
+    <plurals> is the mechanism Android provides for exactly this, and counted
+    strings are the part of localisation that hand-written concatenation gets
+    wrong most reliably. So this is where the resource migration starts rather
+    than with the easy static labels.
+
+    English declares only "one" and "other". A translation adds "zero", "two",
+    "few" and "many" as its language needs them, without any Kotlin changing.
+-->
+<resources>
+    <plurals name="count_photos">
+        <item quantity="one">%d photo</item>
+        <item quantity="other">%d photos</item>
+    </plurals>
+
+    <plurals name="count_files">
+        <item quantity="one">%d file</item>
+        <item quantity="other">%d files</item>
+    </plurals>
+
+    <plurals name="count_items">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
+
+    <plurals name="count_apps">
+        <item quantity="one">%d app</item>
+        <item quantity="other">%d apps</item>
+    </plurals>
+
+
+    <plurals name="count_copies">
+        <item quantity="one">%d copy</item>
+        <item quantity="other">%d copies</item>
+    </plurals>
+
+    <plurals name="count_shortcuts">
+        <item quantity="one">%d shortcut</item>
+        <item quantity="other">%d shortcuts</item>
+    </plurals>
+
+    <plurals name="count_categories">
+        <item quantity="one">%d category</item>
+        <item quantity="other">%d categories</item>
+    </plurals>
+
+
+    <!-- "Share 3 photos" / "Share 1 photo" — the Android chooser title. -->
+    <plurals name="share_photos_title">
+        <item quantity="one">Share %d photo</item>
+        <item quantity="other">Share %d photos</item>
+    </plurals>
+
+    <!-- Photos trash: "3 photos clear automatically after 30 days." -->
+    <plurals name="trash_auto_clear">
+        <item quantity="one">%d photo clears automatically after 30 days.</item>
+        <item quantity="other">%d photos clear automatically after 30 days.</item>
+    </plurals>
+
+    <!-- Verb agreement belongs inside the plural, not spliced into the sentence
+         around it: "1 selected item is" vs "3 selected items are" cannot be
+         built by appending a letter. -->
+    <plurals name="selected_items_unavailable">
+        <item quantity="one">%d selected item is no longer available.</item>
+        <item quantity="other">%d selected items are no longer available.</item>
+    </plurals>
+
+    <plurals name="count_photos_copied">
+        <item quantity="one">%d photo copied that run</item>
+        <item quantity="other">%d photos copied that run</item>
+    </plurals>
+
+    <plurals name="count_accessible_results">
+        <item quantity="one">%d accessible result</item>
+        <item quantity="other">%d accessible results</item>
+    </plurals>
+
+    <plurals name="count_recent_files">
+        <item quantity="one">%d recent file</item>
+        <item quantity="other">%d recent files</item>
+    </plurals>
+
+    <plurals name="count_duplicate_groups">
+        <item quantity="one">%d verified duplicate group</item>
+        <item quantity="other">%d verified duplicate groups</item>
+    </plurals>
+
+    <plurals name="count_large_files">
+        <item quantity="one">%d large accessible file</item>
+        <item quantity="other">%d large accessible files</item>
+    </plurals>
+
+    <plurals name="count_items_added">
+        <item quantity="one">%d item added to Ciyato Photos.</item>
+        <item quantity="other">%d items added to Ciyato Photos.</item>
+    </plurals>
+
+    <plurals name="count_items_stay">
+        <item quantity="one">%d selected item will stay on your device.</item>
+        <item quantity="other">%d selected items will stay on your device.</item>
+    </plurals>
+
+    <plurals name="removed_duplicate_copies">
+        <item quantity="one">Removed %d selected duplicate copy.</item>
+        <item quantity="other">Removed %d selected duplicate copies.</item>
+    </plurals>
+
+    <plurals name="removed_copies_partial">
+        <item quantity="one">Removed %d selected copy</item>
+        <item quantity="other">Removed %d selected copies</item>
+    </plurals>
+</resources>

@@ -56,6 +56,8 @@ import com.ciyato.launcher.ui.theme.CiyatoSubtleBorder
 import com.ciyato.launcher.ui.theme.CiyatoWhite
 import java.text.DateFormat
 import java.util.Date
+import androidx.compose.ui.res.pluralStringResource
+import com.ciyato.launcher.R
 
 /**
  * Flat file list for one library category (Screenshots, Documents, Downloads…).
@@ -110,7 +112,7 @@ fun FileCategoryScreen(
         topBar = {
             CiyatoTopBar(
                 title = title,
-                subtitle = "${files.size} files",
+                subtitle = pluralStringResource(R.plurals.count_files, files.size, files.size),
                 onBack = onBack,
             )
         },
