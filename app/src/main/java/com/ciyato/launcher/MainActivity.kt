@@ -120,6 +120,13 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             val font by viewModel.font.collectAsState()
+            // Provided once here so every decorative animation can consult
+            // Reduce Motion without a parameter threaded through the composables
+            // in between — the reason seven of nine ignored it (F-167).
+            val reduceMotionPref by viewModel.reduceMotion.collectAsState()
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.ciyato.launcher.ui.theme.LocalReduceMotion provides reduceMotionPref,
+            ) {
             CiyatoTheme(font = font) {
                 val context           = LocalContext.current
                 val onboardingDone by viewModel.onboardingDone.collectAsState()
@@ -490,6 +497,7 @@ class MainActivity : FragmentActivity() {
                 // organizer surface without any of them knowing about App Lock.
                 com.ciyato.launcher.ui.screens.AppLockHost(viewModel)
             }
+        }
         }
     }
 }

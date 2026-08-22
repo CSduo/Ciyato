@@ -46,8 +46,13 @@ fun StressFreeModeScreen(
     var breathingActive by remember { mutableStateOf(false) }
     val breathPhase = remember { Animatable(0f) }
 
-    LaunchedEffect(breathingActive) {
-        if (breathingActive) {
+    // The one animation here that is NOT decoration: the breathing guide is the
+    // feature, and a person following it needs the movement. Reduce Motion is
+    // still honoured by not looping it invisibly — it only runs while the guide
+    // is actually switched on, and snaps to rest otherwise.
+    val reduceMotion = com.ciyato.launcher.ui.theme.LocalReduceMotion.current
+    LaunchedEffect(breathingActive, reduceMotion) {
+        if (breathingActive && !reduceMotion) {
             breathPhase.animateTo(
                 targetValue = 1f,
                 animationSpec = infiniteRepeatable(

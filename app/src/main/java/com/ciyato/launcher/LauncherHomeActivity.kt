@@ -73,8 +73,15 @@ class LauncherHomeActivity : FragmentActivity() {
 
         setContent {
             val font by viewModel.font.collectAsState()
+            // Provided once here so every decorative animation can consult
+            // Reduce Motion without a parameter threaded through the composables
+            // in between — the reason seven of nine ignored it (F-167).
+            val reduceMotionPref by viewModel.reduceMotion.collectAsState()
             // Ciyato V2 is intentionally a consistent black launcher surface.
             // Do not expose a partial light/dynamic theme over hard-coded dark UI.
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.ciyato.launcher.ui.theme.LocalReduceMotion provides reduceMotionPref,
+            ) {
             CiyatoTheme(font = font) {
                 LauncherRoot(
                     viewModel = viewModel,
@@ -84,6 +91,7 @@ class LauncherHomeActivity : FragmentActivity() {
                 // Above everything, so a locked app is gated from every launcher
                 // surface without any of them knowing about App Lock.
                 com.ciyato.launcher.ui.screens.AppLockHost(viewModel)
+            }
             }
         }
     }

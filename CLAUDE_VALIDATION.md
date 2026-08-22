@@ -149,7 +149,7 @@ recomposition, workspace title no longer re-parsing the layout per recomposition
 | 48 dp primary touch targets | not audited |
 | 200% font scale without truncation | not audited |
 | Contrast (incl. over wallpaper extremes) | not audited |
-| Reduce Motion honoured by decorative animation | partially — weather overlay fixed; other loops outstanding (F-167) |
+| Reduce Motion honoured by decorative animation | **implemented product-wide** (F-167) — `LocalReduceMotion` provided at both roots; every infinite animation in `ui/` routes through it. Visual confirmation on a device still outstanding |
 | Non-gesture alternative to drag editing | **implemented, unverified on device** (F-048) — tiles publish Move/Resize/Move-to-page/Remove/Show-options custom actions and a long-click action; correctness of the underlying moves is unit-tested, but the audit's acceptance run (full layout edit with TalkBack only, then with keyboard/switch focus) needs hardware |
 
 ## Fault injection

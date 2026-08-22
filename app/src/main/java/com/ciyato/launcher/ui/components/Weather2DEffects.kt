@@ -25,6 +25,14 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
+import com.ciyato.launcher.ui.theme.decorativePulse
+import com.ciyato.launcher.ui.theme.decorativeSweep
+import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.keyframes
+import com.ciyato.launcher.ui.theme.LocalReduceMotion
 
 enum class WeatherSeasonTheme {
     CLEAR_SUMMER,
@@ -82,13 +90,10 @@ fun Weather2DEffectOverlay(
 
 @Composable
 private fun AnimeSakuraEffect() {
-    val transition = rememberInfiniteTransition(label = "sakura")
-    val progress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(4200, easing = LinearEasing)),
-        label = "sakura_progress"
-    )
+    // A particle field is pure decoration and the most expensive kind: a frame
+    // every 16 ms for as long as it is on screen. Reduce Motion freezes it at a
+    // representative point rather than blanking the sky (F-167).
+    val progress = decorativeSweep(durationMillis = 4200, restingValue = 0.35f, label = "sakura")
 
     val skyGradient = Brush.verticalGradient(
         colors = listOf(Color(0xFF2D1B4E), Color(0xFF5B326A), Color(0xFF9C5A86))
@@ -143,13 +148,10 @@ private fun DrawScope.drawSakuraPetal(center: Offset, sizeScale: Float) {
 
 @Composable
 private fun AnimeRainEffect() {
-    val transition = rememberInfiniteTransition(label = "rain")
-    val progress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing)),
-        label = "rain_progress"
-    )
+    // A particle field is pure decoration and the most expensive kind: a frame
+    // every 16 ms for as long as it is on screen. Reduce Motion freezes it at a
+    // representative point rather than blanking the sky (F-167).
+    val progress = decorativeSweep(durationMillis = 2400, restingValue = 0.35f, label = "rain")
 
     val skyGradient = Brush.verticalGradient(
         colors = listOf(Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF334155))
@@ -193,29 +195,37 @@ private fun AnimeRainEffect() {
 
 @Composable
 private fun AnimeThunderstormEffect() {
-    val transition = rememberInfiniteTransition(label = "thunder")
-    val progress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
-        label = "thunder_rain"
+    // Decorative particle field — frozen, not blanked, under Reduce Motion.
+    val progress = decorativeSweep(
+        durationMillis = 900, initialValue = 0f, targetValue = 1f,
+        restingValue = 0f, label = "thunder_rain",
     )
-    val flashAlpha by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            keyframes {
-                durationMillis = 2200
-                0f at 0
-                0f at 1600
-                0.9f at 1700
-                0.2f at 1800
-                1.0f at 1850
-                0f at 1950
-            }
-        ),
-        label = "flash"
-    )
+    // The lightning flash is a keyframed strobe: it jumps to full brightness
+    // twice in under 300 ms. That is precisely the pattern Reduce Motion exists
+    // to suppress — flashing is a photosensitivity concern, not just a
+    // preference — so under it the sky simply never flashes.
+    val flashAlpha = if (LocalReduceMotion.current) {
+        0f
+    } else {
+        val flashTransition = rememberInfiniteTransition(label = "thunder_flash")
+        val animated by flashTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                keyframes {
+                    durationMillis = 2200
+                    0f at 0
+                    0f at 1600
+                    0.9f at 1700
+                    0.2f at 1800
+                    1.0f at 1850
+                    0f at 1950
+                },
+            ),
+            label = "thunder_flash",
+        )
+        animated
+    }
 
     val skyGradient = Brush.verticalGradient(
         colors = listOf(Color(0xFF090514), Color(0xFF1D1235), Color(0xFF2D174D))
@@ -261,13 +271,10 @@ private fun AnimeThunderstormEffect() {
 
 @Composable
 private fun AnimeSnowEffect() {
-    val transition = rememberInfiniteTransition(label = "snow")
-    val progress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(3600, easing = LinearEasing)),
-        label = "snow_progress"
-    )
+    // A particle field is pure decoration and the most expensive kind: a frame
+    // every 16 ms for as long as it is on screen. Reduce Motion freezes it at a
+    // representative point rather than blanking the sky (F-167).
+    val progress = decorativeSweep(durationMillis = 3600, restingValue = 0.35f, label = "snow")
 
     val skyGradient = Brush.verticalGradient(
         colors = listOf(Color(0xFF1E293B), Color(0xFF334155), Color(0xFF475569))
@@ -293,12 +300,10 @@ private fun AnimeSnowEffect() {
 
 @Composable
 private fun AnimeHailIceEffect() {
-    val transition = rememberInfiniteTransition(label = "hail")
-    val progress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(850, easing = LinearEasing)),
-        label = "hail_progress"
+    // Decorative particle field — frozen, not blanked, under Reduce Motion.
+    val progress = decorativeSweep(
+        durationMillis = 850, initialValue = 0f, targetValue = 1f,
+        restingValue = 0f, label = "hail_progress",
     )
 
     val skyGradient = Brush.verticalGradient(
@@ -347,12 +352,10 @@ private fun AnimeHailIceEffect() {
 
 @Composable
 private fun AnimeHeatwaveEffect() {
-    val transition = rememberInfiniteTransition(label = "heatwave")
-    val wavePhase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 6.28f,
-        animationSpec = infiniteRepeatable(tween(1800, easing = LinearEasing)),
-        label = "wave_phase"
+    // Decorative particle field — frozen, not blanked, under Reduce Motion.
+    val wavePhase = decorativeSweep(
+        durationMillis = 1800, initialValue = 0f, targetValue = 6.28f,
+        restingValue = 0f, label = "wave_phase",
     )
 
     val skyGradient = Brush.verticalGradient(
@@ -407,12 +410,10 @@ private fun AnimeHeatwaveEffect() {
 
 @Composable
 private fun AnimeAutumnEffect() {
-    val transition = rememberInfiniteTransition(label = "autumn")
-    val progress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(3900, easing = LinearEasing)),
-        label = "leaf_progress"
+    // Decorative particle field — frozen, not blanked, under Reduce Motion.
+    val progress = decorativeSweep(
+        durationMillis = 3900, initialValue = 0f, targetValue = 1f,
+        restingValue = 0f, label = "leaf_progress",
     )
 
     val skyGradient = Brush.verticalGradient(
@@ -458,12 +459,10 @@ private fun DrawScope.drawMapleLeaf(center: Offset, scale: Float) {
 
 @Composable
 private fun AnimeClearSkyEffect() {
-    val transition = rememberInfiniteTransition(label = "clear")
-    val pulse by transition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = 0.45f,
-        animationSpec = infiniteRepeatable(tween(2800), repeatMode = RepeatMode.Reverse),
-        label = "sun_pulse"
+    // Decorative particle field — frozen, not blanked, under Reduce Motion.
+    val pulse = decorativePulse(
+        initialValue = 0.2f, targetValue = 0.45f, durationMillis = 2800,
+        restingValue = 0.2f, label = "sun_pulse",
     )
 
     val skyGradient = Brush.verticalGradient(

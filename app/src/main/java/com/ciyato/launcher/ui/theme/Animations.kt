@@ -6,6 +6,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 
 /**
  * Ciyato Motion System.
@@ -201,11 +203,25 @@ val CiyatoScreenExit: ExitTransition = CiyatoMotion.CiyatoScreenExit
 // ─── Reusable Animated Values ─────────────────────────────────────────────────
 
 /**
+ * The shared infinite-animation helpers, all of which now consult Reduce Motion.
+ *
+ * These back roughly seven call sites across buttons, navigation, iconography,
+ * loading skeletons and FocusSessionScreen. Guarding them here rather than at
+ * each caller is the point: a preference that has to be remembered at every use
+ * site is a preference that gets forgotten, which is how seven of nine animated
+ * files came to ignore it (F-167).
+ *
+ * Each rests at the value that looks deliberate rather than broken — a pulse at
+ * its base scale, a glow at full brightness, a shimmer mid-sweep.
+ */
+
+/**
  * Returns a continuously pulsing Float between [minScale] and [maxScale].
  * Usage: val scale by rememberPulse()
  */
 @Composable
 fun rememberPulse(minScale: Float = 1f, maxScale: Float = 1.06f): State<Float> {
+    if (LocalReduceMotion.current) return remember(minScale) { mutableStateOf(minScale) }
     val transition = rememberInfiniteTransition(label = "pulse")
     return transition.animateFloat(
         initialValue = minScale,
@@ -220,6 +236,9 @@ fun rememberPulse(minScale: Float = 1f, maxScale: Float = 1.06f): State<Float> {
  */
 @Composable
 fun rememberBreathing(min: Float = 0.6f, max: Float = 1f): State<Float> {
+    // Rests at max, not min: this drives an ambient glow's alpha, and settling
+    // at the dim end would leave the element looking disabled rather than still.
+    if (LocalReduceMotion.current) return remember(max) { mutableStateOf(max) }
     val transition = rememberInfiniteTransition(label = "breathing")
     return transition.animateFloat(
         initialValue = min,
@@ -234,6 +253,7 @@ fun rememberBreathing(min: Float = 0.6f, max: Float = 1f): State<Float> {
  */
 @Composable
 fun rememberShimmer(): State<Float> {
+    if (LocalReduceMotion.current) return remember { mutableStateOf(0.5f) }
     val transition = rememberInfiniteTransition(label = "shimmer")
     return transition.animateFloat(
         initialValue = 0f,
@@ -248,6 +268,7 @@ fun rememberShimmer(): State<Float> {
  */
 @Composable
 fun rememberOrbit(): State<Float> {
+    if (LocalReduceMotion.current) return remember { mutableStateOf(0f) }
     val transition = rememberInfiniteTransition(label = "orbit")
     return transition.animateFloat(
         initialValue = 0f,

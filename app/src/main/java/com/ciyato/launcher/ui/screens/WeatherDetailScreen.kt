@@ -39,6 +39,8 @@ import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.ui.components.Weather2DEffectOverlay
 import com.ciyato.launcher.ui.components.resolveSeasonTheme
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import com.ciyato.launcher.ui.theme.decorativePulse
+import com.ciyato.launcher.ui.theme.decorativeSweep
 
 /**
  * WeatherDetailScreen — Live weather powered by Open-Meteo (no API key).
@@ -214,28 +216,18 @@ fun WeatherAnimatedIcon(
     isDay: Boolean = true,
     tint: Color = Color.Unspecified,
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "weatherIconAnim")
-
+    // Every branch below is a decorative flourish on an icon whose meaning
+    // is already carried by its shape. Reduce Motion holds them still (F-167).
     when {
         // Sunny / Clear Day: Breathing scale pulsing glow
         weatherCode == 0 && isDay -> {
-            val scale by infiniteTransition.animateFloat(
-                initialValue = 0.92f,
-                targetValue = 1.14f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(1500, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "sunPulse"
+            val scale = decorativePulse(
+                initialValue = 0.92f, targetValue = 1.14f, durationMillis = 1500,
+                restingValue = 0.92f, label = "sunPulse",
             )
-            val alphaGlow by infiniteTransition.animateFloat(
-                initialValue = 0.85f,
-                targetValue = 1.0f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(1500, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "sunGlow"
+            val alphaGlow = decorativePulse(
+                initialValue = 0.85f, targetValue = 1.0f, durationMillis = 1500,
+                restingValue = 0.85f, label = "sunGlow",
             )
             Icon(
                 imageVector = Icons.Filled.WbSunny,
@@ -251,14 +243,9 @@ fun WeatherAnimatedIcon(
 
         // Rainy / Storm: Downward moving drop offset animation
         weatherCode in 51..67 || weatherCode in 80..86 || weatherCode in 95..99 -> {
-            val dropOffset by infiniteTransition.animateFloat(
-                initialValue = -3f,
-                targetValue = 4f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(750, easing = LinearEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "rainDrop"
+            val dropOffset = decorativePulse(
+                initialValue = -3f, targetValue = 4f, durationMillis = 750,
+                restingValue = -3f, label = "rainDrop",
             )
             val icon = if (weatherCode in 95..99) Icons.Default.Bolt else Icons.Default.Umbrella
             Icon(
@@ -273,14 +260,9 @@ fun WeatherAnimatedIcon(
 
         // Cloudy / Fog: Gentle horizontal swaying animation
         weatherCode in 1..3 || weatherCode in 45..48 -> {
-            val swayOffset by infiniteTransition.animateFloat(
-                initialValue = -4f,
-                targetValue = 4f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(2000, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "cloudSway"
+            val swayOffset = decorativePulse(
+                initialValue = -4f, targetValue = 4f, durationMillis = 2000,
+                restingValue = -4f, label = "cloudSway",
             )
             Icon(
                 imageVector = if (weatherCode in 45..48) Icons.Default.BlurOn else Icons.Default.Cloud,
@@ -294,14 +276,9 @@ fun WeatherAnimatedIcon(
 
         // Clear Night: Soft rotation sway
         weatherCode == 0 && !isDay -> {
-            val rotationAngle by infiniteTransition.animateFloat(
-                initialValue = -6f,
-                targetValue = 6f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(2400, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "moonSway"
+            val rotationAngle = decorativePulse(
+                initialValue = -6f, targetValue = 6f, durationMillis = 2400,
+                restingValue = -6f, label = "moonSway",
             )
             Icon(
                 imageVector = Icons.Default.DarkMode,
@@ -315,14 +292,9 @@ fun WeatherAnimatedIcon(
 
         // Snow: Slow gentle spin
         weatherCode in 71..77 -> {
-            val snowSpin by infiniteTransition.animateFloat(
-                initialValue = 0f,
-                targetValue = 360f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(6000, easing = LinearEasing),
-                    repeatMode = RepeatMode.Restart
-                ),
-                label = "snowSpin"
+            val snowSpin = decorativeSweep(
+                durationMillis = 6000, initialValue = 0f, targetValue = 360f,
+                restingValue = 0f, label = "snowSpin",
             )
             Icon(
                 imageVector = Icons.Default.AcUnit,

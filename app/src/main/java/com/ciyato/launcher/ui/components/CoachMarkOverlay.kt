@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.ui.theme.*
+import com.ciyato.launcher.ui.theme.decorativePulse
 
 /**
  * CoachMarkOverlay — Suggestion #105
@@ -77,12 +78,11 @@ fun CoachMarkBanner(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pulse = rememberInfiniteTransition(label = "coach_pulse")
-    val pulseAlpha by pulse.animateFloat(
-        initialValue = 0.6f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1000), RepeatMode.Reverse),
-        label = "pulse_alpha",
+    // Decorative attention pulse — held at full opacity under Reduce Motion so
+    // the coach mark is still clearly visible, just not breathing (F-167).
+    val pulseAlpha = decorativePulse(
+        initialValue = 0.6f, targetValue = 1f, durationMillis = 1000,
+        restingValue = 1f, label = "coach_pulse",
     )
 
     AnimatedVisibility(

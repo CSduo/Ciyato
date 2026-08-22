@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ciyato.launcher.ui.theme.*
+import com.ciyato.launcher.ui.theme.decorativeSweep
 
 /**
  * Shimmer skeleton loading components — Suggestion #132.
@@ -34,15 +35,12 @@ fun rememberShimmerBrush(): Brush {
         CiyatoBgEl,
     )
 
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val translateAnim by transition.animateFloat(
-        initialValue = 0f,
-        targetValue  = 1_000f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1_200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "shimmerTranslate",
+    // A loading shimmer is decoration on top of the real signal (the skeleton
+    // shape itself), so Reduce Motion parks it mid-sweep rather than removing
+    // the placeholder.
+    val translateAnim = decorativeSweep(
+        durationMillis = 1_200, initialValue = 0f, targetValue = 1_000f,
+        restingValue = 500f, label = "shimmerTranslate",
     )
 
     return Brush.linearGradient(

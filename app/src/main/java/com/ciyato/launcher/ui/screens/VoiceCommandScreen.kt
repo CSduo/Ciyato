@@ -64,9 +64,12 @@ fun VoiceCommandScreen(
         errorText = if (granted) "" else "Microphone permission denied. Voice commands need audio access to hear you."
     }
 
+    // Decorative "listening" pulse. The state is also carried by the button's
+    // label and colour, so suppressing the motion loses nothing (F-167).
     val pulseScale = remember { Animatable(1f) }
-    LaunchedEffect(isListening) {
-        if (isListening) {
+    val reduceMotion = com.ciyato.launcher.ui.theme.LocalReduceMotion.current
+    LaunchedEffect(isListening, reduceMotion) {
+        if (isListening && !reduceMotion) {
             pulseScale.animateTo(1.3f, infiniteRepeatable(tween(700), RepeatMode.Reverse))
         } else {
             pulseScale.snapTo(1f)
