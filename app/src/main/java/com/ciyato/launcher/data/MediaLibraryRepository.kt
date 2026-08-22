@@ -28,6 +28,16 @@ class MediaLibraryRepository(private val context: Context) {
         val key: CategoryKey,
         val count: Int,
         val totalBytes: Long,
+        /**
+         * True when the query could not be answered — denied permission, a
+         * provider error, or a null cursor.
+         *
+         * Without this a failure was indistinguishable from an honest zero: the
+         * catch swallowed the exception and the summary returned count = 0, so a
+         * screen with no media access showed a confident wall of zeroes rather
+         * than saying it could not look (F-083, F-116).
+         */
+        val unavailable: Boolean = false,
     )
 
     data class LibraryFile(
@@ -163,21 +173,27 @@ class MediaLibraryRepository(private val context: Context) {
     private fun summarize(key: CategoryKey, selection: String, args: Array<String>?): CategorySummary {
         var count = 0
         var bytes = 0L
-        runCatching {
-            context.contentResolver.query(
+        val outcome = runCatching {
+            val cursor = context.contentResolver.query(
                 filesUri,
                 arrayOf(MediaStore.Files.FileColumns.SIZE),
                 selection,
                 args,
                 null,
-            )?.use { cursor ->
-                while (cursor.moveToNext()) {
+            ) ?: return@runCatching false   // null cursor is a failure, not "no files"
+            cursor.use {
+                while (it.moveToNext()) {
                     count++
-                    bytes += cursor.getLong(0)
+                    bytes += it.getLong(0)
                 }
             }
+            true
         }
-        return CategorySummary(key, count, bytes)
+        // A thrown exception and a null cursor both mean "could not answer".
+        // Reporting zero for either is how a denied permission ends up looking
+        // like an empty phone.
+        val answered = outcome.getOrDefault(false)
+        return CategorySummary(key, count, bytes, unavailable = !answered)
     }
 
     private fun queryFiles(

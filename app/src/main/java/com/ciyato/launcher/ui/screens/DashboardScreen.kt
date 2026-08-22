@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -79,6 +80,16 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 fun DashboardScreen(
     viewModel: LauncherViewModel,
     onOpenFiles: () -> Unit = {},
+    /**
+     * Storage Cleanup.
+     *
+     * The tile here was labelled "AI Cleanup" with a sparkle icon and simply
+     * called onOpenFiles — the same destination as the storage card and the
+     * "View all" link, so three controls did one thing and none of them cleaned
+     * anything (F-081). There was no AI involved at any point. It now says
+     * "Clean up" and opens the screen that actually performs a cleanup.
+     */
+    onOpenCleanup: () -> Unit = {},
     onOpenPhotos: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
     onOpenCategory: (String) -> Unit = {},
@@ -186,7 +197,7 @@ fun DashboardScreen(
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickAction(Icons.Default.AutoAwesome, "AI Cleanup", CiyatoGold, Modifier.weight(1f), onOpenFiles)
+                QuickAction(Icons.Default.DeleteSweep, "Clean up", CiyatoGold, Modifier.weight(1f), onOpenCleanup)
                 QuickAction(Icons.Default.Search, "Search", CiyatoBlue, Modifier.weight(1f), onOpenSearch)
                 QuickAction(Icons.Default.Image, "Photos", CiyatoPurple, Modifier.weight(1f), onOpenPhotos)
             }
@@ -355,6 +366,8 @@ private fun CategoryGrid(
                     CategoryTile(
                         spec = tile,
                         count = summary?.count ?: 0,
+                        // No summary yet (still loading) is also "unknown", not zero.
+                        unavailable = summary == null || summary.unavailable,
                         modifier = Modifier.weight(1f),
                         onClick = { onOpenCategory(tile.key.name) },
                     )
@@ -369,6 +382,14 @@ private fun CategoryGrid(
 private fun CategoryTile(
     spec: CategoryTileSpec,
     count: Int,
+    /**
+     * True when the count could not be read at all.
+     *
+     * Rendering 0 for a failed query is how a denied permission ends up looking
+     * like an empty phone — a confident wall of zeroes that reads as fact
+     * (F-083). "—" says the number is unknown, which is the truth.
+     */
+    unavailable: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -391,7 +412,7 @@ private fun CategoryTile(
         }
         Spacer(Modifier.height(10.dp))
         Text(spec.label, color = CiyatoWhite, fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1)
-        Text("$count", color = CiyatoMuted, fontSize = 12.sp)
+        Text(if (unavailable) "—" else "$count", color = CiyatoMuted, fontSize = 12.sp)
     }
 }
 

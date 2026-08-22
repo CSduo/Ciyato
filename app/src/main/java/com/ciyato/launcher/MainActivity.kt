@@ -199,6 +199,7 @@ class MainActivity : FragmentActivity() {
                             onOpenFiles = { navController.navigate("files") { launchSingleTop = true } },
                             onOpenPhotos = { navController.navigate("photos") { launchSingleTop = true } },
                             onOpenSearch = { navController.navigate("search") { launchSingleTop = true } },
+                            onOpenCleanup = { navController.navigate("storage_cleanup") { launchSingleTop = true } },
                             onOpenCategory = { key ->
                                 navController.navigate("file_category/$key") { launchSingleTop = true }
                             },
