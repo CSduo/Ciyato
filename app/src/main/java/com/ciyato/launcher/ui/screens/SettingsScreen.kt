@@ -36,6 +36,7 @@ import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.ui.components.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.PictureAsPdf
 
 /**
  * SettingsScreen — fully expanded with all configurable options.
@@ -62,6 +63,7 @@ fun SettingsScreen(
     onNavigateToHiddenApps: () -> Unit,
     onNavigateToLockedApps: () -> Unit,
     onNavigateToSecureVault: () -> Unit,
+    onNavigateToPhotosToPdf: () -> Unit,
     onNavigateToRemovedApps: () -> Unit,
     onNavigateToContextualSuggestions: () -> Unit,
     onNavigateToVoiceCommands: () -> Unit,
@@ -506,6 +508,15 @@ fun SettingsScreen(
                 )
             }
 
+            item {
+                CiyatoListCard(
+                    title = "Photos to PDF",
+                    subtitle = "Combine photos into one document, built on this phone",
+                    icon = Icons.Default.PictureAsPdf,
+                    iconColor = CiyatoSec,
+                    onClick = onNavigateToPhotosToPdf,
+                )
+            }
             item {
                 CiyatoListCard(
                     // The vault was fully built — AES-256-GCM under an

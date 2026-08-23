@@ -60,6 +60,12 @@ verified reachability myself. Where I disagree with the audit, the reasoning is 
 | `GuestModeScreen` (188 lines) | B11 | Zero references outside its own file; no route in either activity. | Nothing. Its doc promised "No access to hidden apps, files, settings, or personal data", which a launcher screen cannot enforce — anything reachable from Recents, a notification or another launcher bypasses it entirely. Android's real multi-user Guest profile provides that boundary; imitating it in-app is a security claim with nothing behind it. |
 | `CiyatoNotificationListener` duplicate class | `828f473` | Two `NotificationListenerService` subclasses existed; neither declared in the manifest, so Android bound neither and `badgeCounts` was permanently empty | `CiyatoNotificationListenerService` retained, declared in the manifest, and the enabled-check now targets it |
 
+### B37
+
+| Component | Disposition | Reachability proof | Reasoning |
+|---|---|---|---|
+| `DocumentScannerScreen` (9.3 KB) | **REBUILT and WIRED UP** as `PhotosToPdfScreen` | Zero references — unreachable, like the rest of B35's sweep. | Not deleted, because the *capability* is worth having and three of its four findings were fixable defects. The fourth was the name: `TakePicturePreview()` returns a thumbnail, and there was no edge detection or perspective correction, so "scanner" was a claim the code could not meet. The audit allows exactly this — "otherwise name it Photos to PDF". |
+
 ### B35 - the unreachable third of the UI
 
 A whole-tree reachability sweep (every declared composable/object/class checked

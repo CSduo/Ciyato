@@ -147,6 +147,7 @@ private sealed class LauncherDest {
     object HiddenApps         : LauncherDest()
     object LockedApps         : LauncherDest()   // App Lock management
     object SecureVault        : LauncherDest()   // Encrypted file vault
+    object PhotosToPdf        : LauncherDest()   // Photos -> multi-page PDF
     object RemovedApps        : LauncherDest()
     data class CategoryDetail(val category: AppCategory) : LauncherDest()
     object WeatherDetail      : LauncherDest()
@@ -180,7 +181,7 @@ private sealed class LauncherDest {
 private val ARGLESS_DESTS: List<LauncherDest> = listOf(
     LauncherDest.Home, LauncherDest.Drawer, LauncherDest.Settings, LauncherDest.Search,
     LauncherDest.ThemeStudio, LauncherDest.WallpaperStudio, LauncherDest.HiddenApps,
-    LauncherDest.LockedApps, LauncherDest.SecureVault,
+    LauncherDest.LockedApps, LauncherDest.SecureVault, LauncherDest.PhotosToPdf,
     LauncherDest.RemovedApps, LauncherDest.WeatherDetail, LauncherDest.Agenda,
     LauncherDest.FocusSession, LauncherDest.PermissionAudit, LauncherDest.StorageCleanup,
     LauncherDest.RecentFiles, LauncherDest.ContextualSuggestions,
@@ -364,6 +365,7 @@ private fun LauncherRoot(
             onNavigateToHiddenApps     = { dest = LauncherDest.HiddenApps },
             onNavigateToLockedApps     = { dest = LauncherDest.LockedApps },
             onNavigateToSecureVault    = { dest = LauncherDest.SecureVault },
+            onNavigateToPhotosToPdf    = { dest = LauncherDest.PhotosToPdf },
             onNavigateToRemovedApps    = { dest = LauncherDest.RemovedApps },
             onNavigateToContextualSuggestions = { dest = LauncherDest.ContextualSuggestions },
             onNavigateToVoiceCommands  = { dest = LauncherDest.VoiceCommands },
@@ -453,6 +455,10 @@ private fun LauncherRoot(
         is LauncherDest.StorageCleanup -> StorageCleanupScreen( // Suggestion 26
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.PhotosToPdf -> PhotosToPdfScreen(
+            onBack = { dest = LauncherDest.Settings },
         )
 
         is LauncherDest.SecureVault -> SecureFileVaultScreen(
