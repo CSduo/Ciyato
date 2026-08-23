@@ -3,6 +3,7 @@ package com.ciyato.launcher.data
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -97,16 +98,55 @@ object VaultCrypto {
      * once that write is complete. A crash or process death mid-write leaves [file] exactly as it
      * was — either the old contents or absent, never a partial write.
      */
-    fun storeFile(file: File, plain: ByteArray) {
+    fun storeFile(file: File, plain: ByteArray) = writeAtomically(file, encrypt(plain))
+
+    /**
+     * Writes [bytes] to [file] without ever truncating it in place: a sibling
+     * temp file is written and flushed to disk first, and only swapped in by
+     * rename once complete. A crash mid-write leaves [file] exactly as it was —
+     * the old contents or absent, never half of either.
+     *
+     * The fsync matters and is easy to omit. Without it, rename can be durable
+     * while the data it points at is still in the page cache, so a power loss
+     * leaves a file that exists and is empty — which for a vault means the
+     * plaintext is gone and the ciphertext never arrived.
+     */
+    private fun writeAtomically(file: File, bytes: ByteArray) {
         val parent = checkNotNull(file.parentFile) { "Vault file has no parent directory" }
         val tmp = File(parent, "${file.name}$TEMP_MARKER${System.nanoTime()}")
         try {
-            tmp.writeBytes(encrypt(plain))
+            FileOutputStream(tmp).use { out ->
+                out.write(bytes)
+                out.flush()
+                out.fd.sync()
+            }
             if (!tmp.renameTo(file)) throw IOException("Rename failed while saving ${file.name}")
         } catch (e: Exception) {
             tmp.delete()
             throw e
         }
+    }
+
+    /**
+     * Largest file the vault will take, in bytes.
+     *
+     * Encryption here is whole-file: the plaintext, the ciphertext and the
+     * copy handed to Cipher are all resident at once, so a large video can cost
+     * several times its own size in heap and fail in the middle of a security
+     * operation (F-017). Streaming authenticated encryption is the real answer
+     * and is a larger change; until then the limit is enforced and stated rather
+     * than discovered as an OutOfMemoryError.
+     */
+    const val MAX_VAULT_FILE_BYTES = 64L * 1024 * 1024
+
+    /** Human reason a file cannot be vaulted, or null when it can. */
+    fun rejectionReason(sizeBytes: Long): String? = when {
+        sizeBytes <= 0L -> "That file is empty."
+        sizeBytes > MAX_VAULT_FILE_BYTES ->
+            "That file is larger than ${MAX_VAULT_FILE_BYTES / (1024 * 1024)} MB. " +
+                "The vault encrypts a file whole, in memory, so bigger files are refused " +
+                "rather than risked."
+        else -> null
     }
 
     /**
@@ -124,7 +164,40 @@ object VaultCrypto {
             decrypt(raw) // discarded — this call exists to prove the file still decrypts
             return
         }
-        storeFile(file, legacyXorDecode(raw, legacyPackageName))
+
+        // "Not the current format" is NOT evidence of the legacy format.
+        //
+        // This branch used to accept that inference, and it is the most
+        // dangerous line in the vault: a modern file whose first two bytes were
+        // damaged would fail isVaultFormat, be XOR-"decoded" as though it were
+        // legacy, and be re-encrypted over itself — destroying the only copy of
+        // the plaintext while reporting success (F-016).
+        //
+        // A file carrying the magic byte is ours. If its version is one we do
+        // not know, it came from a newer build or it is damaged; either way the
+        // answer is to fail loudly and leave it alone, not to run a lossy
+        // transform over it.
+        if (raw.isNotEmpty() && raw[0] == MAGIC) {
+            throw IOException(
+                "${file.name} looks like a Ciyato vault file with an unrecognized version " +
+                    "(${if (raw.size > 1) raw[1].toInt() else -1}). Left untouched.",
+            )
+        }
+
+        val decoded = legacyXorDecode(raw, legacyPackageName)
+
+        // Prove the migration is reversible BEFORE anything replaces the
+        // original. The audit asks for migrate-verify-then-replace, and this is
+        // the verify: re-encrypt, decrypt the result, and require the bytes back
+        // exactly. If any step throws or the round trip disagrees, the original
+        // file has not been touched.
+        val reEncrypted = encrypt(decoded)
+        val roundTripped = decrypt(reEncrypted)
+        if (!roundTripped.contentEquals(decoded)) {
+            throw IOException("${file.name} did not survive a migration round trip. Left untouched.")
+        }
+
+        writeAtomically(file, reEncrypted)
     }
 
     /**

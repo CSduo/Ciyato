@@ -35,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.compose.runtime.DisposableEffect
 
 /**
  * SecureFileVaultScreen — Suggestion #68
@@ -186,17 +187,72 @@ fun SecureFileVaultScreen(
                 runCatching {
                     val name = uri.lastPathSegment?.substringAfterLast('/') ?: "file_${System.currentTimeMillis()}"
                     val dest = File(vaultDir, "$name.enc")
+
+                    // Size is checked before the file is read, not after.
+                    // Encryption here holds the plaintext, the ciphertext and
+                    // Cipher's own copy at once, so a large video can cost
+                    // several times its size in heap and fail partway through a
+                    // security operation (F-017). Refusing up front is the
+                    // difference between a clear message and an OOM mid-encrypt.
+                    val declaredSize = context.contentResolver
+                        .openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+                    if (declaredSize > 0) {
+                        VaultCrypto.rejectionReason(declaredSize)?.let { error(it) }
+                    }
+
                     val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                         ?: error("Couldn't open the selected file")
+                    // Re-checked against the bytes actually read: the descriptor
+                    // can report UNKNOWN_LENGTH for a stream.
+                    VaultCrypto.rejectionReason(bytes.size.toLong())?.let { error(it) }
                     VaultCrypto.storeFile(dest, bytes)
                 }
             }
-            vaultError = result.exceptionOrNull()?.let { "Couldn't add the file securely — nothing was saved." }
+            // Surface the actual reason when there is one worth reading — "too
+            // large" is actionable, where a generic failure just looks broken.
+            vaultError = result.exceptionOrNull()?.let { e ->
+                e.message?.takeIf { it.contains("larger than") || it.contains("empty") }
+                    ?: "Couldn't add the file securely — nothing was saved."
+            }
             refreshVaultFiles()
         }
     }
 
     LaunchedEffect(Unit) { authenticate() }
+
+    // Re-lock when the vault leaves the screen.
+    //
+    // isUnlocked survived for the lifetime of the composable, so a vault opened
+    // once stayed open: press Home, hand the phone to someone, and returning
+    // through Recents showed the decrypted file list with no prompt (F-018).
+    // Authentication is a moment, not a mode.
+    //
+    // ON_STOP rather than ON_PAUSE deliberately — pause fires for a transient
+    // system dialog, including the biometric prompt itself, which would re-lock
+    // the screen in the middle of unlocking it.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
+                    isUnlocked = false
+                    // The decrypted names are as sensitive as the contents.
+                    vaultFiles = emptyList()
+                    // Plaintext copies written for "open in another app" do not
+                    // outlive the session that asked for them.
+                    runCatching {
+                        File(context.cacheDir, "vault_open").listFiles()?.forEach { it.delete() }
+                    }
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_START -> {
+                    if (!isUnlocked) authenticate()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Scaffold(
         containerColor = CiyatoBg,
