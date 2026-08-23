@@ -45,6 +45,8 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
+import androidx.compose.runtime.derivedStateOf
+import com.ciyato.launcher.data.MediaAccess
 
 /**
  * StorageCleanupScreen — real, on-device storage analysis and deletion.
@@ -65,10 +67,13 @@ fun StorageCleanupScreen(
     val context = LocalContext.current
     val mediaRepo = remember { MediaLibraryRepository(context) }
 
-    var hasPermission by remember { mutableStateOf(mediaRepo.hasMediaPermission()) }
+    // The access LEVEL, not a boolean: a partial grant answers true to
+    // "do we have permission?" while showing only a hand-picked subset (F-115).
+    var access by remember { mutableStateOf(MediaAccess.of(context)) }
+    val hasPermission by remember { derivedStateOf { access.canSeeAnything } }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { hasPermission = mediaRepo.hasMediaPermission() }
+    ) { access = MediaAccess.of(context) }
 
     // Granting from system Settings is the only path left after a permanent
     // denial; re-check on resume so the screen updates without a restart.
@@ -76,7 +81,7 @@ fun StorageCleanupScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                hasPermission = mediaRepo.hasMediaPermission()
+                access = MediaAccess.of(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -88,10 +93,10 @@ fun StorageCleanupScreen(
     var selectedCategory by remember { mutableStateOf<CleanupCategory?>(null) }
     var deviceStorage by remember { mutableStateOf<DeviceStorageOverview?>(null) }
 
-    LaunchedEffect(hasPermission) {
+    LaunchedEffect(access) {
         isScanning = true
         val (overview, scanned) = withContext(Dispatchers.IO) {
-            val overview = readDeviceStorageOverview(context, hasPermission)
+            val overview = readDeviceStorageOverview(context, access)
             val scanned = buildList {
                 add(scanCache(context))
                 // Categories backed by MediaStore can't be measured without the
@@ -184,7 +189,7 @@ fun StorageCleanupScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     deviceStorage?.let { overview ->
-                        item { StorageBreakdownCard(overview = overview, hasPermission = hasPermission) }
+                        item { StorageBreakdownCard(overview = overview) }
                     }
                     item {
                         CleanupSummaryCard(
@@ -195,8 +200,25 @@ fun StorageCleanupScreen(
                             overlapNote = overlapping,
                         )
                     }
-                    items(results, key = { it.category }) { result ->
-                        CleanupCategoryCard(result = result, onClick = { selectedCategory = result.category })
+                    // Grouped by how much judgement each needs, safest first.
+                    // A flat list invited the same action - delete - across
+                    // evidence as different as "Ciyato's own cache" and "the
+                    // Downloads folder" (F-118).
+                    CleanupTier.entries.forEach { tier ->
+                        val inTier = results.filter { it.category.tier == tier }
+                        if (inTier.isEmpty()) return@forEach
+                        item(key = "tier_${tier.name}") {
+                            Column(
+                                Modifier.padding(top = 6.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Text(tier.title, color = CiyatoWhite, style = labelL)
+                                Text(tier.blurb, color = CiyatoMuted, style = bodyS)
+                            }
+                        }
+                        items(inTier, key = { it.category }) { result ->
+                            CleanupCategoryCard(result = result, onClick = { selectedCategory = result.category })
+                        }
                     }
                 }
             }
@@ -340,7 +362,7 @@ private fun CleanupSummaryCard(totalBytes: Long, totalCount: Int, overlapNote: B
 }
 
 @Composable
-private fun StorageBreakdownCard(overview: DeviceStorageOverview, hasPermission: Boolean) {
+private fun StorageBreakdownCard(overview: DeviceStorageOverview) {
     Column(
         Modifier.fillMaxWidth().clip(CiyatoShapes.large).background(CiyatoBgEl)
             .border(1.dp, CiyatoSubtleBorder, CiyatoShapes.large).padding(18.dp),
@@ -363,7 +385,22 @@ private fun StorageBreakdownCard(overview: DeviceStorageOverview, hasPermission:
         if (overview.slices.isNotEmpty()) {
             StorageBreakdownBar(slices = overview.slices)
             StorageBreakdownLegend(slices = overview.slices)
-        } else if (!hasPermission) {
+            if (!overview.access.totalsAreComplete) {
+                // Said next to the chart, not buried in settings. Under a
+                // partial grant the category sizes are real but incomplete, and
+                // the remainder is mostly the person's own media rather than app
+                // data — a chart that does not say so is more misleading than no
+                // chart at all (F-115).
+                Text(
+                    "Ciyato can only see the photos and videos you selected, so the " +
+                        "category sizes below are partial. Most of \"Not visible to " +
+                        "Ciyato\" is likely your own media. Allow access to all photos " +
+                        "for a complete breakdown.",
+                    color = CiyatoMuted,
+                    style = bodyS,
+                )
+            }
+        } else if (!overview.access.canSeeAnything) {
             Text(
                 "Grant media access below to see the breakdown by category.",
                 color = CiyatoMuted,
@@ -470,13 +507,54 @@ private fun CleanupItemRow(item: CleanupItem, selected: Boolean, onToggle: () ->
 
 // ── Data model ───────────────────────────────────────────────────────────────
 
-private enum class CleanupCategory(val label: String, val description: String, val icon: ImageVector, val accent: Color) {
-    LARGE_FILES("Large Files", "Over 50 MB each", Icons.Default.Storage, CiyatoBlue),
-    OLD_SCREENSHOTS("Old Screenshots", "Older than 30 days", Icons.Default.Screenshot, CiyatoPurple),
-    DOWNLOADS("Downloads", "Everything in Downloads", Icons.Default.Download, CiyatoGreen),
-    CACHE("App Cache", "Ciyato's own temporary data", Icons.Default.Memory, CiyatoAmber),
-    EMPTY_FILES("Empty Files", "Zero-byte entries", Icons.Default.DeleteSweep, CiyatoRed),
-    TRASH("Trash", "Deleted photos still holding space", Icons.Default.DeleteForever, CiyatoRed),
+/**
+ * How much judgement a category needs before anything is deleted.
+ *
+ * These six were presented as peers, which invited one mental action - delete -
+ * across wildly different evidence (F-118). Ciyato's own cache is regenerable
+ * and costs nothing to clear. A zero-byte file cannot contain anything. But
+ * "Downloads" is an ordinary folder that may hold the only copy of a document,
+ * and a 60 MB file is large, which is not a reason to think it is unwanted.
+ *
+ * Ordering the screen by risk also puts the safest wins first, which is where
+ * someone trying to free space should start.
+ */
+internal enum class CleanupTier(val title: String, val blurb: String) {
+    SAFE(
+        "Safe to clear",
+        "Regenerable or provably empty. Nothing here can hold your only copy of anything.",
+    ),
+    REVIEW(
+        "Worth reviewing",
+        "Real files that are probably finished with. Ciyato is confident about the age or the size, not about whether you still want them.",
+    ),
+    SUGGESTION(
+        "Look before deleting",
+        "Only a signal, not a verdict. Ciyato knows these are big or in a folder that fills up - it has no idea whether they matter to you.",
+    ),
+}
+
+internal enum class CleanupCategory(
+    val label: String,
+    val description: String,
+    val icon: ImageVector,
+    val accent: Color,
+    val tier: CleanupTier,
+) {
+    // Ciyato's own scratch data, regenerated on demand.
+    CACHE("App Cache", "Ciyato's own temporary data, rebuilt as needed", Icons.Default.Memory, CiyatoAmber, CleanupTier.SAFE),
+    // Zero bytes: there is nothing inside one to lose.
+    EMPTY_FILES("Empty Files", "Zero-byte entries", Icons.Default.DeleteSweep, CiyatoAmber, CleanupTier.SAFE),
+    // Already deleted by the person; Android is holding it for the trash window.
+    TRASH("Trash", "Already deleted, still holding space", Icons.Default.DeleteForever, CiyatoAmber, CleanupTier.SAFE),
+
+    // Age is decent evidence, and screenshots are usually disposable - but they
+    // are still the person's own pictures.
+    OLD_SCREENSHOTS("Old Screenshots", "Older than 30 days", Icons.Default.Screenshot, CiyatoPurple, CleanupTier.REVIEW),
+
+    // Size is not evidence of being unwanted, and Downloads holds real documents.
+    LARGE_FILES("Large Files", "Over 50 MB each", Icons.Default.Storage, CiyatoBlue, CleanupTier.SUGGESTION),
+    DOWNLOADS("Downloads", "Everything in Downloads - may include the only copy", Icons.Default.Download, CiyatoBlue, CleanupTier.SUGGESTION),
 }
 
 private data class CleanupItem(
@@ -511,6 +589,13 @@ private data class DeviceStorageOverview(
     val usedBytes: Long,
     val freeBytes: Long,
     val slices: List<StorageBreakdownSlice>,
+    /**
+     * How much of the library the measurements could see.
+     *
+     * Carried with the numbers rather than re-derived at render time, so the
+     * chart cannot be drawn without the caveat that applies to it (F-115).
+     */
+    val access: MediaAccess = MediaAccess.NONE,
 )
 
 // ── Real scanning (MediaStore + app cache) ──────────────────────────────────
@@ -625,13 +710,13 @@ private fun folderSize(file: java.io.File): Long = when {
  * rather than showing a guessed split).
  */
 @Suppress("DEPRECATION")
-private fun readDeviceStorageOverview(context: Context, hasPermission: Boolean): DeviceStorageOverview {
+private fun readDeviceStorageOverview(context: Context, access: MediaAccess): DeviceStorageOverview {
     val stat = StatFs(Environment.getExternalStorageDirectory().path)
     val totalBytes = stat.blockCountLong * stat.blockSizeLong
     val freeBytes = stat.availableBlocksLong * stat.blockSizeLong
     val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
 
-    val slices = if (hasPermission) {
+    val slices = if (access.canSeeAnything) {
         val media = MediaStore.Files.FileColumns.MEDIA_TYPE
         val mime = MediaStore.Files.FileColumns.MIME_TYPE
 
@@ -650,22 +735,38 @@ private fun readDeviceStorageOverview(context: Context, hasPermission: Boolean):
         val docArgs = (DOCUMENT_MIMES + "%Download%").toTypedArray()
         val (_, docBytes) = summarize(context, docSelection, docArgs)
 
-        // Whatever's left of used space that wasn't measured above — system
-        // files, app installs/data, and anything MediaStore doesn't expose.
-        val otherBytes = (usedBytes - (imageBytes + videoBytes + audioBytes + docBytes)).coerceAtLeast(0L)
+        // Whatever is left of used space that was not measured above.
+        //
+        // Under FULL access that really is system files, app installs and data
+        // MediaStore does not expose. Under a PARTIAL grant it is mostly the
+        // person's own photos and videos — the ones they did not hand-pick —
+        // and calling that "app data" is a confident lie told by a chart
+        // (F-115). Same arithmetic, honest label, plus a note saying why.
+        val residualBytes = (usedBytes - (imageBytes + videoBytes + audioBytes + docBytes)).coerceAtLeast(0L)
+        val residualLabel = if (access.totalsAreComplete) {
+            "Other / app data"
+        } else {
+            "Not visible to Ciyato"
+        }
 
         listOf(
             StorageBreakdownSlice("Images", imageBytes, CiyatoBlue),
             StorageBreakdownSlice("Videos", videoBytes, CiyatoPurple),
             StorageBreakdownSlice("Audio", audioBytes, CiyatoGreen),
             StorageBreakdownSlice("Documents & Downloads", docBytes, CiyatoAmber),
-            StorageBreakdownSlice("Other / app data", otherBytes, CiyatoMuted),
+            StorageBreakdownSlice(residualLabel, residualBytes, CiyatoMuted),
         )
     } else {
         emptyList()
     }
 
-    return DeviceStorageOverview(totalBytes = totalBytes, usedBytes = usedBytes, freeBytes = freeBytes, slices = slices)
+    return DeviceStorageOverview(
+        totalBytes = totalBytes,
+        usedBytes = usedBytes,
+        freeBytes = freeBytes,
+        slices = slices,
+        access = access,
+    )
 }
 
 /** Accurate count + total bytes for a selection, scanning every matching row (never capped). */
