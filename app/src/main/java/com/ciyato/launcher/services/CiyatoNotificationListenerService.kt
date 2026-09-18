@@ -9,8 +9,16 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * Notification Listener Service — Suggestion #81.
  *
- * Reads active notification counts per package so the home screen can
- * display unread-count badges on app icons.
+ * Reads the count of active notifications per package so Home can badge app
+ * icons.
+ *
+ * Deliberately NOT called "unread". Android's notification listener reports
+ * which notifications are currently posted — nothing more. An app that posts one
+ * summary for forty messages reports one; an app the person has read but not
+ * dismissed still reports its notification; an app that never posts reports
+ * nothing however much is waiting inside it. There is no universal per-app
+ * unread truth to read here, and calling this count "unread" claims one (F-035).
+ * Real unread state would be a per-app integration, not an inference.
  *
  * Permission model:
  *  - Declared in AndroidManifest with BIND_NOTIFICATION_LISTENER_SERVICE.
@@ -28,7 +36,7 @@ class CiyatoNotificationListenerService : NotificationListenerService() {
         private val _badgeCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
         val badgeCounts: StateFlow<Map<String, Int>> = _badgeCounts.asStateFlow()
 
-        /** Returns the unread notification count for [packageName], or 0 if none. */
+        /** Active notifications currently posted by [packageName], or 0. */
         fun countFor(packageName: String): Int = _badgeCounts.value[packageName] ?: 0
     }
 
@@ -63,7 +71,7 @@ class CiyatoNotificationListenerService : NotificationListenerService() {
         runCatching {
             activeNotifications?.forEach { sbn ->
                 // Skip persistent notifications (e.g. music player, VPN) — they
-                // are not actionable unread items and would inflate the badge count.
+                // are not actionable items and would inflate the badge count.
                 if (!sbn.isOngoing) {
                     val pkg = sbn.packageName ?: return@forEach
                     counts[pkg] = (counts[pkg] ?: 0) + 1

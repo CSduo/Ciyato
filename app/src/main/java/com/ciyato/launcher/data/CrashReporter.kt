@@ -20,7 +20,22 @@ object CrashReporter {
     private const val LOG_DIR     = "crash_logs"
     private const val MAX_LOGS    = 10
     @Volatile private var installed = false
-    @Volatile private var loggingEnabled = true
+    /**
+     * Whether a crash may be written to disk. **Fail closed.**
+     *
+     * This defaulted to true, and the handler is installed at process start
+     * while the opt-out lives in DataStore and arrives asynchronously. So there
+     * was a window — short, but exactly when early-startup crashes happen — in
+     * which a crash was persisted for someone who had explicitly turned
+     * diagnostics off (F-054).
+     *
+     * A privacy preference whose default is "on until we find out otherwise" is
+     * not a preference. The cost of starting closed is that a crash in the first
+     * few hundred milliseconds goes unrecorded for people who opted IN; the cost
+     * of starting open is writing a file for people who opted OUT. Those are not
+     * equivalent, and only one of them is a privacy failure.
+     */
+    @Volatile private var loggingEnabled = false
 
     fun install(context: Context) {
         if (installed) return
@@ -42,6 +57,10 @@ object CrashReporter {
     }
 
     /** Controlled by the visible local-only Crash Reporting setting. */
+    /**
+     * Called once the stored preference is known, and every time it changes.
+     * Until the first call, nothing is written — see [loggingEnabled].
+     */
     fun setLoggingEnabled(enabled: Boolean) {
         loggingEnabled = enabled
     }

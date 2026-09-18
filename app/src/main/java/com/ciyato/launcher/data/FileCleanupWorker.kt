@@ -40,10 +40,26 @@ class FileCleanupWorker(
             val hashes = checkpoint.toMutableMap()
             var hashedBytes = 0L
             var skippedForBudget = discovery.skippedForBudget
+            var staleCheckpointEntries = 0
 
             discovery.files.forEachIndexed { index, file ->
                 currentCoroutineContext().ensureActive()
                 val key = file.uri.toString()
+                // A checkpointed hash is reused only if the file still looks
+                // like the file that was hashed.
+                //
+                // The checkpoint stored URI -> hash and the loop skipped any URI
+                // it already had. A document edited in place between a cancelled
+                // scan and its resume therefore kept its OLD hash — and could be
+                // grouped with a file that genuinely has that content and
+                // offered for deletion. A false duplicate in a delete flow is
+                // not a cosmetic bug (F-060). Size and modification time are
+                // what SAF gives us; either changing invalidates the entry.
+                val cached = hashes[key]
+                if (cached != null && !cached.describes(file.sizeBytes, file.lastModifiedMs)) {
+                    hashes.remove(key)
+                    staleCheckpointEntries++
+                }
                 if (key !in hashes) {
                     if (hashedBytes + file.sizeBytes > MAX_TOTAL_HASH_BYTES) {
                         skippedForBudget = true
@@ -58,7 +74,11 @@ class FileCleanupWorker(
                             null
                         }
                         if (hash != null) {
-                            hashes[key] = hash
+                            hashes[key] = FileCleanupResultStore.CheckpointEntry(
+                                hash = hash,
+                                sizeBytes = file.sizeBytes,
+                                lastModifiedMs = file.lastModifiedMs,
+                            )
                             // Checkpointing after every single file meant rewriting a growing
                             // JSON blob synchronously N times; batching keeps restart safety
                             // without the quadratic disk cost.
@@ -77,7 +97,7 @@ class FileCleanupWorker(
             }
 
             val verified = discovery.files.mapNotNull { file ->
-                hashes[file.uri.toString()]?.let { hash -> VerifiedCleanupFile(file, hash) }
+                hashes[file.uri.toString()]?.let { entry -> VerifiedCleanupFile(file, entry.hash) }
             }
             val groups = verified
                 .groupBy { it.hash }
@@ -157,7 +177,12 @@ class FileCleanupWorker(
                     document.isFile && document.canRead() -> {
                         val size = document.length().coerceAtLeast(0L)
                         if (size in 1..MAX_BYTES_PER_FILE) {
-                            files += CleanupDocument(document.uri, document.name.orEmpty().ifBlank { "Unnamed file" }, size)
+                            files += CleanupDocument(
+                                uri = document.uri,
+                                name = document.name.orEmpty().ifBlank { "Unnamed file" },
+                                sizeBytes = size,
+                                lastModifiedMs = document.lastModified(),
+                            )
                         }
                     }
                 }
@@ -182,7 +207,13 @@ class FileCleanupWorker(
 
     private fun errorData(message: String): Data = Data.Builder().putString(RESULT_ERROR, message).build()
 
-    private data class CleanupDocument(val uri: Uri, val name: String, val sizeBytes: Long)
+    private data class CleanupDocument(
+        val uri: Uri,
+        val name: String,
+        val sizeBytes: Long,
+        /** Used to decide whether a checkpointed hash still describes this file. */
+        val lastModifiedMs: Long,
+    )
     private data class CandidateDiscovery(
         val files: List<CleanupDocument>,
         val inspectedEntries: Int,
@@ -300,16 +331,47 @@ object FileCleanupResultStore {
         ).apply()
     }
 
-    fun loadCheckpoint(context: Context, rootUri: String): Map<String, String> = runCatching {
+    /**
+     * One checkpointed hash, with the evidence that it still applies.
+     *
+     * The checkpoint used to be URI -> hash. A URI is not an identity: the
+     * document behind it can be edited in place between a cancelled scan and its
+     * resume, and the stale hash would then be reused — grouping a changed file
+     * with one that genuinely has that content, inside a flow whose next step is
+     * deletion (F-060). Size and modification time are what SAF offers, and
+     * either changing is enough to invalidate the entry.
+     */
+    data class CheckpointEntry(
+        val hash: String,
+        val sizeBytes: Long,
+        val lastModifiedMs: Long,
+    ) {
+        /** True when this hash can still be trusted for a file with these facts. */
+        fun describes(currentSizeBytes: Long, currentLastModifiedMs: Long): Boolean =
+            sizeBytes == currentSizeBytes &&
+                // A provider that reports no modification time gives us nothing
+                // to verify against, so the entry is not reusable. Re-hashing
+                // costs time; a wrong duplicate costs a file.
+                lastModifiedMs > 0L &&
+                currentLastModifiedMs > 0L &&
+                lastModifiedMs == currentLastModifiedMs
+    }
+
+    fun loadCheckpoint(context: Context, rootUri: String): Map<String, CheckpointEntry> = runCatching {
         val json = JSONObject(prefs(context).getString(CHECKPOINT_PREFIX + rootUri, "{}") ?: "{}")
         val hashes = json.optJSONObject("hashes") ?: return emptyMap()
         // A malformed entry would come back as a blank hash, and every file carrying it
         // would then group together as "duplicates" — files the user could then delete.
-        // Only well-formed SHA-256 hex survives.
+        // Only well-formed SHA-256 hex with complete metadata survives.
         buildMap {
             hashes.keys().forEach { key ->
-                val hash = hashes.optString(key)
-                if (hash.length == 64) put(key, hash)
+                val entry = hashes.optJSONObject(key) ?: return@forEach
+                val hash = entry.optString("hash")
+                val size = entry.optLong("size", -1L)
+                val modified = entry.optLong("modified", -1L)
+                if (hash.length == 64 && size >= 0L && modified > 0L) {
+                    put(key, CheckpointEntry(hash, size, modified))
+                }
             }
         }
     }.getOrDefault(emptyMap())
@@ -320,8 +382,18 @@ object FileCleanupResultStore {
     // restarting. apply() defers the write, which is exactly the case it must
     // not lose. Suppressed rather than silenced: the behaviour is deliberate.
     @android.annotation.SuppressLint("ApplySharedPref")
-    fun saveCheckpoint(context: Context, rootUri: String, hashes: Map<String, String>) {
-        val values = JSONObject().apply { hashes.forEach { (uri, hash) -> put(uri, hash) } }
+    fun saveCheckpoint(context: Context, rootUri: String, hashes: Map<String, CheckpointEntry>) {
+        val values = JSONObject().apply {
+            hashes.forEach { (uri, entry) ->
+                put(
+                    uri,
+                    JSONObject()
+                        .put("hash", entry.hash)
+                        .put("size", entry.sizeBytes)
+                        .put("modified", entry.lastModifiedMs),
+                )
+            }
+        }
         prefs(context).edit().putString(CHECKPOINT_PREFIX + rootUri, JSONObject().put("hashes", values).toString()).commit()
     }
 

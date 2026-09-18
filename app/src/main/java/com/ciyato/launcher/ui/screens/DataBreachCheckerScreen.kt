@@ -114,7 +114,9 @@ fun DataBreachCheckerScreen(
         topBar = {
             CiyatoTopBar(
                 title = "Breach Checker",
-                subtitle = "Privacy-safe k-anonymity check",
+                // "Privacy-safe" overstates it: this is still a network request.
+                // Privacy-PRESERVING is what k-anonymity actually buys (F-025).
+                subtitle = "Privacy-preserving lookup",
                 onBack = onBack,
             )
         }
@@ -133,7 +135,7 @@ fun DataBreachCheckerScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Shield, null, tint = CiyatoGold, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Privacy-safe check", color = CiyatoGold, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Privacy-preserving lookup", color = CiyatoGold, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Text(
                         "Only the first 5 characters of a SHA-1 hash are sent. Your password never leaves your device.",
@@ -185,7 +187,11 @@ fun DataBreachCheckerScreen(
                 val msg = if (currentResult is BreachResult.Found) {
                     "This password appeared in ${currentResult.count.toIntFormatted()} known breaches. Change it immediately."
                 } else {
-                    "Not found in any known breach database."
+                    // Absence from one corpus is not proof of strength, and
+                    // saying so is the difference between a useful check and a
+                    // false reassurance someone acts on (F-025).
+                    "Not found in this breach database. That does not mean it is a " +
+                        "strong password — only that it has not appeared in a known leak."
                 }
                 Card(
                     colors = CardDefaults.cardColors(containerColor = bg),
