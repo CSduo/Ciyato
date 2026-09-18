@@ -33,6 +33,7 @@ import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.util.Locale
+import androidx.compose.runtime.DisposableEffect
 
 /**
  * VoiceCommandScreen — Suggestion #39
@@ -48,6 +49,11 @@ fun VoiceCommandScreen(
     onBack: () -> Unit,
     onOpenCategory: (AppCategory) -> Unit = {},
     onOpenSearch: (String) -> Unit = {},
+    /**
+     * Opens Photos. Required, not defaulted: a no-op default is how "show
+     * photos" came to be advertised and do nothing (F-140).
+     */
+    onOpenPhotos: () -> Unit,
 ) {
     val context = LocalContext.current
     var isListening by remember { mutableStateOf(false) }
@@ -86,9 +92,31 @@ fun VoiceCommandScreen(
             }
             lower.startsWith("open ") -> {
                 val appName = lower.removePrefix("open ").trim()
-                val app = viewModel.searchResults.value.firstOrNull { it.label.lowercase().contains(appName) }
+                // Matched against the INSTALLED apps, not searchResults.
+                //
+                // searchResults holds whatever the person last typed into the
+                // search screen. So "open Gmail" worked only if Gmail happened
+                // to be sitting in a stale result set, and otherwise fell
+                // through to "Searching for 'gmail'…" — which looks like the
+                // voice command is unsupported rather than mis-wired (F-141).
+                //
+                // Exact label first, then prefix, then substring: "open maps"
+                // should reach Maps rather than whichever installed app merely
+                // contains "maps" somewhere in its name.
+                val installed = viewModel.apps.value
+                val app = installed.firstOrNull { it.label.lowercase(Locale.getDefault()) == appName }
+                    ?: installed.firstOrNull { it.label.lowercase(Locale.getDefault()).startsWith(appName) }
+                    ?: installed.firstOrNull { it.label.lowercase(Locale.getDefault()).contains(appName) }
                 if (app != null) { viewModel.launchApp(app); "Launching ${app.label}…" }
-                else { onOpenSearch(appName); "Searching for '$appName'…" }
+                else { onOpenSearch(appName); "No installed app matches '$appName' — searching…" }
+            }
+            // Advertised in the help text and absent from this handler, so
+            // saying it produced "Command not recognized" while the screen
+            // listed it as an example (F-140). Implemented rather than removed:
+            // Photos is a real destination and this is the obvious phrasing.
+            lower == "show photos" || lower == "open photos" ||
+                lower.startsWith("show photos") || lower.startsWith("open my photos") -> {
+                onOpenPhotos(); "Opening Photos…"
             }
             lower.contains("focus mode") || lower.contains("focus session") -> {
                 viewModel.startFocusSession(); "Focus session started!"
@@ -109,6 +137,30 @@ fun VoiceCommandScreen(
         }
     }
 
+    /**
+     * The recogniser currently listening, if any.
+     *
+     * It was destroyed only from onResults and onError. Leave the screen while
+     * it is listening and neither fires: the recogniser leaked and the
+     * microphone stayed open on a screen the person had already left, with the
+     * only indication being the system mic indicator (F-143). There was also no
+     * way to stop it deliberately.
+     */
+    var activeRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
+
+    fun stopListening() {
+        activeRecognizer?.let { r ->
+            runCatching { r.cancel() }
+            runCatching { r.destroy() }
+        }
+        activeRecognizer = null
+        isListening = false
+    }
+
+    // Releasing the microphone is not optional cleanup, so it is tied to the
+    // composable's lifetime rather than to a callback that may never arrive.
+    DisposableEffect(Unit) { onDispose { stopListening() } }
+
     fun startListening() {
         if (!hasAudioPermission) {
             permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -124,6 +176,7 @@ fun VoiceCommandScreen(
         isListening = true
 
         val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
+        activeRecognizer = recognizer
         recognizer.setRecognitionListener(object : RecognitionListener {
             override fun onResults(results: Bundle?) {
                 val texts = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -131,11 +184,13 @@ fun VoiceCommandScreen(
                 transcript = best
                 if (best.isNotBlank()) handleCommand(best)
                 isListening = false
+                activeRecognizer = null
                 recognizer.destroy()
             }
             override fun onError(error: Int) {
                 errorText = "Could not hear you (error $error). Try again."
                 isListening = false
+                activeRecognizer = null
                 recognizer.destroy()
             }
             override fun onReadyForSpeech(params: Bundle?) {}

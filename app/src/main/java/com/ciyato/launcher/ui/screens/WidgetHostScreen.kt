@@ -33,6 +33,7 @@ import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalDensity
 
 /**
  * WidgetHostScreen — Suggestion #15
@@ -343,13 +344,43 @@ private fun WidgetCard(
                 }
             }
             Spacer(Modifier.height(8.dp))
+            // Height comes from the provider, not from a constant.
+            //
+            // Every widget was forced into a 120dp-high card regardless of what
+            // it asked for (F-137). A clock designed for 40dp floated in empty
+            // space; a 4x2 calendar was cut off. AppWidgetProviderInfo carries
+            // minHeight and the "resize" hints precisely so a host can respect
+            // them, and ignoring that is what makes third-party widgets look
+            // broken inside an otherwise careful launcher.
+            //
+            // Clamped at both ends: a provider can report an absurd minHeight,
+            // and a card that grows without limit would push everything else off
+            // the screen. updateAppWidgetSize tells the widget the box it
+            // actually got, so it can pick the right layout for it.
+            val density = LocalDensity.current
+            val providerHeightDp = widget.providerInfo.minHeight
+                .takeIf { it > 0 }
+                ?.let { px -> with(density) { px.toDp() } }
+                ?: 120.dp
+            val widgetHeight = providerHeightDp.coerceIn(48.dp, 320.dp)
             AndroidView(
                 factory = {
                     host.createView(context, widget.appWidgetId, widget.providerInfo) as AppWidgetHostView
                 },
+                update = { view ->
+                    // Without this the widget never learns its size and keeps
+                    // rendering for whatever default it assumed.
+                    val w = view.width.takeIf { it > 0 }
+                        ?.let { with(density) { it.toDp().value.toInt() } }
+                        ?: 0
+                    val h = widgetHeight.value.toInt()
+                    if (w > 0) {
+                        runCatching { view.updateAppWidgetSize(android.os.Bundle.EMPTY, w, h, w, h) }
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp)
+                    .height(widgetHeight)
                     .background(CiyatoBg, RoundedCornerShape(12.dp)),
             )
         }

@@ -456,6 +456,7 @@ class MainActivity : FragmentActivity() {
                                 navController.navigate("category_detail/${category.name}") { launchSingleTop = true }
                             },
                             onOpenSearch = { navController.navigate("search") { launchSingleTop = true } },
+                            onOpenPhotos = { navController.navigate("photos") { launchSingleTop = true } },
                         )
                     }
                     composable("anomaly_detection") {

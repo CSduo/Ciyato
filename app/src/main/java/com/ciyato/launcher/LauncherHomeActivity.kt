@@ -489,6 +489,13 @@ private fun LauncherRoot(
                 viewModel.setSearch(it)
                 dest = LauncherDest.Search
             },
+            onOpenPhotos   = {
+                context.startActivity(
+                    Intent(context, MainActivity::class.java).apply {
+                        putExtra(MainActivity.EXTRA_START_DESTINATION, "photos")
+                    },
+                )
+            },
         )
 
         is LauncherDest.AnomalyDetection -> AnomalyDetectionScreen( // Suggestion 37
