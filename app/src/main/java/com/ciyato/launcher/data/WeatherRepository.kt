@@ -5,6 +5,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
 
 /**
  * WeatherRepository — live weather via Open-Meteo + Nominatim.
@@ -85,13 +87,23 @@ object WeatherRepository {
     suspend fun fetchWeather(lat: Double, lon: Double): WeatherState =
         withContext(Dispatchers.IO) {
             try {
-                val forecast = fetchForecastJson(lat, lon)
-                // AQI is supplementary: if it fails, the rest of the forecast
-                // is still correct and useful, so its failure is intentionally
-                // discarded here rather than sinking the whole weather result.
-                val aqiJson = runCatching { fetchAqiJson(lat, lon) }.getOrNull()
-                val cityName = fetchCityName(lat, lon)
-                parseForecast(forecast, aqiJson, cityName)
+                // The forecast is the thing the person asked for. AQI and the
+                // place name are supplements, and they were fetched one after
+                // the other after it - so a slow air-quality endpoint delayed a
+                // forecast that had already arrived, and the weather system felt
+                // broken because an optional service was having a bad day
+                // (F-031).
+                //
+                // They now run concurrently with each other, each with its own
+                // failure handling: AQI failing costs the AQI reading, and the
+                // geocoder failing costs the place name. Neither can sink a
+                // forecast that succeeded.
+                coroutineScope {
+                    val aqiDeferred = async { runCatching { fetchAqiJson(lat, lon) }.getOrNull() }
+                    val cityDeferred = async { fetchCityName(lat, lon) }
+                    val forecast = fetchForecastJson(lat, lon)
+                    parseForecast(forecast, aqiDeferred.await(), cityDeferred.await())
+                }
             } catch (e: java.net.UnknownHostException) {
                 WeatherState.Offline
             } catch (e: Exception) {
@@ -307,13 +319,20 @@ object WeatherRepository {
         val hRain    = hrly.getJSONArray("precipitation_probability")
         val hIsDay   = hrly.getJSONArray("is_day")
 
-        val nowHour  = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-        val nowDate  = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-            .format(java.util.Date())
-        val startIdx = (0 until hTimes.length()).firstOrNull { i ->
-            hTimes.getString(i).startsWith(nowDate) &&
-            hTimes.getString(i).substringAfter("T").take(2).toIntOrNull() == nowHour
-        } ?: 0
+        // "Now" at the FORECAST location, not on this phone.
+        //
+        // The request asks for timezone=auto, so every stamp below is local time
+        // where the weather is. Matching them against the device's calendar
+        // agreed only while the two zones happened to match, and fell back to
+        // index 0 - midnight of the first forecast day - when they did not
+        // (F-032). The response hands us utc_offset_seconds for exactly this.
+        val utcOffsetSeconds = json.optInt("utc_offset_seconds", 0)
+        val timeList = (0 until hTimes.length()).map { hTimes.getString(it) }
+        val startIdx = ForecastClock.hourlyStartIndex(
+            times = timeList,
+            nowUtcMillis = System.currentTimeMillis(),
+            utcOffsetSeconds = utcOffsetSeconds,
+        )
 
         val hourlyEntries = (startIdx until minOf(startIdx + 24, hTimes.length())).map { i ->
             HourlyEntry(

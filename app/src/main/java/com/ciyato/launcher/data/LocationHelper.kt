@@ -55,13 +55,25 @@ object LocationHelper {
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
             ?: return null
 
-        // Prefer GPS only when the user opted in to precise location.
+        // A cached fix is used only if it is actually current.
+        //
+        // getLastKnownLocation has no upper bound on age, and this accepted
+        // whatever it returned. Ranking providers by age is not the same as
+        // rejecting a stale answer - when every cache is a day old, the freshest
+        // is still a day old. Land after a flight and Home named the city you
+        // left, next to a temperature, with no sign anything was wrong (F-030).
         bestOf(
             if (hasPrecisePermission(context)) lm.getLastKnownSafe(LocationManager.GPS_PROVIDER) else null,
             lm.getLastKnownSafe(LocationManager.NETWORK_PROVIDER),
-        )?.let { return it.toLatLon() }
+        )?.takeIf {
+            LocationFreshness.isUsable(
+                fixTimeMs = it.time,
+                nowMs = System.currentTimeMillis(),
+                accuracyM = if (it.hasAccuracy()) it.accuracy else null,
+            )
+        }?.let { return it.toLatLon() }
 
-        // Request a fresh fix with an 8-second timeout.
+        // Nothing cached, or nothing cached recently enough: ask for a new one.
         return withTimeoutOrNull(8_000L) {
             // Network provider only: the result is coarsened to two decimals
             // regardless, so waking GPS would spend battery for accuracy that
