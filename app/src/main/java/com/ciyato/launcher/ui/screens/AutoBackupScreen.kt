@@ -88,7 +88,7 @@ fun AutoBackupScreen(
     // Keep the WorkManager schedule consistent with the persisted setting —
     // this is what runs the backup even when nobody opens this screen.
     LaunchedEffect(autoEnabled, folderUriRaw) {
-        if (autoEnabled && folderUriRaw.isNotBlank()) PhotoBackupWorker.schedule(context)
+        if (autoEnabled && folderUriRaw.isNotBlank()) PhotoBackupWorker.schedule(context, folderUriRaw)
         else PhotoBackupWorker.cancel(context)
     }
 

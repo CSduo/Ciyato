@@ -108,6 +108,7 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
+import android.net.Uri
 
 private enum class LibraryTab(val label: String) {
     COLLECTIONS("Collections"), GRID("Grid"), TIMELINE("Timeline"), TRASH("Trash")
@@ -235,6 +236,8 @@ fun PhotosLibraryScreen(
 
     var images by remember { mutableStateOf<List<DeviceImage>>(emptyList()) }
     var trashed by remember { mutableStateOf<List<DeviceImage>>(emptyList()) }
+    // Non-null while an irreversible (pre-Android-11) delete awaits confirmation.
+    var pendingLegacyDelete by remember { mutableStateOf<List<Uri>?>(null) }
     // What MediaStore actually holds, so a capped list is never described as the
     // whole library (F-107).
     var libraryTotal by remember { mutableStateOf(0) }
@@ -300,6 +303,19 @@ fun PhotosLibraryScreen(
         // so a delete here is final. Restore can't be reached on those
         // versions — nothing can be trashed in the first place.
         if (op == MediaOp.RESTORE) return
+
+        // On API 30+ Android itself shows a consent dialog before anything is
+        // removed, and the removal is reversible from the system trash. Here
+        // there is neither: the files go, immediately, and this used to happen
+        // with no confirmation at all — just a toast afterwards saying
+        // "Deleted 12". Ciyato shows a Trash tab on newer devices, so "delete"
+        // reads as reversible unless this screen says otherwise (F-062).
+        pendingLegacyDelete = uris
+        return
+    }
+
+    /** Performs the irreversible delete once the person has confirmed it. */
+    fun performLegacyDelete(uris: List<Uri>) {
         scanScope.launch {
             val removed = PhotoDeviceLibrary.deleteDirectly(context, uris)
             selected = emptySet()
@@ -591,6 +607,38 @@ fun PhotosLibraryScreen(
 
     actionSheetFor?.let { image ->
         PhotoActionSheet(image = image, onDismiss = { actionSheetFor = null })
+    }
+
+    pendingLegacyDelete?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { pendingLegacyDelete = null },
+            containerColor = CiyatoBgEl,
+            title = { Text("Delete permanently?", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
+            text = {
+                Text(
+                    "This version of Android has no system trash, so " +
+                        pluralStringResource(R.plurals.count_photos, pending.size, pending.size) +
+                        " will be removed for good. There is nothing to restore them from.",
+                    color = CiyatoSec,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val toDelete = pending
+                    pendingLegacyDelete = null
+                    performLegacyDelete(toDelete)
+                }) {
+                    Text("Delete permanently", color = CiyatoRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLegacyDelete = null }) {
+                    Text("Keep", color = CiyatoSec)
+                }
+            },
+        )
     }
 
     if (confirmPurgeAll) {

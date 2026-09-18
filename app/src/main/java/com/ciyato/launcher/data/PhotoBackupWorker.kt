@@ -265,19 +265,80 @@ class PhotoBackupWorker(appContext: Context, params: WorkerParameters) : Corouti
     }
 
     companion object {
+
+        /**
+         * Local-storage document providers. Anything else may be a cloud mount.
+         *
+         * A SAF destination is whatever folder the person picked, and that can
+         * be Drive, OneDrive or an SMB share as easily as internal storage.
+         * Periodic backup only required storage-not-low, so a daily copy of a
+         * large photo library could run over a metered connection or fail
+         * repeatedly offline (F-011).
+         *
+         * Requiring a network unconditionally would be the opposite mistake: a
+         * backup to internal storage must still run on a phone in flight mode.
+         * So the constraint follows the destination.
+         */
+        private val LOCAL_AUTHORITIES = setOf(
+            "com.android.externalstorage.documents",
+            "com.android.providers.media.documents",
+            "com.android.providers.downloads.documents",
+        )
+
+        /**
+         * True when the destination is not demonstrably local storage.
+         *
+         * The authority is taken from the string rather than via `Uri.parse`.
+         * That is not a style preference: `android.net.Uri` is a
+         * non-functional stub in JVM unit tests, so a `parse`-based version
+         * reported every destination as local when tested — the tests passed
+         * while proving nothing. A `content://` authority is the text between
+         * the scheme and the next slash, which needs no framework.
+         */
+        internal fun isLikelyNetworkBacked(destinationUri: String): Boolean {
+            val afterScheme = destinationUri.substringAfter("://", missingDelimiterValue = "")
+            val authority = afterScheme.substringBefore('/').substringBefore('?').lowercase()
+            if (authority.isBlank()) return false
+            return authority !in LOCAL_AUTHORITIES
+        }
+
+        /**
+         * Battery is required either way — an unattended daily copy should never
+         * be the reason a phone dies. The network condition is added only for a
+         * destination that plausibly needs one.
+         */
+        internal fun constraintsFor(destinationUri: String): Constraints =
+            Constraints.Builder()
+                .setRequiresStorageNotLow(true)
+                .setRequiresBatteryNotLow(true)
+                .apply {
+                    if (isLikelyNetworkBacked(destinationUri)) {
+                        setRequiredNetworkType(androidx.work.NetworkType.UNMETERED)
+                    }
+                }
+                .build()
+
         const val PROGRESS_DONE = "done"
         const val PROGRESS_TOTAL = "total"
         private const val WORK_NAME = "ciyato-photo-backup-auto"
         private val PERIOD = 24L to TimeUnit.HOURS
 
-        /** Idempotent: safe to call every time the setting/folder is (re)confirmed. */
-        fun schedule(context: Context) {
+        /**
+         * Idempotent: safe to call every time the setting/folder is (re)confirmed.
+         *
+         * @param destinationUri the chosen SAF tree. Its provider decides whether
+         *   this work needs a network (see [constraintsFor]).
+         */
+        fun schedule(context: Context, destinationUri: String) {
             val request = PeriodicWorkRequestBuilder<PhotoBackupWorker>(PERIOD.first, PERIOD.second)
-                .setConstraints(Constraints.Builder().setRequiresStorageNotLow(true).build())
+                .setConstraints(constraintsFor(destinationUri))
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                // UPDATE, not KEEP: the constraints depend on the destination, and
+                // KEEP would leave yesterday's work in place with yesterday's
+                // constraints after someone repoints the backup folder.
+                ExistingPeriodicWorkPolicy.UPDATE,
                 request,
             )
         }

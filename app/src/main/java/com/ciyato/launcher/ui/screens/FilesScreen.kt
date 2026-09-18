@@ -733,11 +733,34 @@ private fun CleanupReviewCard(
                         )
                     }
                     if (cleanupResult.wasBounded) {
-                        Text("Analysis was capped for battery and storage safety.", color = CiyatoMuted, fontSize = 12.sp)
+                        Text(
+                            "Partial scan — ${cleanupResult.inspectedEntries} entries inspected, " +
+                                "${cleanupResult.hashedFiles} compared byte for byte. The scan stops " +
+                                "at a size and entry cap so it cannot run the battery down on a deep " +
+                                "tree, so there may be more duplicates it never reached.",
+                            color = CiyatoMuted,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                        )
                     }
                 }
                 cleanupResult != null -> Text(
-                    "No verified duplicates were found among ${cleanupResult.hashedFiles} same-size candidates. ${if (cleanupResult.wasBounded) "The analysis was capped for safety." else "No files were changed."}",
+                    // A bounded scan leads with its limit rather than appending
+                    // it. "No duplicates were found. The analysis was capped"
+                    // reads as an answer with a footnote, and people take the
+                    // answer — but the finding is only valid inside the subset
+                    // that was actually inspected (F-061).
+                    if (cleanupResult.wasBounded) {
+                        "Partial scan: no duplicates among the " +
+                            "${cleanupResult.hashedFiles} candidates compared, out of " +
+                            "${cleanupResult.inspectedEntries} entries inspected. The scan stops at " +
+                            "a size and entry cap, so this does not clear the whole folder — " +
+                            "run it on a smaller folder to check the rest."
+                    } else {
+                        "No duplicates found. All ${cleanupResult.hashedFiles} same-size " +
+                            "candidates in this folder were compared byte for byte, and no files " +
+                            "were changed."
+                    },
                     color = CiyatoSec,
                     fontSize = 13.sp,
                     lineHeight = 19.sp,

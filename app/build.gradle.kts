@@ -122,7 +122,12 @@ android {
         buildConfigField("String",  "WEATHER_BASE_URL",    "\"https://api.open-meteo.com/v1\"")
         buildConfigField("String",  "AQI_BASE_URL",        "\"https://air-quality-api.open-meteo.com/v1\"")
         buildConfigField("String",  "GEOCODE_BASE_URL",    "\"https://nominatim.openstreetmap.org\"")
-        buildConfigField("String",  "GITHUB_RELEASES_URL", "\"https://api.github.com/repos/ciyato/launcher/releases/latest\"")
+        // GITHUB_RELEASES_URL was removed rather than corrected (F-005). It
+        // pointed at github.com/ciyato/launcher — a different project from
+        // CSduo/Ciyato — and nothing in src/ ever read it. A dead constant that
+        // names a plausible endpoint is worse than no constant: it tells the
+        // next maintainer an update check exists. If in-app update checking is
+        // ever built, it should arrive with the code that uses it.
         buildConfigField("long",    "WEATHER_CACHE_TTL_MS","1800000L")   // 30 min
         buildConfigField("int",     "MAX_CRASH_LOGS",      "10")
         buildConfigField("boolean", "IS_INTERNAL",         "false")
