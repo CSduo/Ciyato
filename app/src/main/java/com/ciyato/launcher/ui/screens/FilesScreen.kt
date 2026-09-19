@@ -413,9 +413,22 @@ private fun FilesHomeContent(
                 title = "Files",
                 onBack = onBack,
                 actions = {
-                    if (rootUri != null) {
+                    // The handler has always supported an all-files refresh and
+                    // says so in a comment — but the icon was gated on a SAF
+                    // root existing, so the one mode where stale state is most
+                    // likely (a broad scan of the whole device) was the one mode
+                    // with no way to refresh it (F-088).
+                    if (rootUri != null || allFilesGranted) {
                         IconButton(onClick = onRefresh) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh selected folder", tint = CiyatoSec)
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = if (rootUri != null) {
+                                    "Refresh selected folder"
+                                } else {
+                                    "Rescan internal storage"
+                                },
+                                tint = CiyatoSec,
+                            )
                         }
                     }
                     IconButton(onClick = onOpenBrowser) {

@@ -428,6 +428,7 @@ private fun GrantAccessCard(
     onEnable: () -> Unit,
     lostAccessReason: String? = null,
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -459,7 +460,17 @@ private fun GrantAccessCard(
             Text("Choose Folder", color = CiyatoBg, fontWeight = FontWeight.Bold)
         }
         Text(
-            "Uses Android Storage Access Framework · No broad storage access",
+            // Was "No broad storage access", which is true in this branch and
+            // false in the other one: Ciyato does offer All files access, and
+            // this same browser uses it when granted. Copy that is true on one
+            // code path and false on another is worse than vague copy, because
+            // it is a permission claim (F-091).
+            if (FileAccess.hasAllFiles(context)) {
+                "All files access is on — Ciyato can read storage directly. " +
+                    "Choosing a folder here scopes this browser to it."
+            } else {
+                "Uses Android Storage Access Framework · Ciyato reads only the folder you choose"
+            },
             color = CiyatoMuted,
             fontSize = 11.sp,
             textAlign = TextAlign.Center,

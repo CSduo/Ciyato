@@ -112,7 +112,9 @@ fun RecentFilesScreen(
         topBar = {
             CiyatoTopBar(
                 title = "Recent Files",
-                subtitle = "Recently modified · tap to open, tag to organize",
+                // Says which dataset this is. "Recently modified" alone reads
+                // as everything on the device (F-202, F-078).
+                subtitle = "Recently modified media · tap to open, tag to organize",
                 onBack = onBack,
             )
         },
@@ -146,7 +148,9 @@ fun RecentFilesScreen(
                     CiyatoEmptyState(
                         icon = Icons.Default.FolderOff,
                         title = "No recent files",
-                        subtitle = "Nothing on this device has been modified recently.",
+                        // An empty media list is not evidence the device is idle.
+                        subtitle = "No photos, videos or audio have changed recently. " +
+                            "Documents are not included here — browse them in Files.",
                         modifier = Modifier.padding(32.dp),
                     )
                 }
@@ -232,7 +236,15 @@ private fun RecentFilesPermissionCard(onGrant: () -> Unit) {
         Icon(Icons.Default.FolderOpen, null, tint = CiyatoGold, modifier = Modifier.size(26.dp))
         Text("Media access needed", color = CiyatoWhite, style = headingM)
         Text(
-            "Ciyato needs photo, video, and audio access to show your recently modified files across the device.",
+            // Was "your recently modified files across the device", which the
+            // permissions being requested on the same screen cannot deliver:
+            // images, video and audio are media permissions, and documents,
+            // archives and app data are simply not visible through them. The
+            // sentence named the permission set and then over-claimed what it
+            // buys (F-202).
+            "Ciyato needs photo, video and audio access to list what changed recently. " +
+                "Those permissions cover media only — documents and other files stay " +
+                "invisible unless you open them through Files.",
             color = CiyatoMuted,
             style = bodyM,
         )

@@ -72,6 +72,12 @@ data class ParsedQuery(
 fun NlFileSearchScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
+    /**
+     * Opens Files, which is what builds the internal-storage index this screen
+     * searches in all-files mode. Required rather than defaulted: the recovery
+     * path for F-099 must not be a no-op.
+     */
+    onOpenFiles: () -> Unit,
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -88,6 +94,8 @@ fun NlFileSearchScreen(
     var results by remember { mutableStateOf<List<NlFileResult>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var hasSearched by remember { mutableStateOf(false) }
+    /** True when an all-files search failed for want of an index, not for want of matches. */
+    var needsIndexBuild by remember { mutableStateOf(false) }
     var isSelectedFolderReadable by remember(selectedRoot) { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
     // With All-files access there is no SAF folder to require, and Files
@@ -124,18 +132,25 @@ fun NlFileSearchScreen(
             // local index lookup feel like remote work (F-094). Removing it is a
             // straight latency win; nothing depended on the pause.
             if (selectedRoot == null) {
-                // All-files mode: the index Files built over internal storage
-                // is the only source — there is no SAF tree to walk as a
-                // fallback, so an unbuilt index means no results rather than
-                // a silent, folder-scoped search that looks like a bug.
-                val parsed = parseNlQuery(q)
-                results = fileSearchIndex
+                // All-files mode: the index Files built over internal storage is
+                // the only source — there is no SAF tree to walk as a fallback.
+                //
+                // An unbuilt index used to produce an empty result set, which
+                // renders as "No files found — try a different query". That is a
+                // hidden prerequisite across two screens presented as a failed
+                // search: the person rephrases their query forever while the
+                // actual problem is that Files has never run (F-099). The two
+                // states are distinguished now, and the recovery is offered
+                // inline rather than left to be guessed.
+                val usableIndex = fileSearchIndex
                     ?.takeIf { index -> index.rootUri == FileAccess.INDEX_KEY_INTERNAL }
-                    ?.let { index -> searchIndexedFiles(index, parsed) }
-                    .orEmpty()
+                needsIndexBuild = usableIndex == null
+                val parsed = parseNlQuery(q)
+                results = usableIndex?.let { index -> searchIndexedFiles(index, parsed) }.orEmpty()
                 viewModel.recordFileSearch(q)
                 return
             }
+            needsIndexBuild = false
             if (!isReadableTree(context, selectedRoot)) {
                 isSelectedFolderReadable = false
                 viewModel.clearFileSearchIndex()
@@ -284,12 +299,42 @@ fun NlFileSearchScreen(
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("🔍", fontSize = 40.sp)
-                            Spacer(Modifier.height(8.dp))
-                            Text("No files found", color = CiyatoWhite, fontSize = 18.sp,
-                                fontWeight = FontWeight.SemiBold)
-                            Text("Try a different query like \"photos from last week\"", color = CiyatoMuted,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            if (needsIndexBuild) {
+                                // Not "no files found" — nothing was searched.
+                                Text(
+                                    "Storage hasn't been indexed yet",
+                                    color = CiyatoWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "With All files access, search reads an index that Files builds. " +
+                                        "Open Files once to build it, then this search will work.",
+                                    color = CiyatoMuted,
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    "Open Files",
+                                    color = CiyatoBg,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .background(CiyatoGold)
+                                        .clickable { onOpenFiles() }
+                                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                                )
+                            } else {
+                                Text("🔍", fontSize = 40.sp)
+                                Spacer(Modifier.height(8.dp))
+                                Text("No files found", color = CiyatoWhite, fontSize = 18.sp,
+                                    fontWeight = FontWeight.SemiBold)
+                                Text("Try a different query like \"photos from last week\"", color = CiyatoMuted,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            }
                         }
                     }
                 }

@@ -302,6 +302,7 @@ class MainActivity : FragmentActivity() {
                         NlFileSearchScreen(
                             viewModel = viewModel,
                             onBack = { navController.popBackStack() },
+                            onOpenFiles = { navController.navigate("files") { launchSingleTop = true } },
                         )
                     }
 
