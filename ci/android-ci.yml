@@ -1,0 +1,97 @@
+name: Android CI
+
+# Replaces android-debug.yml, which never ran a single successful job in this
+# repository (F-001, F-190). Every step set `working-directory: ciyato-android`,
+# a folder that does not exist here - the app module is at the repo root - so the
+# workflow failed before reaching Gradle on every push. A red build that has
+# always been red teaches people to ignore the badge, which is worse than having
+# no CI at all.
+#
+# It also only ever built a debug APK. The audit asks CI to validate what is
+# actually shipped, so this runs the same gates used locally (unit tests and
+# lint, with lint failing the build on errors) and additionally verifies that a
+# release bundle assembles.
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+# A second push should cancel the first rather than queue behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Tests, lint and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK 17 matches the toolchain this project is verified against. Local
+      # builds have been green on 21 as well; the discrepancy is recorded in
+      # CLAUDE_VALIDATION.md rather than being papered over here.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      # Tests before lint: a failing assertion is a more useful first signal
+      # than a style violation.
+      - name: Unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      # lintDebug is configured to fail the build on errors. Two real errors
+      # were fixed under that gate (a NewApi attribute on minSdk 26, and an
+      # undeclared QUERY_ALL_PACKAGES justification), so it earns its place.
+      - name: Android lint
+        run: ./gradlew --no-daemon lintDebug
+
+      - name: Assemble debug APK
+        run: ./gradlew --no-daemon assembleDebug
+
+      # The bundle is what Play actually receives. Building it here catches
+      # release-only breakage - resource shrinking, ProGuard rules, manifest
+      # merging - that a debug build never exercises.
+      #
+      # Unsigned on CI by design: the upload keystore is not available to this
+      # workflow and must not be. build.gradle.kts creates the signing config
+      # only when credentials are present, and fails the build if a release task
+      # runs without them locally, so this verifies assembly rather than
+      # producing a publishable artifact.
+      - name: Assemble release bundle (unsigned, verification only)
+        run: ./gradlew --no-daemon bundleRelease -PciyatoAllowUnsignedRelease=true
+
+      - name: Upload test and lint reports
+        # Reports matter most when something failed.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

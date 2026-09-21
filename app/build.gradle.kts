@@ -19,7 +19,24 @@ gradle.taskGraph.whenReady {
         task.name.contains("Release") &&
             (task.name.startsWith("assemble") || task.name.startsWith("bundle"))
     }
-    if (wantsRelease && project.extensions.getByType(com.android.build.gradle.AppExtension::class.java)
+    // CI needs to prove the release variant still ASSEMBLES — ProGuard rules,
+    // resource shrinking and manifest merging are release-only and a debug build
+    // never exercises them — without holding the upload key, which it must not.
+    //
+    // The opt-out is an explicit, awkwardly-named property rather than an
+    // automatic "skip if on CI" check, because the failure this guard prevents
+    // (shipping a debug-signed or unsigned artifact) is worse than the
+    // inconvenience of typing it. Anything built this way is an assembly check,
+    // not a publishable artifact.
+    val allowUnsigned = project.findProperty("ciyatoAllowUnsignedRelease") == "true"
+    if (allowUnsigned && wantsRelease) {
+        logger.lifecycle(
+            "ciyatoAllowUnsignedRelease=true: building an UNSIGNED release for verification only. " +
+                "This artifact cannot be uploaded to Play.",
+        )
+    }
+    if (wantsRelease && !allowUnsigned &&
+        project.extensions.getByType(com.android.build.gradle.AppExtension::class.java)
             .signingConfigs.findByName("upload") == null
     ) {
         throw GradleException(
