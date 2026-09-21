@@ -71,6 +71,8 @@ import com.ciyato.launcher.ui.theme.CiyatoSec
 import com.ciyato.launcher.ui.theme.CiyatoShapes
 import com.ciyato.launcher.ui.theme.CiyatoWhite
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import androidx.compose.runtime.derivedStateOf
+import com.ciyato.launcher.data.MediaAccess
 
 /**
  * Organizer home — a real file/storage dashboard.
@@ -97,14 +99,20 @@ fun DashboardScreen(
     val context = LocalContext.current
     val mediaRepo = remember { MediaLibraryRepository(context) }
 
-    var hasPermission by remember { mutableStateOf(mediaRepo.hasMediaPermission()) }
+    // The access LEVEL, not a boolean. hasMediaPermission() answers true for
+    // Android 14's "Select photos" partial grant, where MediaStore reports only
+    // the hand-picked subset — so every category count below would describe that
+    // subset while being presented as the device's library (F-082). Same defect
+    // as F-115 in Storage Cleanup, same owner reused.
+    var access by remember { mutableStateOf(MediaAccess.of(context)) }
+    val hasPermission by remember { derivedStateOf { access.canSeeAnything } }
     var summaries by remember { mutableStateOf<Map<CategoryKey, MediaLibraryRepository.CategorySummary>>(emptyMap()) }
     var recents by remember { mutableStateOf<List<MediaLibraryRepository.LibraryFile>>(emptyList()) }
     val storage = remember { mediaRepo.storageSummary() }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { hasPermission = mediaRepo.hasMediaPermission() }
+    ) { access = MediaAccess.of(context) }
 
     // Re-check on every resume so granting from system Settings (the only path
     // left after a permanent denial) updates the dashboard without a restart.
@@ -112,15 +120,15 @@ fun DashboardScreen(
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                hasPermission = mediaRepo.hasMediaPermission()
+                access = MediaAccess.of(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(hasPermission) {
-        if (hasPermission) {
+    LaunchedEffect(access) {
+        if (access.canSeeAnything) {
             summaries = mediaRepo.categorySummaries()
             recents = mediaRepo.recentFiles(limit = 10)
         }
@@ -144,7 +152,7 @@ fun DashboardScreen(
         }
 
         item {
-            StorageOverviewCard(storage = storage, onReview = onOpenFiles)
+            StorageOverviewCard(storage = storage, access = access, onReview = onOpenFiles)
         }
 
         if (!hasPermission) {
@@ -214,6 +222,13 @@ fun DashboardScreen(
 @Composable
 private fun StorageOverviewCard(
     storage: MediaLibraryRepository.StorageSummary,
+    /**
+     * How much of the library the category counts below could see.
+     *
+     * Passed in rather than re-derived, so the caption under the ring cannot
+     * drift from the data it is describing (F-084).
+     */
+    access: MediaAccess,
     onReview: () -> Unit,
 ) {
     Row(
@@ -241,6 +256,22 @@ private fun StorageOverviewCard(
                 "of ${MediaLibraryRepository.formatBytes(storage.totalBytes)} total",
                 color = CiyatoMuted,
                 fontSize = 13.sp,
+            )
+            // These two numbers are not commensurable and sat side by side as if
+            // they were. The ring is whole-partition usage from StatFs, which
+            // needs no permission and includes the OS and every app. The category
+            // counts below come from MediaStore and only ever describe what
+            // Ciyato is allowed to see, so they can never sum to it — and under a
+            // partial grant they are a subset of a subset (F-084).
+            Text(
+                if (access.totalsAreComplete) {
+                    "Whole device, including the system and other apps"
+                } else {
+                    "Whole device. The categories below cover only what Ciyato can see"
+                },
+                color = CiyatoMuted,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
             )
         }
     }

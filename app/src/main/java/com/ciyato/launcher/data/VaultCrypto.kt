@@ -38,7 +38,23 @@ object VaultCrypto {
     private val MAGIC: Byte = 0xC7.toByte()
     private const val VERSION: Byte = 1
     private const val HEADER_SIZE = 3 // magic + version + ivLen
-    private const val TEMP_MARKER = ".vaulttmp"
+    /**
+     * In-progress writes live in their own directory, not beside real files.
+     *
+     * They used to be siblings distinguished by a `.vaulttmp` substring in the
+     * name — and vault filenames come from the imported file, unsanitised. So
+     * importing anything called `notes.vaulttmp.txt` produced a real vault file
+     * that the substring test classified as an orphaned temp artifact: hidden
+     * from the list immediately after a "successful" import, then **deleted
+     * outright on the next unlock**, with none of the confirmation the real
+     * delete path requires.
+     *
+     * That is the same misclassification the legacy-migration hardening was
+     * about, one layer up and over attacker- or accident-controlled input. A
+     * separate directory makes it structurally impossible rather than merely
+     * unlikely: a real vault file is never in here, whatever it is called.
+     */
+    private const val TEMP_DIR_NAME = ".ciyato-vault-staging"
 
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
@@ -113,7 +129,10 @@ object VaultCrypto {
      */
     private fun writeAtomically(file: File, bytes: ByteArray) {
         val parent = checkNotNull(file.parentFile) { "Vault file has no parent directory" }
-        val tmp = File(parent, "${file.name}$TEMP_MARKER${System.nanoTime()}")
+        // Same filesystem as the destination, so the rename below is still
+        // atomic; a subdirectory does not cross a mount point.
+        val staging = File(parent, TEMP_DIR_NAME).apply { mkdirs() }
+        val tmp = File(staging, "${System.nanoTime()}.part")
         try {
             FileOutputStream(tmp).use { out ->
                 out.write(bytes)
@@ -200,10 +219,65 @@ object VaultCrypto {
         writeAtomically(file, reEncrypted)
     }
 
+    /** The staging directory inside [vaultDir], where interrupted writes are left. */
+    fun stagingDir(vaultDir: File): File = File(vaultDir, TEMP_DIR_NAME)
+
     /**
-     * True for a leftover [storeFile] temp file — the process can die between the temp write
-     * finishing and the rename that swaps it in. Never the real vault file: it's safe to delete
-     * outright, since the file it would have replaced was never touched until that rename step.
+     * True for the staging directory itself, so listings can skip it.
+     *
+     * Deliberately an exact name match on a directory, not a substring test over
+     * a filename. The previous substring form could classify a real vault file
+     * as disposable purely because of what the person had called it.
      */
-    fun isTempArtifact(name: String): Boolean = name.contains(TEMP_MARKER)
+    fun isStagingEntry(file: File): Boolean = file.isDirectory && file.name == TEMP_DIR_NAME
+
+    /**
+     * Deletes interrupted writes. Safe by construction: everything in the
+     * staging directory is a partial write whose destination was never touched,
+     * because the swap-in is a rename that either happened or did not.
+     */
+    fun clearStaging(vaultDir: File) {
+        stagingDir(vaultDir).listFiles()?.forEach { it.delete() }
+    }
+
+    /**
+     * Strips anything that could confuse vault bookkeeping out of an imported
+     * name, and guarantees a non-empty result.
+     *
+     * Defence in depth rather than the primary fix — the staging directory
+     * already makes misclassification impossible — but a filename arriving from
+     * a content provider is untrusted input and should not carry path
+     * separators or traversal segments into a File constructor.
+     */
+    fun sanitiseImportName(raw: String?): String {
+        val illegal = setOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')
+        val base = (raw ?: "")
+            .substringAfterLast('/')
+            .map { ch -> if (ch in illegal || ch.code < 32) '_' else ch }
+            .joinToString("")
+            .trim()
+            .trimStart('.')
+            .take(120)
+        return base.ifBlank { "file_" + System.currentTimeMillis() }
+    }
+
+    /**
+     * A destination that will not overwrite an existing vault file.
+     *
+     * `writeAtomically` finishes with `renameTo`, and POSIX rename silently
+     * replaces its destination — so importing a second `IMG_20240101_120000.jpg`
+     * destroyed the first one's ciphertext with no warning and no way back.
+     * Camera, screenshot and download names collide constantly; this is ordinary
+     * use, not an edge case.
+     */
+    fun uniqueDestination(vaultDir: File, encryptedName: String): File {
+        val direct = File(vaultDir, encryptedName)
+        if (!direct.exists()) return direct
+        val stem = encryptedName.removeSuffix(".enc")
+        for (n in 1..9_999) {
+            val candidate = File(vaultDir, "$stem ($n).enc")
+            if (!candidate.exists()) return candidate
+        }
+        return File(vaultDir, "$stem-${System.currentTimeMillis()}.enc")
+    }
 }

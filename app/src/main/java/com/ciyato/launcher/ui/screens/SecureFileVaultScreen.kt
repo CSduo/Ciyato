@@ -105,7 +105,10 @@ fun SecureFileVaultScreen(
     suspend fun refreshVaultFiles() {
         vaultFiles = withContext(Dispatchers.IO) {
             vaultDir.listFiles()
-                ?.filterNot { VaultCrypto.isTempArtifact(it.name) }
+                // Skip the staging directory itself. This used to be a substring
+                // test over the FILENAME, which hid any real vault file whose
+                // name happened to contain the marker.
+                ?.filterNot { VaultCrypto.isStagingEntry(it) }
                 ?.map { it.name }
                 ?: emptyList()
         }
@@ -121,9 +124,17 @@ fun SecureFileVaultScreen(
         isUnlocked = true
         scope.launch {
             val failed = withContext(Dispatchers.IO) {
-                val entries = vaultDir.listFiles() ?: emptyArray()
-                val (orphans, files) = entries.partition { VaultCrypto.isTempArtifact(it.name) }
-                orphans.forEach { it.delete() }
+                // Interrupted writes are deleted by directory, not by name.
+                //
+                // The name-based form deleted real vault files outright, with
+                // none of the confirmation the ordinary delete path requires,
+                // whenever an imported filename contained the temp marker.
+                // Everything inside the staging directory is a partial write
+                // whose destination was never touched, so clearing it is safe by
+                // construction rather than by hoping names behave.
+                VaultCrypto.clearStaging(vaultDir)
+                val files = (vaultDir.listFiles() ?: emptyArray())
+                    .filterNot { VaultCrypto.isStagingEntry(it) }
                 // Decrypted copies from a previous session's "open" do not
                 // outlive that session.
                 File(context.cacheDir, "vault_open").listFiles()?.forEach { it.delete() }
@@ -185,8 +196,15 @@ fun SecureFileVaultScreen(
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val name = uri.lastPathSegment?.substringAfterLast('/') ?: "file_${System.currentTimeMillis()}"
-                    val dest = File(vaultDir, "$name.enc")
+                    // A content provider's last path segment is untrusted text.
+                    val name = VaultCrypto.sanitiseImportName(uri.lastPathSegment)
+                    // Never silently replace an existing vault file. storeFile
+                    // ends in renameTo, and POSIX rename overwrites its
+                    // destination without a word — so importing a second
+                    // IMG_20240101_120000.jpg destroyed the first one's
+                    // ciphertext with no warning and nothing to recover from.
+                    // Camera, screenshot and download names collide constantly.
+                    val dest = VaultCrypto.uniqueDestination(vaultDir, "$name.enc")
 
                     // Size is checked before the file is read, not after.
                     // Encryption here holds the plaintext, the ciphertext and

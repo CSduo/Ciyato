@@ -65,10 +65,4 @@ class VaultRejectionTest {
         // Android heap is 192-512 MB, so the limit must stay well under a third.
         assertTrue("limit of $mb MB risks OOM under whole-file encryption", mb <= 128)
     }
-
-    @Test
-    fun `temp artifacts are identifiable so they can be swept safely`() {
-        assertTrue(VaultCrypto.isTempArtifact("notes.pdf.enc.vaulttmp12345"))
-        assertTrue(!VaultCrypto.isTempArtifact("notes.pdf.enc"))
-    }
 }
