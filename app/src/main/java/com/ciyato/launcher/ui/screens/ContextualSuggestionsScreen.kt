@@ -42,7 +42,14 @@ data class AppSuggestion(
     val packageName: String,
     val appLabel: String,
     val reason: String,
-    val confidence: Float,
+    /**
+     * Hours this app was in the foreground over the query window.
+     *
+     * Replaces a `confidence: Float` that was this same number rescaled and
+     * clamped, then printed as a percentage (F-123). Keeping the raw measure
+     * means the screen can only display something that was actually measured.
+     */
+    val weeklyHours: Float,
     val timeSlot: String,
 )
 
@@ -212,8 +219,20 @@ private fun SuggestionCard(suggestion: AppSuggestion, viewModel: LauncherViewMod
                 Text(suggestion.appLabel, color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Text(suggestion.reason, color = CiyatoMuted, fontSize = 12.sp)
             }
-            Text("${(suggestion.confidence * 100).toInt()}%", color = CiyatoSec, fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold)
+            // Shows the evidence, not a manufactured probability.
+            //
+            // This was a percentage derived from (usageHours / 2) clamped to
+            // 0.4..0.95 - a rescaled duration wearing the costume of a
+            // confidence score. A percentage implies uncertainty was measured,
+            // and none was: there is no model, no prediction, nothing to be
+            // confident about. Rendering the hours is the same information
+            // without the false precision (F-123).
+            Text(
+                String.format(java.util.Locale.getDefault(), "%.1fh", suggestion.weeklyHours),
+                color = CiyatoSec,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
     }
 }
@@ -249,7 +268,7 @@ private fun buildContextualSuggestions(
                     packageName = stat.packageName,
                     appLabel = label,
                     reason = "Used ${String.format(java.util.Locale.getDefault(), "%.1f", usageHours)}h this week — often at this time",
-                    confidence = (usageHours / 2f).coerceIn(0.4f, 0.95f),
+                    weeklyHours = usageHours,
                     timeSlot = timeSlot,
                 ))
             }

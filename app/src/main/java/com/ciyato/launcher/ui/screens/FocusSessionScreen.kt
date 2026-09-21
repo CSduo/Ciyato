@@ -304,7 +304,19 @@ private fun FocusInfoCard() {
     ) {
         Icon(Icons.Default.Timer, null, tint = CiyatoGold, modifier = Modifier.size(20.dp))
         Text(
-            "Focus Mode hides distracting app categories from your home screen for the chosen duration. Apps are still accessible from the full drawer.",
+            // The second sentence used to promise "Apps are still accessible from
+            // the full drawer". They are not: LauncherViewModel.launchApp refuses
+            // a blocked category regardless of where the tap came from, and the
+            // drawer uses that same function (F-174). Someone relying on the
+            // drawer as an escape hatch found it closed.
+            //
+            // The behaviour is the better one - an escape hatch one tap away is
+            // not much of a focus mode - so the copy is what changes, and it
+            // names the real way out.
+            "Focus Mode hides distracting categories from Home, and Ciyato will not open " +
+                "them from the drawer or search either, for the chosen duration. End the " +
+                "session early whenever you need to - other launchers and notifications " +
+                "are unaffected.",
             color = CiyatoSec, fontSize = 12.sp, lineHeight = 18.sp,
         )
     }

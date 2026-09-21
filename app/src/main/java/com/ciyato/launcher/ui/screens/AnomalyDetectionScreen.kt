@@ -34,6 +34,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.sqrt
+import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.ErrorOutline
+import com.ciyato.launcher.data.UsageAnomalies
 
 /**
  * AnomalyDetectionScreen — Suggestion #37
@@ -57,7 +60,7 @@ fun AnomalyDetectionScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    var anomalies by remember { mutableStateOf<List<UsageAnomaly>>(emptyList()) }
+    var outcome by remember { mutableStateOf<AnomalyOutcome?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var hasPermission by remember { mutableStateOf(hasUsageStatsPermission(context)) }
 
@@ -71,10 +74,10 @@ fun AnomalyDetectionScreen(
     }
 
     LaunchedEffect(hasPermission) {
-        anomalies = if (hasPermission) {
+        outcome = if (hasPermission) {
             withContext(Dispatchers.IO) { detectAnomalies(context) }
         } else {
-            emptyList()
+            null
         }
         isLoading = false
     }
@@ -119,12 +122,69 @@ fun AnomalyDetectionScreen(
                     Text("Grant Permission", color = Color.Black)
                 }
             }
-            anomalies.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // A failure and a clean result are different answers, and now look
+            // different. The reassuring green tick is reserved for an analysis
+            // that actually ran (F-129).
+            outcome is AnomalyOutcome.Unavailable -> Box(
+                Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                ) {
+                    Icon(Icons.Default.ErrorOutline, null, tint = CiyatoMuted, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(8.dp))
+                    Text("Could not analyse usage", color = CiyatoWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        (outcome as AnomalyOutcome.Unavailable).reason,
+                        color = CiyatoMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
+            }
+            outcome is AnomalyOutcome.NotEnoughHistory -> Box(
+                Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                ) {
+                    Icon(Icons.Default.HourglassEmpty, null, tint = CiyatoMuted, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(8.dp))
+                    Text("Not enough history yet", color = CiyatoWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Judging a day needs several finished days before it. Check back " +
+                            "after a few more days of normal use.",
+                        color = CiyatoMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
+            }
+            (outcome as? AnomalyOutcome.Analysed)?.anomalies.isNullOrEmpty() -> Box(
+                Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                ) {
                     Icon(Icons.Default.CheckCircle, null, tint = CiyatoGreen, modifier = Modifier.size(48.dp))
                     Spacer(Modifier.height(8.dp))
-                    Text("No anomalies detected", color = CiyatoWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Your usage patterns look consistent.", color = CiyatoMuted, fontSize = 13.sp)
+                    Text("Nothing unusual", color = CiyatoWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Compared the last finished day against the days before it for " +
+                            ((outcome as AnomalyOutcome.Analysed).appsJudged).toString() + " apps.",
+                        color = CiyatoMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
                 }
             }
             else -> LazyColumn(
@@ -136,7 +196,7 @@ fun AnomalyDetectionScreen(
                     Text("Today's Unusual Usage", color = CiyatoMuted, fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 4.dp))
                 }
-                items(anomalies) { anomaly ->
+                items((outcome as AnomalyOutcome.Analysed).anomalies) { anomaly ->
                     AnomalyCard(anomaly)
                 }
             }
@@ -179,43 +239,77 @@ private fun AnomalyCard(anomaly: UsageAnomaly) {
     }
 }
 
-private fun detectAnomalies(context: Context): List<UsageAnomaly> {
+/**
+ * Analyses the last week of daily usage.
+ *
+ * Two things changed here. The comparison uses complete days only - the day in
+ * progress was being measured against finished ones, so every morning produced a
+ * wave of "unusual drops" that were nothing but the clock (F-128). And a failure
+ * is no longer indistinguishable from a clean result: a thrown query used to
+ * return an empty list, which the screen rendered as "Your usage patterns look
+ * consistent" (F-129).
+ */
+private fun detectAnomalies(context: Context): AnomalyOutcome {
     return try {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()
-        val weekMs = 7L * 24 * 60 * 60 * 1000
-        val dayMs  = 24L * 60 * 60 * 1000
+        // Eight days: seven complete, plus the one in progress that gets dropped.
+        val windowMs = 8L * 24 * 60 * 60 * 1000
 
-        val weekStats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - weekMs, now)
-            .groupBy { it.packageName }
+        val weekStats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - windowMs, now)
+        if (weekStats.isEmpty()) {
+            return AnomalyOutcome.Unavailable(
+                "Android returned no usage history. It can take a day of normal use " +
+                    "before there is anything to compare.",
+            )
+        }
 
+        val byPackage = weekStats.sortedBy { it.firstTimeStamp }.groupBy { it.packageName }
         val pm = context.packageManager
         val results = mutableListOf<UsageAnomaly>()
+        var judged = 0
 
-        weekStats.forEach { (pkg, stats) ->
-            if (stats.size < 3) return@forEach
-            val times = stats.map { it.totalTimeInForeground }
-            val todayMs = times.last()
-            val history = times.dropLast(1)
-            val mean = history.average()
-            val std  = sqrt(history.map { (it - mean) * (it - mean) }.average()).toFloat()
-            if (std < 60_000) return@forEach
-
-            val zScore = ((todayMs - mean) / std).toFloat()
-            if (abs(zScore) >= 2.0f) {
-                val label = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (_: Exception) { pkg }
-                results.add(UsageAnomaly(
+        byPackage.forEach { (pkg, stats) ->
+            val verdict = UsageAnomalies.analyse(stats.map { it.totalTimeInForeground })
+                ?: return@forEach
+            judged++
+            if (!verdict.isUnusual) return@forEach
+            val label = try {
+                pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+            } catch (_: Exception) {
+                pkg
+            }
+            results.add(
+                UsageAnomaly(
                     packageName = pkg,
                     label = label,
-                    todayMs = todayMs,
-                    avgMs = mean.toLong(),
-                    zScore = zScore,
-                    isSpike = zScore > 0,
-                ))
-            }
+                    todayMs = verdict.dayMs,
+                    avgMs = verdict.meanMs,
+                    zScore = verdict.zScore,
+                    isSpike = verdict.isIncrease,
+                ),
+            )
         }
-        results.sortedByDescending { abs(it.zScore) }.take(10)
-    } catch (_: Exception) { emptyList() }
+
+        if (judged == 0) {
+            AnomalyOutcome.NotEnoughHistory(byPackage.size)
+        } else {
+            AnomalyOutcome.Analysed(results.sortedByDescending { abs(it.zScore) }.take(10), judged)
+        }
+    } catch (e: Exception) {
+        // Swallowing this into an empty list is how a failed analysis became a
+        // clean bill of health.
+        AnomalyOutcome.Unavailable(
+            "Usage history could not be read (" + e.javaClass.simpleName + "). Nothing was analysed.",
+        )
+    }
+}
+
+/** What [detectAnomalies] found, or why it could not look. */
+private sealed interface AnomalyOutcome {
+    data class Analysed(val anomalies: List<UsageAnomaly>, val appsJudged: Int) : AnomalyOutcome
+    data class NotEnoughHistory(val appsSeen: Int) : AnomalyOutcome
+    data class Unavailable(val reason: String) : AnomalyOutcome
 }
 
 private fun hasUsageStatsPermission(context: Context): Boolean {
