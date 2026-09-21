@@ -148,12 +148,24 @@ private fun ThemePreviewCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Live launcher preview", color = CiyatoWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                // Was "Live launcher preview". It is not live and it is not the
+                // launcher: the tiles are grey boxes, the greeting is hard-coded
+                // and the dock is a rounded rectangle. It reflects exactly two
+                // settings — density and accent — while sitting on a screen that
+                // also changes wallpaper, icon shape, grid size and font, so it
+                // implied those were being previewed too (F-159, F-160).
+                //
+                // Named for what it is. Rendering the real Home at thumbnail
+                // scale is the better answer and is a much larger change; a
+                // sketch that admits it is a sketch beats a mock that claims to
+                // be live.
+                Text("Layout sketch", color = CiyatoWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(
-                    "${if (denseLayout) "Compact" else "Spacious"} home preview",
+                    "${if (denseLayout) "Compact" else "Spacious"} spacing and accent only — " +
+                        "not wallpaper, icon shape or grid size",
                     color = CiyatoMuted,
                     fontSize = 12.sp,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }

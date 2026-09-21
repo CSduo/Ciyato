@@ -8,18 +8,30 @@ import androidx.compose.ui.unit.sp
 
 /**
  * Ciyato Typography System.
- * Uses Inter as primary font (bundled in assets).
- * Falls back to system default (sans-serif) if font assets not present.
- * All screens consume this via MaterialTheme.typography.
+ *
+ * **Ciyato ships no bundled fonts.** Every face below resolves to the platform
+ * sans-serif, which on most devices is Roboto.
+ *
+ * This file used to say "Uses Inter as primary font (bundled in assets)" and
+ * describe a weight-variant registration that does not exist — there is no
+ * res/font directory and no font in assets (F-161, F-037). The aliases are
+ * genuinely useful as a single place to swap the face later, but naming them
+ * after typefaces that are not present made three separate documents describe a
+ * typography system the app does not have. A comment that outlives its code is
+ * worse than no comment, because the next person trusts it (F-070).
+ *
+ * To actually bundle Inter: add the .ttf files under res/font, build a real
+ * FontFamily with Font(R.font.inter_regular, FontWeight.Normal) and so on for
+ * each weight, and point [CiyatoFont] at it. Nothing else here changes.
  */
 
-// Font family — uses system sans-serif (Inter-style) as fallback.
-// InterFontFamily includes full weight variant support registered for FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, and FontWeight.Bold.
+// Aliases, not typefaces. All three are the platform sans-serif today; the names
+// record the intended direction, and the property below is the single switch.
 val InterFontFamily = FontFamily.SansSerif
 val OutfitFontFamily = FontFamily.SansSerif
 val DMSansFontFamily = FontFamily.SansSerif
 
-// Active font — swap this to change the entire app font
+/** The one place the app's face is chosen. */
 val CiyatoFont = InterFontFamily
 
 // ─── Extended Text Styles (beyond Material3 slots) ────────────────────────────
