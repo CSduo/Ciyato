@@ -40,7 +40,17 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
  *  - Start / end the session
  *  - See a live countdown ring while active
  *
- * Blocked categories are hidden from the home screen during focus.
+ * What a focus session actually does: hides the chosen categories from
+ * Ciyato's own surfaces and refuses to launch them from Home, the drawer,
+ * search and suggestions, for the chosen duration. It does NOT block them on
+ * the device - Recents, notifications, another launcher and a shared intent
+ * all reach the app without passing through Ciyato, and no launcher can
+ * change that (F-207).
+ *
+ * The persisted preference key is still `focus_blocked_cats` and the
+ * ViewModel property is still focusBlockedCats: renaming them would reset
+ * the setting for anyone who has one. The user-facing words are the ones
+ * that had to change, and did.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,7 +87,7 @@ fun FocusSessionScreen(
             if (activeSession != null) {
                 // ── Active session view ───────────────────────────────────────
                 item { ActiveSessionCard(session = activeSession!!, onEnd = viewModel::endFocusSession) }
-                item { BlockedCategoryList(cats = activeSession!!.blockedCategories) }
+                item { HiddenCategoryList(cats = activeSession!!.blockedCategories) }
             } else {
                 // ── Setup view ────────────────────────────────────────────────
                 item { FocusInfoCard() }
@@ -246,14 +256,19 @@ private fun BlockCategorySelector(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("Block categories", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        // "Block" claims enforcement Ciyato does not have (F-207). It can hide
+        // a category from its own surfaces and refuse to launch from them; it
+        // cannot stop Recents, a notification, another launcher or a shared
+        // intent from reaching the app. The body text already said so - the
+        // heading was asserting the opposite two lines above it.
+        Text("Hide categories", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
         Text("These app categories will be hidden during focus.", color = CiyatoMuted, fontSize = 12.sp)
         BLOCKABLE_CATS.forEach { cat ->
-            val isBlocked = cat in selectedCats
+            val isHidden = cat in selectedCats
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (isBlocked) CiyatoGold.copy(alpha = 0.08f) else Color.Transparent)
+                    .background(if (isHidden) CiyatoGold.copy(alpha = 0.08f) else Color.Transparent)
                     .clickable { onToggle(cat) }
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -261,7 +276,7 @@ private fun BlockCategorySelector(
             ) {
                 Text(viewModel.getCategoryDisplayName(cat), color = CiyatoWhite, fontSize = 14.sp)
                 Checkbox(
-                    checked = isBlocked, onCheckedChange = { onToggle(cat) },
+                    checked = isHidden, onCheckedChange = { onToggle(cat) },
                     colors = CheckboxDefaults.colors(
                         checkedColor = CiyatoGold, uncheckedColor = CiyatoMuted, checkmarkColor = CiyatoBg,
                     ),
@@ -272,7 +287,7 @@ private fun BlockCategorySelector(
 }
 
 @Composable
-private fun BlockedCategoryList(cats: List<AppCategory>) {
+private fun HiddenCategoryList(cats: List<AppCategory>) {
     if (cats.isEmpty()) return
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -281,7 +296,7 @@ private fun BlockedCategoryList(cats: List<AppCategory>) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("Blocked during this session", color = CiyatoSec, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        Text("Hidden during this session", color = CiyatoSec, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         cats.forEach { cat ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(CiyatoGold))

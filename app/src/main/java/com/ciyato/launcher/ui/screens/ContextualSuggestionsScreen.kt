@@ -87,7 +87,7 @@ fun ContextualSuggestionsScreen(
         containerColor = CiyatoBg,
         topBar = {
             CiyatoTopBar(
-                title = "Smart Suggestions",
+                title = "Frequent Apps",
                 subtitle = "Based on your usage patterns",
                 onBack = onBack,
             )
@@ -146,7 +146,7 @@ fun ContextualSuggestionsScreen(
                     Icon(Icons.Default.AutoAwesome, null, tint = CiyatoGold, modifier = Modifier.size(24.dp))
                     Column {
                         Text("Based on your patterns", color = CiyatoWhite, fontWeight = FontWeight.SemiBold)
-                        Text("Ciyato learns from your habits to surface the right apps at the right time.",
+                        Text("Ranked by how often you open them. Ciyato does not model time of day, location or what you are doing — it counts launches.",
                             color = CiyatoMuted, fontSize = 12.sp, lineHeight = 16.sp)
                     }
                 }

@@ -29,7 +29,7 @@ data class ChangelogItem(
 )
 
 private val WHATS_NEW_ITEMS = listOf(
-    ChangelogItem("✨", "AI Cleanup Suggestions", "Ciyato now detects unused apps and recommends what to uninstall.", isHighlight = true),
+    ChangelogItem("✨", "Unused app cleanup", "Ciyato lists apps you have not opened in a long time, so you can decide what to uninstall.", isHighlight = true),
     ChangelogItem("🗓", "Calendar Integration", "Today's events appear on your home screen in real time."),
     ChangelogItem("🔒", "App Lock", "Lock any app with biometrics — perfect for private apps."),
     ChangelogItem("📊", "Screen Time Dashboard", "See per-app screen time right inside Ciyato."),

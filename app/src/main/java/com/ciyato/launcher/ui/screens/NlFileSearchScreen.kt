@@ -47,8 +47,21 @@ import com.ciyato.launcher.R
 
 /**
  * NlFileSearchScreen — Suggestion #27
- * Natural language file search: "payment screenshot from yesterday",
- * "photo from last week", "video from January".
+ * File search over the name, type, date and size of indexed files.
+ *
+ * It was called "Smart File Search" and it advertised "payment screenshot from
+ * yesterday" and "receipt photos" (F-097, F-209). It does not read inside
+ * files: no OCR, no image labels, no document text, no embeddings. Keywords are
+ * matched as substrings of the FILE NAME, so "payment" could only ever match a
+ * file literally named something with "payment" in it — and a screenshot is
+ * named Screenshot_20260101_120000.png. The two headline examples were the two
+ * the engine was least able to satisfy, which is how a working feature comes to
+ * feel broken.
+ *
+ * The examples now shown are the ones it can actually answer, and
+ * [SEARCH_EXAMPLES] is the single list the chips, the placeholder and
+ * `NlFileSearchExamplesTest` all read — so an example cannot be added to the UI
+ * without a test proving the engine retrieves it for the advertised reason.
  */
 
 data class NlFileResult(
@@ -59,6 +72,26 @@ data class NlFileResult(
     val dateMs: Long,
     val sizeBytes: Long,
     val matchReasons: List<String> = emptyList(),
+)
+
+/**
+ * The examples the UI offers, and the contract behind them.
+ *
+ * Every one of these is retrievable by the engine for the reason it implies:
+ * a word that really does appear in the file name, a type it derives, a date
+ * range it computes, or a size threshold. `NlFileSearchExamplesTest` proves
+ * each one against a fixture.
+ *
+ * "screenshot" earns its place where "payment" did not: Android names
+ * screenshots Screenshot_<date>.png, so the word is in the name. That is the
+ * test for whether an example belongs here.
+ */
+internal val SEARCH_EXAMPLES = listOf(
+    "screenshot from yesterday",
+    "photos from last week",
+    "video from last month",
+    "pdf from today",
+    "large files",
 )
 
 data class ParsedQuery(
@@ -103,13 +136,7 @@ fun NlFileSearchScreen(
     // keep asking for a folder that the person deliberately stopped using.
     val allFilesGranted = remember(storedRoot) { FileAccess.hasAllFiles(context) }
 
-    val quickQueries = listOf(
-        "payment screenshot from yesterday",
-        "photos from last week",
-        "video from last month",
-        "documents from today",
-        "receipt photos",
-    )
+    val quickQueries = SEARCH_EXAMPLES
 
     LaunchedEffect(selectedRoot) {
         isSelectedFolderReadable = selectedRoot?.let { root -> isReadableTree(context, root) }
@@ -173,7 +200,7 @@ fun NlFileSearchScreen(
     Scaffold(
         containerColor = CiyatoBg,
         topBar = {
-            CiyatoTopBar(title = "Smart File Search", onBack = onBack)
+            CiyatoTopBar(title = "File search", onBack = onBack)
         }
     ) { padding ->
         LazyColumn(
@@ -188,12 +215,24 @@ fun NlFileSearchScreen(
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    placeholder = { Text("e.g. payment screenshot from yesterday", color = CiyatoMuted, fontSize = 13.sp) },
+                    placeholder = { Text("e.g. " + SEARCH_EXAMPLES.first(), color = CiyatoMuted, fontSize = 13.sp) },
                     leadingIcon = { Icon(Icons.Default.AutoAwesome, null, tint = CiyatoGold, modifier = Modifier.size(20.dp)) },
                     trailingIcon = {
                         IconButton(onClick = { scope.launch { search(query) } }) {
                             Icon(Icons.Default.Search, "Search", tint = CiyatoSec)
                         }
+                    },
+                    supportingText = {
+                        // The one sentence that stops someone concluding the
+                        // feature is broken when it cannot find "receipt
+                        // photos". It searches names, not contents, and saying
+                        // so costs a line and buys the whole feature's
+                        // credibility (F-097).
+                        Text(
+                            "Searches file names, types and dates. It does not read inside files.",
+                            color = CiyatoMuted,
+                            fontSize = 11.sp,
+                        )
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
@@ -447,9 +486,56 @@ private fun NlFileResultRow(file: NlFileResult, onOpen: () -> Unit) {
     }
 }
 
-private fun parseNlQuery(query: String): ParsedQuery {
+/**
+ * Words that select a TYPE, and the type they select.
+ *
+ * Declared once, because the parser has to do two things with them: use them,
+ * and then NOT treat them as name keywords. Those were two hand-written lists
+ * that had drifted — the type list knew "photo" and the stopword list also knew
+ * "photo", but neither knew "photos", so the screen's own example "photos from
+ * last week" parsed into "find files whose NAME contains 'photos'" and returned
+ * nothing (F-097). Deriving the second list from the first is what stops that
+ * happening again, the same way WorkspacePaging stopped three copies of one
+ * rule disagreeing.
+ */
+private val TYPE_WORDS: Map<String, String> = buildMap {
+    listOf("photo", "photos", "image", "images", "picture", "pictures",
+        "screenshot", "screenshots").forEach { put(it, "image") }
+    listOf("video", "videos", "movie", "movies", "clip", "clips").forEach { put(it, "video") }
+    listOf("pdf", "pdfs", "document", "documents", "doc", "docs")
+        .forEach { put(it, "application/pdf") }
+    listOf("audio", "music", "song", "songs", "recording", "recordings")
+        .forEach { put(it, "audio") }
+}
+
+/** Words that set a minimum size. */
+private val SIZE_WORDS = setOf("large", "big", "huge")
+
+/** Words that carry no meaning to the engine either way. */
+private val FILLER_WORDS = setOf(
+    "from", "the", "with", "that", "this", "last", "next", "and", "for",
+    "file", "files", "any", "all", "some", "show", "find", "search", "please",
+)
+
+/** Phrases and words consumed while working out a date range. */
+private val DATE_WORDS = setOf(
+    "today", "yesterday", "week", "month", "year",
+    "january", "february", "march", "april", "may", "june", "july",
+    "august", "september", "october", "november", "december",
+)
+
+internal fun parseNlQuery(query: String): ParsedQuery {
     val lower = query.lowercase()
     val now = System.currentTimeMillis()
+
+    // Tokens, not substrings.
+    //
+    // Every test here used to be `"may" in lower`, which is true of "maybe" and
+    // of any filename containing those three letters; "march" matched
+    // "marching", "doc" matched "dockyard". Matching whole words removes a
+    // whole family of wrong answers that were invisible because they only
+    // showed up on queries nobody tried.
+    val words = lower.split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
 
     val dateRange: Pair<Long, Long>? = when {
         // Calendar days, not rolling windows.
@@ -459,49 +545,42 @@ private fun parseNlQuery(query: String): ParsedQuery {
         // 24 hours" when they say today — they mean since midnight. "yesterday"
         // had the same shape one day back, so the two windows also overlapped.
         // startOfToday() anchors both to real local midnight.
-        "today" in lower -> startOfToday() to now
-        "yesterday" in lower -> {
+        "today" in words -> startOfToday() to now
+        "yesterday" in words -> {
             val todayStart = startOfToday()
             (todayStart - TimeUnit.DAYS.toMillis(1)) to todayStart
         }
-        "last week" in lower || "this week" in lower -> (now - TimeUnit.DAYS.toMillis(7)) to now
-        "last month" in lower || "this month" in lower -> (now - TimeUnit.DAYS.toMillis(30)) to now
-        "january" in lower -> dateRangeForMonth(Calendar.JANUARY)
-        "february" in lower -> dateRangeForMonth(Calendar.FEBRUARY)
-        "march" in lower -> dateRangeForMonth(Calendar.MARCH)
-        "april" in lower -> dateRangeForMonth(Calendar.APRIL)
-        "may" in lower -> dateRangeForMonth(Calendar.MAY)
-        "june" in lower -> dateRangeForMonth(Calendar.JUNE)
-        "july" in lower -> dateRangeForMonth(Calendar.JULY)
-        "august" in lower -> dateRangeForMonth(Calendar.AUGUST)
-        "september" in lower -> dateRangeForMonth(Calendar.SEPTEMBER)
-        "october" in lower -> dateRangeForMonth(Calendar.OCTOBER)
-        "november" in lower -> dateRangeForMonth(Calendar.NOVEMBER)
-        "december" in lower -> dateRangeForMonth(Calendar.DECEMBER)
+        "week" in words -> (now - TimeUnit.DAYS.toMillis(7)) to now
+        "month" in words -> (now - TimeUnit.DAYS.toMillis(30)) to now
+        "january" in words -> dateRangeForMonth(Calendar.JANUARY)
+        "february" in words -> dateRangeForMonth(Calendar.FEBRUARY)
+        "march" in words -> dateRangeForMonth(Calendar.MARCH)
+        "april" in words -> dateRangeForMonth(Calendar.APRIL)
+        "may" in words -> dateRangeForMonth(Calendar.MAY)
+        "june" in words -> dateRangeForMonth(Calendar.JUNE)
+        "july" in words -> dateRangeForMonth(Calendar.JULY)
+        "august" in words -> dateRangeForMonth(Calendar.AUGUST)
+        "september" in words -> dateRangeForMonth(Calendar.SEPTEMBER)
+        "october" in words -> dateRangeForMonth(Calendar.OCTOBER)
+        "november" in words -> dateRangeForMonth(Calendar.NOVEMBER)
+        "december" in words -> dateRangeForMonth(Calendar.DECEMBER)
         else -> null
     }
 
-    val mimeType: String? = when {
-        "photo" in lower || "image" in lower || "screenshot" in lower || "picture" in lower -> "image"
-        "video" in lower -> "video"
-        "pdf" in lower || "document" in lower || "doc" in lower -> "application/pdf"
-        "audio" in lower || "music" in lower -> "audio"
-        else -> null
-    }
+    val mimeType: String? = words.firstNotNullOfOrNull { TYPE_WORDS[it] }
 
-    val minimumSizeBytes = when {
-        "large" in lower || "big" in lower -> 100L * 1024L * 1024L
-        else -> null
-    }
+    val minimumSizeBytes = if (words.any { it in SIZE_WORDS }) 100L * 1024L * 1024L else null
 
-    val keywords = lower.split(" ")
-        .filter {
-            it.length > 3 && it !in setOf(
-                "from", "last", "this", "the", "with", "that", "photo", "image",
-                "video", "audio", "music", "today", "yesterday", "week", "month",
-                "document", "screenshot", "picture", "large", "files",
-            )
-        }
+    // Whatever the query did not spend on type, date, size or filler is what
+    // the person actually wants to find in the file name.
+    val keywords = words.filter { word ->
+        word.length > 2 &&
+            word !in TYPE_WORDS &&
+            word !in DATE_WORDS &&
+            word !in SIZE_WORDS &&
+            word !in FILLER_WORDS &&
+            word.toIntOrNull() == null
+    }
 
     return ParsedQuery(keywords, mimeType, dateRange, minimumSizeBytes)
 }
@@ -615,7 +694,7 @@ private fun matchesSearch(document: DocumentFile, parsed: ParsedQuery): Boolean 
     )
 }
 
-private fun matchesMetadata(
+internal fun matchesMetadata(
     name: String,
     mimeType: String,
     modifiedAt: Long,

@@ -67,7 +67,7 @@ val ALL_COACH_MARKS = listOf(
     CoachMark(
         id = "ai_search",
         emoji = "🔍",
-        title = "AI Search",
+        title = "Search",
         body = "Type naturally: \"open a music app\", \"find my PDFs\", or \"payment screenshot from yesterday\".",
     ),
 )
