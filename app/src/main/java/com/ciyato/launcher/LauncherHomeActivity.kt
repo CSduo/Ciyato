@@ -335,50 +335,52 @@ private fun LauncherRoot(
         is LauncherDest.Settings -> SettingsScreen(
             viewModel                  = viewModel,
             onBack                     = { dest = LauncherDest.Home },
-            onNavigateToFiles          = {
-                context.startActivity(
-                    Intent(context, MainActivity::class.java).apply {
-                        putExtra(MainActivity.EXTRA_START_DESTINATION, "files")
-                    },
-                )
-            },
-            onNavigateToPhotos         = {
-                context.startActivity(
-                    Intent(context, MainActivity::class.java).apply {
-                        putExtra(MainActivity.EXTRA_START_DESTINATION, "photos")
-                    },
-                )
-            },
-            onNavigateToAgenda         = {
-                context.startActivity(
-                    Intent(context, MainActivity::class.java).apply {
-                        putExtra(MainActivity.EXTRA_START_DESTINATION, "agenda")
-                    },
-                )
-            },
-            onNavigateToPermissionAudit= { dest = LauncherDest.PermissionAudit },
-            onNavigateToStorageCleanup = { dest = LauncherDest.StorageCleanup },
-            onNavigateToRecentFiles    = { dest = LauncherDest.RecentFiles },
-            onNavigateToFocus          = { dest = LauncherDest.FocusSession },
-            onNavigateToTheme          = { dest = LauncherDest.ThemeStudio },
-            onNavigateToWallpaper      = { dest = LauncherDest.WallpaperStudio },
-            onNavigateToHiddenApps     = { dest = LauncherDest.HiddenApps },
-            onNavigateToLockedApps     = { dest = LauncherDest.LockedApps },
-            onNavigateToSecureVault    = { dest = LauncherDest.SecureVault },
-            onNavigateToPhotosToPdf    = { dest = LauncherDest.PhotosToPdf },
-            onNavigateToRemovedApps    = { dest = LauncherDest.RemovedApps },
-            onNavigateToContextualSuggestions = { dest = LauncherDest.ContextualSuggestions },
-            onNavigateToVoiceCommands  = { dest = LauncherDest.VoiceCommands },
-            onNavigateToAnomalyDetection = { dest = LauncherDest.AnomalyDetection },
-            onNavigateToAiChangelog    = { dest = LauncherDest.AiChangelog },
-            onNavigateToDataBreachChecker = { dest = LauncherDest.DataBreachChecker },
-            onNavigateToSafeBrowsing   = { dest = LauncherDest.SafeBrowsing },
-            onNavigateToSearchHistory  = { dest = LauncherDest.SearchHistory },
-            onNavigateToStickyNotes    = { dest = LauncherDest.StickyNotes },
-            onNavigateToAutoBackup     = { dest = LauncherDest.AutoBackup },
-            onNavigateToDuplicateShortcuts = { dest = LauncherDest.DuplicateShortcuts },
-            onNavigateToWidgetHost     = { dest = LauncherDest.WidgetHost },
-            onNavigateToInsights       = { dest = LauncherDest.Insights },
+            destinations = SettingsDestinations(
+                openPermissionAudit = { dest = LauncherDest.PermissionAudit },
+                openStorageCleanup = { dest = LauncherDest.StorageCleanup },
+                openRecentFiles = { dest = LauncherDest.RecentFiles },
+                openFocus = { dest = LauncherDest.FocusSession },
+                openFiles = {
+                    context.startActivity(
+                        Intent(context, MainActivity::class.java).apply {
+                            putExtra(MainActivity.EXTRA_START_DESTINATION, "files")
+                        },
+                    )
+                },
+                openPhotos = {
+                    context.startActivity(
+                        Intent(context, MainActivity::class.java).apply {
+                            putExtra(MainActivity.EXTRA_START_DESTINATION, "photos")
+                        },
+                    )
+                },
+                openAgenda = {
+                    context.startActivity(
+                        Intent(context, MainActivity::class.java).apply {
+                            putExtra(MainActivity.EXTRA_START_DESTINATION, "agenda")
+                        },
+                    )
+                },
+                openTheme = { dest = LauncherDest.ThemeStudio },
+                openWallpaper = { dest = LauncherDest.WallpaperStudio },
+                openHiddenApps = { dest = LauncherDest.HiddenApps },
+                openLockedApps = { dest = LauncherDest.LockedApps },
+                openSecureVault = { dest = LauncherDest.SecureVault },
+                openPhotosToPdf = { dest = LauncherDest.PhotosToPdf },
+                openRemovedApps = { dest = LauncherDest.RemovedApps },
+                openContextualSuggestions = { dest = LauncherDest.ContextualSuggestions },
+                openVoiceCommands = { dest = LauncherDest.VoiceCommands },
+                openAnomalyDetection = { dest = LauncherDest.AnomalyDetection },
+                openAiChangelog = { dest = LauncherDest.AiChangelog },
+                openDataBreachChecker = { dest = LauncherDest.DataBreachChecker },
+                openSafeBrowsing = { dest = LauncherDest.SafeBrowsing },
+                openSearchHistory = { dest = LauncherDest.SearchHistory },
+                openStickyNotes = { dest = LauncherDest.StickyNotes },
+                openAutoBackup = { dest = LauncherDest.AutoBackup },
+                openDuplicateShortcuts = { dest = LauncherDest.DuplicateShortcuts },
+                openWidgetHost = { dest = LauncherDest.WidgetHost },
+                openInsights = { dest = LauncherDest.Insights },
+            ),
         )
 
         is LauncherDest.AppUsage -> AppUsageStatsScreen(

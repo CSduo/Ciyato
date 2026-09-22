@@ -51,32 +51,8 @@ import androidx.compose.material.icons.filled.PictureAsPdf
 fun SettingsScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
-    onNavigateToPermissionAudit: () -> Unit,
-    onNavigateToStorageCleanup: () -> Unit,
-    onNavigateToRecentFiles: () -> Unit,
-    onNavigateToFocus: () -> Unit,
-    onNavigateToFiles: () -> Unit,
-    onNavigateToPhotos: () -> Unit,
-    onNavigateToAgenda: () -> Unit,
-    onNavigateToTheme: () -> Unit,
-    onNavigateToWallpaper: () -> Unit,
-    onNavigateToHiddenApps: () -> Unit,
-    onNavigateToLockedApps: () -> Unit,
-    onNavigateToSecureVault: () -> Unit,
-    onNavigateToPhotosToPdf: () -> Unit,
-    onNavigateToRemovedApps: () -> Unit,
-    onNavigateToContextualSuggestions: () -> Unit,
-    onNavigateToVoiceCommands: () -> Unit,
-    onNavigateToAnomalyDetection: () -> Unit,
-    onNavigateToAiChangelog: () -> Unit,
-    onNavigateToDataBreachChecker: () -> Unit,
-    onNavigateToSafeBrowsing: () -> Unit,
-    onNavigateToSearchHistory: () -> Unit,
-    onNavigateToStickyNotes: () -> Unit,
-    onNavigateToAutoBackup: () -> Unit,
-    onNavigateToDuplicateShortcuts: () -> Unit,
-    onNavigateToWidgetHost: () -> Unit,
-    onNavigateToInsights: () -> Unit,
+    /** Where every row goes. See [SettingsDestinations] for why this is one object. */
+    destinations: SettingsDestinations,
 ) {
     val context = LocalContext.current
     val view    = LocalView.current
@@ -173,7 +149,7 @@ fun SettingsScreen(
                     subtitle = "Typeface, Home layout, app grid and wallpaper",
                     icon = Icons.Default.Palette,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToTheme() }
+                    onClick = { destinations.openTheme() }
                 )
             }
             item {
@@ -188,7 +164,7 @@ fun SettingsScreen(
                     subtitle = "Browse and keep app widgets in Ciyato's widget panel",
                     icon = Icons.Default.Widgets,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToWidgetHost() }
+                    onClick = { destinations.openWidgetHost() }
                 )
             }
 
@@ -254,7 +230,7 @@ fun SettingsScreen(
                     subtitle = "See which apps appear in more than one category",
                     icon = Icons.Default.AutoFixHigh,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToDuplicateShortcuts() }
+                    onClick = { destinations.openDuplicateShortcuts() }
                 )
             }
             // ── Smart Insights ───────────────────────────────────────────────
@@ -269,7 +245,7 @@ fun SettingsScreen(
                     subtitle = "Screen time, daily summary, frequent apps and unusual usage",
                     icon = Icons.Default.Insights,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToInsights() },
+                    onClick = { destinations.openInsights() },
                 )
             }
             item {
@@ -278,7 +254,7 @@ fun SettingsScreen(
                     subtitle = "Open apps and control Ciyato with your voice",
                     icon = Icons.Default.Mic,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToVoiceCommands() },
+                    onClick = { destinations.openVoiceCommands() },
                 )
             }
             item { SectionHeader("Weather glance") }
@@ -306,7 +282,7 @@ fun SettingsScreen(
                     iconColor = CiyatoGold,
                     onClick = {
                         if (filesRootUri.isBlank()) {
-                            onNavigateToFiles() ?: openAppSettings(context)
+                            destinations.openFiles() ?: openAppSettings(context)
                         } else {
                             showForgetFilesDialog = true
                         }
@@ -319,7 +295,7 @@ fun SettingsScreen(
                     subtitle = "Scan for large files, old screenshots, downloads, cache, and empty files",
                     icon = Icons.Default.Storage,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToStorageCleanup() }
+                    onClick = { destinations.openStorageCleanup() }
                 )
             }
             item {
@@ -328,7 +304,7 @@ fun SettingsScreen(
                     subtitle = "Back up photos to a folder you choose, automatically or on demand",
                     icon = Icons.Default.Backup,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToAutoBackup() }
+                    onClick = { destinations.openAutoBackup() }
                 )
             }
             item {
@@ -337,7 +313,7 @@ fun SettingsScreen(
                     subtitle = "Browse recently modified files across the device and tag them to stay organized",
                     icon = Icons.Default.History,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToRecentFiles() }
+                    onClick = { destinations.openRecentFiles() }
                 )
             }
             item {
@@ -346,7 +322,7 @@ fun SettingsScreen(
                     subtitle = "System wallpaper, private images, and short Ciyato-only videos",
                     icon = Icons.Default.Wallpaper,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToWallpaper() },
+                    onClick = { destinations.openWallpaper() },
                 )
             }
             item {
@@ -355,14 +331,14 @@ fun SettingsScreen(
                     // Was "Photos Access", subtitled "N selected item(s). Android
                     // Photo Picker only" — a description of the curated picker
                     // that is now only the no-permission fallback, not the
-                    // product. The elvis after onNavigateToPhotos() was also
+                    // product. The elvis after destinations.openPhotos() was also
                     // dead: the callback returns Unit, so openAppSettings could
                     // never run. It is a leftover from when nav callbacks were
                     // nullable.
                     subtitle = "Your gallery in collections — screenshots, recent, videos, large files, and month by month",
                     icon = Icons.Default.PhotoLibrary,
                     iconColor = CiyatoBlue,
-                    onClick = onNavigateToPhotos
+                    onClick = destinations.openPhotos
                 )
             }
             if (PhotoLibraryStore.parseUris(photoMediaUris).isNotEmpty()) {
@@ -382,7 +358,7 @@ fun SettingsScreen(
                     subtitle = "Connect only when you want Ciyato to show real upcoming events.",
                     icon = Icons.Default.CalendarToday,
                     iconColor = CiyatoSec,
-                    onClick = { onNavigateToAgenda() ?: openAppSettings(context) }
+                    onClick = { destinations.openAgenda() ?: openAppSettings(context) }
                 )
             }
             item {
@@ -425,7 +401,7 @@ fun SettingsScreen(
                     subtitle = "Hide chosen categories and stop Ciyato opening them for a while",
                     icon = Icons.Default.Timer,
                     iconColor = CiyatoGold,
-                    onClick = { onNavigateToFocus() }
+                    onClick = { destinations.openFocus() }
                 )
             }
 
@@ -453,7 +429,7 @@ fun SettingsScreen(
                     subtitle = "Review and clear the searches saved from the app search bar",
                     icon = Icons.Default.History,
                     iconColor = CiyatoBlue,
-                    onClick = { onNavigateToSearchHistory() }
+                    onClick = { destinations.openSearchHistory() }
                 )
             }
             item {
@@ -462,7 +438,7 @@ fun SettingsScreen(
                     subtitle = "Quick notes kept on this device",
                     icon = Icons.Default.StickyNote2,
                     iconColor = CiyatoAmber,
-                    onClick = { onNavigateToStickyNotes() }
+                    onClick = { destinations.openStickyNotes() }
                 )
             }
             item {
@@ -486,7 +462,7 @@ fun SettingsScreen(
                     subtitle = "See which apps have access to sensitive permissions",
                     icon = Icons.Default.Security,
                     iconColor = CiyatoBlue,
-                    onClick = { onNavigateToPermissionAudit() }
+                    onClick = { destinations.openPermissionAudit() }
                 )
             }
             item {
@@ -495,7 +471,7 @@ fun SettingsScreen(
                     subtitle = "Check if a password appeared in a known data breach — never leaves your device",
                     icon = Icons.Default.Shield,
                     iconColor = CiyatoBlue,
-                    onClick = { onNavigateToDataBreachChecker() }
+                    onClick = { destinations.openDataBreachChecker() }
                 )
             }
             item {
@@ -504,7 +480,7 @@ fun SettingsScreen(
                     subtitle = "Heuristic check for suspicious URLs before you open them",
                     icon = Icons.Default.GppGood,
                     iconColor = CiyatoBlue,
-                    onClick = { onNavigateToSafeBrowsing() }
+                    onClick = { destinations.openSafeBrowsing() }
                 )
             }
 
@@ -514,7 +490,7 @@ fun SettingsScreen(
                     subtitle = "Combine photos into one document, built on this phone",
                     icon = Icons.Default.PictureAsPdf,
                     iconColor = CiyatoSec,
-                    onClick = onNavigateToPhotosToPdf,
+                    onClick = destinations.openPhotosToPdf,
                 )
             }
             item {
@@ -528,7 +504,7 @@ fun SettingsScreen(
                     subtitle = "Encrypt files behind your fingerprint or screen lock",
                     icon = Icons.Default.Lock,
                     iconColor = CiyatoSec,
-                    onClick = onNavigateToSecureVault,
+                    onClick = destinations.openSecureVault,
                 )
             }
             item {
@@ -537,7 +513,7 @@ fun SettingsScreen(
                     subtitle = "${countCsv(lockedAppsCsv)} require unlocking when opened from Ciyato",
                     icon = Icons.Default.Lock,
                     iconColor = CiyatoSec,
-                    onClick = onNavigateToLockedApps,
+                    onClick = destinations.openLockedApps,
                 )
             }
             item {
@@ -546,7 +522,7 @@ fun SettingsScreen(
                     subtitle = "${countCsv(hiddenAppsCsv)} hidden - restore any time",
                     icon = Icons.Default.VisibilityOff,
                     iconColor = CiyatoSec,
-                    onClick = { onNavigateToHiddenApps() }
+                    onClick = { destinations.openHiddenApps() }
                 )
             }
             item {
@@ -555,7 +531,7 @@ fun SettingsScreen(
                     subtitle = "${countCsv(removedAppsCsv)} removed from display - restore any time",
                     icon = Icons.Default.RemoveCircleOutline,
                     iconColor = CiyatoSec,
-                    onClick = { onNavigateToRemovedApps() }
+                    onClick = { destinations.openRemovedApps() }
                 )
             }
 

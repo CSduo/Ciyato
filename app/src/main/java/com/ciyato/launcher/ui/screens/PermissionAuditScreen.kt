@@ -34,6 +34,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material.icons.filled.Shield
 import android.os.Build
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.CircularProgressIndicator
 
 /**
  * PermissionAuditScreen — Suggestion #139.
@@ -57,11 +65,24 @@ fun PermissionAuditScreen(
     var filterLevel: String by remember { mutableStateOf("All") }
     val filters = listOf("All", "Sensitive", "Connectivity", "Other")
 
-    val auditedApps = remember(apps) {
-        apps.filter { !it.isSystemApp }.map { app ->
-            val perms = getAppPermissions(context, app.packageName)
-            AuditedApp(app, perms)
-        }.sortedByDescending { it.riskScore }
+    // Built off the main thread.
+    //
+    // This was a remember{} block, and a remember block runs DURING composition
+    // on the main thread. It called getPackageInfo once per installed app -
+    // a synchronous binder round trip each time - so opening this screen on a
+    // phone with 150 apps meant 150 IPC calls inside the first frame (F-157).
+    // The cost scales with how many apps someone has installed, which is exactly
+    // the population most likely to open a permission audit.
+    var auditedApps by remember { mutableStateOf<List<AuditedApp>>(emptyList()) }
+    var isAuditing by remember { mutableStateOf(true) }
+    LaunchedEffect(apps) {
+        isAuditing = true
+        auditedApps = withContext(Dispatchers.IO) {
+            apps.filter { !it.isSystemApp }
+                .map { app -> AuditedApp(app, getAppPermissions(context, app.packageName)) }
+                .sortedByDescending { it.riskScore }
+        }
+        isAuditing = false
     }
 
     val filtered = remember(auditedApps, filterLevel) {
@@ -83,6 +104,19 @@ fun PermissionAuditScreen(
             )
         }
     ) { padding ->
+        if (isAuditing) {
+            // An empty audit and an unfinished one look identical otherwise, and
+            // "0 apps request sensitive permissions" is a reassuring thing to
+            // show someone while the work has not started.
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = CiyatoGold)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Reading declared permissions...", color = CiyatoMuted, fontSize = 13.sp)
+                }
+            }
+            return@Scaffold
+        }
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             // Summary banner
             PermissionSummaryBanner(auditedApps)
