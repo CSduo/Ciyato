@@ -165,6 +165,29 @@ recomposition, workspace title no longer re-parsing the layout per recomposition
 | No intent handler | explained, not silent | partially handled |
 | Network failure | fresh/stale/unavailable; Home unaffected | not run |
 
+## Privacy string audit (F-196)
+
+Run over every string literal in `app/src/main/java/com/ciyato/launcher/ui/`, searching for
+absolute privacy language: "never leaves", "everything stays", "100% offline", "100% private",
+"no data ever", "nothing leaves", "completely offline", "all local", "entirely local",
+"nothing is uploaded".
+
+| Location | Claim | Verdict |
+|---|---|---|
+| `SettingsScreen` Privacy & Security header | "Local Only" / "Nothing is uploaded." | **Rewritten.** It sat directly above the breach checker, which sends part of a password hash, and near Weather, which sends a rounded location. The first sentence was correctly scoped; "Nothing is uploaded" generalised past its own scope. Now layered: what is local, then the two exceptions by name. |
+| `SettingsScreen` breach-checker row | "never leaves your device" | **Rewritten.** The password never leaves; the first five characters of its SHA-1 hash do. The screen it opens had always said this precisely - the row that opened it overstated the case. |
+| `SettingsScreen` voice row | "Open apps and control Ciyato with your voice" | **Rewritten** to name the device's speech service, because Ciyato does not do the recognition and cannot promise what that service does with the audio (F-144). |
+| `VoiceCommandScreen` | no disclosure at all | **Added.** Ciyato neither records nor transmits audio; recognition is handed to the device's speech service, which may send it to a server. Stated as the device's setting, because it is. |
+| `DataBreachCheckerScreen` | "Only the first 5 characters of a SHA-1 hash are sent. Your password never leaves your device." | **Kept.** This is a precise claim, not a blanket one: it states what IS sent before what is not, and both halves are true. The rule is against language that overstates scope, not against the word "never". |
+| `OnboardingScreen` privacy page | "Local first, and honest about the rest." | **Kept.** Already names both exceptions with the data each sends. |
+| `PhotosLibraryScreen` AI labelling | "free, on-device, private" | **Kept and verified.** The dependency is `com.google.mlkit:image-labeling`, the bundled variant - the model ships in the APK. It is not the `play-services-` variant, which downloads a model. No image or label is transmitted. |
+| `SettingsScreen` crash logs | "Save crash logs locally (never uploaded)" | **Kept.** There is no crash-reporting SDK and no endpoint; the logs exist to be read on the device. |
+
+No blanket claim remains in any user-facing string. `PermissionRegistryTest` additionally fails
+the build if a network host appears in the source without a disclosure row behind it, so the
+inverse drift - a new endpoint added with no copy to match - is caught mechanically rather than by
+repeating this audit.
+
 ## Remaining device- and account-only gaps
 
 Recorded so they are never mistaken for completed code work: real-device gesture and OEM storage

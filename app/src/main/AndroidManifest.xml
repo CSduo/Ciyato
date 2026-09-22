@@ -74,6 +74,25 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <!--
+      Usage Access, for the insights/screen-time/anomaly/suggestions screens.
+
+      This was missing entirely while six screens called UsageStatsManager, and
+      the failure mode is the quietest one Android has: queryUsageStats returns
+      an empty list rather than throwing, and an app that does not declare this
+      permission is not even listed on Settings' Usage access screen. So every
+      one of those screens showed its "grant access" prompt, sent the person to
+      a settings page where Ciyato did not appear, and had no way to ever
+      succeed. Nothing logged, nothing crashed.
+
+      It is an appop permission: declaring it grants nothing. The person still
+      has to turn it on in Settings, and hasUsageAccess() checks the appop
+      rather than the permission for exactly that reason.
+    -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!--
       These were stripped as "contributed by unreachable roadmap dependencies".
       That premise was wrong for three of them, and stripping a permission the
       code actually calls fails silently — nothing warns you, the API simply

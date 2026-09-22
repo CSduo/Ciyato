@@ -290,6 +290,27 @@ fun VoiceCommandScreen(
                 "Try: \"open Gmail\", \"open my work apps\",\n\"focus mode\", \"dark mode on\"",
                 color = CiyatoMuted, fontSize = 12.sp, textAlign = TextAlign.Center,
             )
+            Spacer(Modifier.height(10.dp))
+            // Where the audio actually goes.
+            //
+            // Ciyato does not do speech recognition and does not record, store
+            // or send audio. It hands the microphone to Android's
+            // SpeechRecognizer, which is implemented by whichever speech service
+            // the device ships — and several of those send audio to a server.
+            // Ciyato cannot see which, so it says that, rather than implying the
+            // recognition is local or implying it is not (F-144). Everything
+            // else in this app is genuinely on-device, which is exactly why the
+            // one exception has to be named where the person can see it.
+            Text(
+                "Ciyato doesn't record or store audio. Recognition is done by your " +
+                    "device's speech service, which may send what you say to its own " +
+                    "servers — that's its setting, not Ciyato's.",
+                color = CiyatoMuted,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
         }
     }
 }

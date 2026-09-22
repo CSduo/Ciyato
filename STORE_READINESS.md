@@ -21,7 +21,7 @@ It is strictly increasing by construction and stays inside Play's ceiling until
 2121. A malformed date fails the build, because a version code cannot be
 corrected after upload.
 
-## Declared permissions — all 15
+## Declared permissions — all 16
 
 | Permission | Why it is declared | Play consideration |
 |---|---|---|
@@ -36,7 +36,8 @@ corrected after upload.
 | `READ_MEDIA_AUDIO` | Audio category in file browsing | Runtime |
 | `READ_MEDIA_VISUAL_USER_SELECTED` | Honours the Android 14 "Select photos" partial grant instead of demanding all-or-nothing | Runtime, privacy-positive |
 | `READ_CALENDAR` | Agenda widget and the Calendar screen | Runtime |
-| `RECORD_AUDIO` | Voice commands, and only while that screen is open | Runtime. Declare in data safety as not collected or transmitted |
+| `RECORD_AUDIO` | Voice commands, and only while that screen is open | Runtime. Ciyato neither stores nor transmits audio; recognition is handed to the device's speech service, which may not be local. Declare that, not "on-device" |
+| `PACKAGE_USAGE_STATS` | Insights, screen time, anomaly detection, suggestions, daily summary | Special access, granted only from Android Settings. Was missing entirely while six screens called `UsageStatsManager`, which fails by returning an empty list and by keeping Ciyato off the Usage access list |
 | `REQUEST_DELETE_PACKAGES` | "Uninstall" in the app long-press menu | Normal; the OS still confirms |
 | `SET_WALLPAPER` | Applying a wallpaper from Wallpaper Studio | Normal |
 | `VIBRATE` | Haptics on drag, drop and long-press | Normal |

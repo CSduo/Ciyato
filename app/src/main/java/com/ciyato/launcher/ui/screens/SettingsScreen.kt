@@ -251,7 +251,10 @@ fun SettingsScreen(
             item {
                 CiyatoListCard(
                     title = "Voice Commands",
-                    subtitle = "Open apps and control Ciyato with your voice",
+                    // Names where recognition happens, because Ciyato does not
+                    // do it and cannot promise what the device's recogniser does
+                    // with the audio (F-144).
+                    subtitle = "Open apps and control Ciyato by voice, using your device's speech service",
                     icon = Icons.Default.Mic,
                     iconColor = CiyatoGold,
                     onClick = { destinations.openVoiceCommands() },
@@ -408,10 +411,25 @@ fun SettingsScreen(
             // ── Privacy & Security ────────────────────────────────────────────
             item { SectionHeader("Privacy & Security") }
             item {
+                // Layered, not blanket.
+                //
+                // This said "Local Only" / "Nothing is uploaded", at the head of
+                // a section that contains the breach checker — which sends part
+                // of a password hash — and a few rows from Weather, which sends
+                // a rounded location (F-196). The first sentence was scoped and
+                // true; "Nothing is uploaded" generalised past its own scope and
+                // was contradicted two screens away.
+                //
+                // Naming the two exceptions costs one line and is the stronger
+                // claim: precise privacy is believable, absolute privacy invites
+                // someone to go looking for the exception.
                 InfoCard(
                     Icons.Default.Lock,
-                    "Local Only",
-                    "All app indexing, categorization, and preferences stay on your device. Nothing is uploaded."
+                    "Local first",
+                    "Your layout, apps, files and photos stay on this device — there is no account " +
+                        "and no analytics. Two optional features reach the internet when you use " +
+                        "them: Weather sends a rounded location, and the breach checker sends part " +
+                        "of a password hash.",
                 )
             }
             item {
@@ -468,7 +486,14 @@ fun SettingsScreen(
             item {
                 CiyatoListCard(
                     title = "Breach Checker",
-                    subtitle = "Check if a password appeared in a known data breach — never leaves your device",
+                    // Said "never leaves your device", which is not what this
+                    // does. The PASSWORD never leaves; the first five characters
+                    // of its SHA-1 hash are sent to api.pwnedpasswords.com, and
+                    // the comparison happens here. The screen itself has always
+                    // said that precisely - it was the row that opened it that
+                    // overstated the case (F-194, F-196). The precise version is
+                    // the stronger claim anyway.
+                    subtitle = "Checks a password against known breaches by sending part of its hash",
                     icon = Icons.Default.Shield,
                     iconColor = CiyatoBlue,
                     onClick = { destinations.openDataBreachChecker() }
