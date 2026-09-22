@@ -561,9 +561,12 @@ private fun ResizableWorkspaceTile(
             // menu of the four common shapes — a one-tap alternative to dragging.
             Box(modifier = Modifier.align(Alignment.TopStart)) {
                 Text(
+                    // 8sp, on a control. This opens the resize menu, so it is
+                    // an action and not decoration - the one thing F-038 is
+                    // explicit must never sit at a sub-readable size.
                     text = "$spanX×$spanY",
                     color = CiyatoSec,
-                    fontSize = 8.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .padding(3.dp)

@@ -162,21 +162,46 @@ val labelM = TextStyle(
     letterSpacing = 0.6.sp
 )
 
-/** 10sp Medium — Micro labels, status text */
+/**
+ * THE FLOOR FOR TEXT SOMEONE HAS TO READ: 11sp.
+ *
+ * The scale used to bottom out at 9sp, and dozens of screens reached past the
+ * scale entirely to set 9sp and 10sp directly (F-038). Density is a real virtue
+ * in a launcher and none of this is about making Ciyato look bigger — it is
+ * that 9sp is below what many people can read at arm's length, and the things
+ * set at 9sp were status: "Focus", a permission category, a duplicate count.
+ * Status at a size that is hard to read is status that was not delivered.
+ *
+ * Anything smaller than 11sp belongs to [labelXS], whose contract is narrow on
+ * purpose: a glyph inside a fixed-size shape whose meaning is already carried
+ * by the shape, its colour and its content description. A badge numeral
+ * qualifies. A label does not.
+ *
+ * `MicroTypeFloorTest` enforces this across `ui/`, so the next dense screen
+ * cannot quietly reintroduce it.
+ */
+const val MIN_READABLE_SP = 11
+
+/** 11sp Medium — micro labels and status text. The smallest text with words in it. */
 val labelS = TextStyle(
     fontFamily = CiyatoFont,
     fontWeight = FontWeight.Medium,
-    fontSize = 10.sp,
-    lineHeight = 14.sp,
+    fontSize = 11.sp,
+    lineHeight = 15.sp,
     letterSpacing = 0.8.sp
 )
 
-/** 9sp Medium — Nano labels, icon labels */
+/**
+ * 10sp Medium — a numeral inside a badge, and nothing else.
+ *
+ * Was 9sp and described as "nano labels, icon labels", which invited exactly
+ * the use it should not have. If it has words in it, it is not this.
+ */
 val labelXS = TextStyle(
     fontFamily = CiyatoFont,
     fontWeight = FontWeight.Medium,
-    fontSize = 9.sp,
-    lineHeight = 12.sp,
+    fontSize = 10.sp,
+    lineHeight = 13.sp,
     letterSpacing = 0.8.sp
 )
 

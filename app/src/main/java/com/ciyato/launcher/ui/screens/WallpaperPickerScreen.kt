@@ -308,7 +308,7 @@ fun WallpaperPickerScreen(
                                         .background(Color.Black.copy(alpha = 0.65f))
                                         .padding(vertical = 4.dp, horizontal = 6.dp),
                                 ) {
-                                    Text(title, color = CiyatoWhite, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(title, color = CiyatoWhite, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -592,7 +592,7 @@ private fun GradientWallpaperCard(
                 .background(Color.Black.copy(alpha = 0.4f))
                 .padding(6.dp),
         ) {
-            Text(wp.name, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            Text(wp.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }

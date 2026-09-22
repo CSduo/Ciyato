@@ -437,7 +437,7 @@ private fun NlFileResultRow(file: NlFileResult, onOpen: () -> Unit) {
                 Text(
                     file.matchReasons.joinToString(" · "),
                     color = CiyatoSec,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )

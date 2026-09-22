@@ -567,7 +567,7 @@ private fun PhotoTile(item: AuthorizedMedia, selected: Boolean, onClick: () -> U
                 modifier = Modifier.fillMaxSize().background(CiyatoGold.copy(alpha = 0.22f)),
                 contentAlignment = Alignment.TopEnd,
             ) {
-                Text("Selected", color = CiyatoBg, fontSize = 10.sp, modifier = Modifier.background(CiyatoGold).padding(horizontal = 5.dp, vertical = 3.dp))
+                Text("Selected", color = CiyatoBg, fontSize = 11.sp, modifier = Modifier.background(CiyatoGold).padding(horizontal = 5.dp, vertical = 3.dp))
             }
         }
     }

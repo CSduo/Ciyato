@@ -73,7 +73,7 @@ fun ClockWidgetStylePicker(
                             ClockStyle.MINIMAL -> MiniMinimalClock()
                             ClockStyle.BINARY  -> MiniBinaryClock()
                         }
-                        Text(style.label, color = if (isSelected) CiyatoGold else CiyatoMuted, fontSize = 10.sp)
+                        Text(style.label, color = if (isSelected) CiyatoGold else CiyatoMuted, fontSize = 11.sp)
                     }
                 }
             }

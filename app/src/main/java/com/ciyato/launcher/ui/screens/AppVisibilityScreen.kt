@@ -200,7 +200,7 @@ private fun VisibilityAppRow(app: InstalledApp, onRestore: () -> Unit) {
         RealAppIcon(drawable = app.icon, size = 44.dp, cornerRadius = 12.dp, scale = app.iconScale, rotation = app.iconRotation, accentHex = app.iconAccent)
         Column(modifier = Modifier.weight(1f)) {
             Text(app.label, color = CiyatoWhite, fontWeight = FontWeight.Medium, maxLines = 1)
-            Text(app.packageName, color = CiyatoMuted, fontSize = 10.sp, maxLines = 1)
+            Text(app.packageName, color = CiyatoMuted, fontSize = 11.sp, maxLines = 1)
         }
         Button(
             onClick = onRestore,

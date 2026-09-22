@@ -1299,7 +1299,7 @@ fun HomeScreen(
                         if (focusSession != null) {
                             Box(Modifier.clip(RoundedCornerShape(6.dp))
                                 .background(CiyatoGold.copy(0.15f)).padding(horizontal = 8.dp, vertical = 3.dp)) {
-                                Text("Focus", color = CiyatoGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("Focus", color = CiyatoGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -2084,7 +2084,7 @@ fun HomeScreen(
                                     )
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(app.label, color = CiyatoWhite, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                                        Text(app.packageName, color = CiyatoMuted, maxLines = 1, fontSize = 10.sp)
+                                        Text(app.packageName, color = CiyatoMuted, maxLines = 1, fontSize = 11.sp)
                                     }
                                     Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open ${app.label}", tint = CiyatoSec, modifier = Modifier.size(18.dp))
                                 }
@@ -2223,7 +2223,7 @@ fun HomeScreen(
                                     RealAppIcon(app.icon, size = 38.dp, cornerRadius = 10.dp, scale = app.iconScale, rotation = app.iconRotation, accentHex = app.iconAccent)
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(app.label, color = CiyatoWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                        Text(app.packageName, color = CiyatoMuted, fontSize = 10.sp, maxLines = 1)
+                                        Text(app.packageName, color = CiyatoMuted, fontSize = 11.sp, maxLines = 1)
                                     }
                                     if (isCustomCategory) {
                                         IconButton(onClick = {

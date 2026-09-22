@@ -310,7 +310,7 @@ private fun StorageRing(fraction: Float, modifier: Modifier = Modifier) {
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
             )
-            Text("Used", color = CiyatoMuted, fontSize = 10.sp)
+            Text("Used", color = CiyatoMuted, fontSize = 11.sp)
         }
     }
 }

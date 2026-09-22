@@ -44,14 +44,26 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.CircularProgressIndicator
 
 /**
- * PermissionAuditScreen — Suggestion #139.
+ * What each installed app has declared it can access.
  *
- * Lists all installed apps with their declared permissions, flagging:
- *   🔴 HIGH RISK: Location, Contacts, Camera, Microphone, SMS, Call Logs, Storage, Biometric
- *   🟡 MEDIUM:    Network access, Wifi, Bluetooth
- *   🟢 LOW:       Vibrate, Receive boot, etc.
+ * Deliberately NOT a risk score. This screen used to sort apps into red HIGH
+ * RISK / amber MEDIUM / green LOW buckets by counting declared permissions
+ * (F-158), and a count is not a risk: a messaging app declaring CAMERA is doing
+ * its job, a flashlight app declaring it is worth a look, and nothing in a
+ * manifest distinguishes the two. Red said "this app is dangerous" on evidence
+ * that did not support it, and green said "this app is safe" on none at all -
+ * which is the worse of the two, because it is reassurance.
  *
- * Tapping an app opens its Android system App Info page for granular control.
+ * So the categories are descriptive and the colours are not a verdict:
+ *   Sensitive     - location, contacts, camera, microphone, SMS, call logs
+ *   Connectivity  - network, wifi, bluetooth
+ *   Other         - everything else
+ *
+ * A declared permission is also not a granted one, and neither is evidence of
+ * use. Android's own Privacy dashboard shows what was actually accessed and
+ * when, so the banner links there; this screen answers the different question
+ * of what an app could ask for. Tapping an app opens its system App info page,
+ * where the person can actually change something.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,16 +92,16 @@ fun PermissionAuditScreen(
         auditedApps = withContext(Dispatchers.IO) {
             apps.filter { !it.isSystemApp }
                 .map { app -> AuditedApp(app, getAppPermissions(context, app.packageName)) }
-                .sortedByDescending { it.riskScore }
+                .sortedByDescending { it.sensitivityOrder }
         }
         isAuditing = false
     }
 
     val filtered = remember(auditedApps, filterLevel) {
         when (filterLevel) {
-            "Sensitive"    -> auditedApps.filter { it.riskLevel == PermissionRiskLevel.HIGH }
-            "Connectivity" -> auditedApps.filter { it.riskLevel == PermissionRiskLevel.MEDIUM }
-            "Other"        -> auditedApps.filter { it.riskLevel == PermissionRiskLevel.LOW }
+            "Sensitive"    -> auditedApps.filter { it.category == PermissionCategory.SENSITIVE }
+            "Connectivity" -> auditedApps.filter { it.category == PermissionCategory.CONNECTIVITY }
+            "Other"        -> auditedApps.filter { it.category == PermissionCategory.OTHER }
             else        -> auditedApps
         }
     }
@@ -206,25 +218,38 @@ fun PermissionAuditScreen(
 
 // ── Data model ────────────────────────────────────────────────────────────────
 
-private enum class PermissionRiskLevel { HIGH, MEDIUM, LOW }
+/**
+ * What kind of thing a declared permission reaches - not how dangerous it is.
+ * The names are the whole point: see the file KDoc for why this is no longer
+ * HIGH/MEDIUM/LOW.
+ */
+private enum class PermissionCategory { SENSITIVE, CONNECTIVITY, OTHER }
 
 private data class AuditedApp(
     val app: InstalledApp,
     val permissions: List<String>,
 ) {
-    val highRisk: List<String> get() = permissions.filter { isHighRisk(it) }
-    val medRisk:  List<String> get() = permissions.filter { isMedRisk(it) }
+    val sensitive: List<String> get() = permissions.filter { isSensitive(it) }
+    val connectivity:  List<String> get() = permissions.filter { isConnectivity(it) }
 
-    val riskScore: Int get() = highRisk.size * 10 + medRisk.size * 3 + (permissions.size - highRisk.size - medRisk.size)
+    /**
+     * Sort order only - most-sensitive-first, so the apps worth a look are at
+     * the top. It is NOT shown, NOT compared between apps, and NOT a score.
+     * It was called riskScore, and a number named that eventually gets
+     * rendered.
+     */
+    val sensitivityOrder: Int
+        get() = sensitive.size * 10 + connectivity.size * 3 +
+            (permissions.size - sensitive.size - connectivity.size)
 
-    val riskLevel: PermissionRiskLevel get() = when {
-        highRisk.isNotEmpty() -> PermissionRiskLevel.HIGH
-        medRisk.isNotEmpty()  -> PermissionRiskLevel.MEDIUM
-        else                  -> PermissionRiskLevel.LOW
+    val category: PermissionCategory get() = when {
+        sensitive.isNotEmpty() -> PermissionCategory.SENSITIVE
+        connectivity.isNotEmpty()  -> PermissionCategory.CONNECTIVITY
+        else                  -> PermissionCategory.OTHER
     }
 }
 
-private val HIGH_RISK_PERMS = setOf(
+private val SENSITIVE_PERMS = setOf(
     "android.permission.ACCESS_FINE_LOCATION",
     "android.permission.ACCESS_COARSE_LOCATION",
     "android.permission.ACCESS_BACKGROUND_LOCATION",
@@ -247,7 +272,7 @@ private val HIGH_RISK_PERMS = setOf(
     "android.permission.PROCESS_OUTGOING_CALLS",
 )
 
-private val MED_RISK_PERMS = setOf(
+private val CONNECTIVITY_PERMS = setOf(
     "android.permission.INTERNET",
     "android.permission.ACCESS_NETWORK_STATE",
     "android.permission.ACCESS_WIFI_STATE",
@@ -258,8 +283,8 @@ private val MED_RISK_PERMS = setOf(
     "android.permission.ACTIVITY_RECOGNITION",
 )
 
-private fun isHighRisk(perm: String) = HIGH_RISK_PERMS.any { perm.equals(it, ignoreCase = true) }
-private fun isMedRisk(perm: String)  = MED_RISK_PERMS.any  { perm.equals(it, ignoreCase = true) }
+private fun isSensitive(perm: String) = SENSITIVE_PERMS.any { perm.equals(it, ignoreCase = true) }
+private fun isConnectivity(perm: String)  = CONNECTIVITY_PERMS.any  { perm.equals(it, ignoreCase = true) }
 
 private fun getAppPermissions(context: android.content.Context, pkg: String): List<String> =
     try {
@@ -271,8 +296,9 @@ private fun getAppPermissions(context: android.content.Context, pkg: String): Li
 
 @Composable
 private fun PermissionSummaryBanner(audited: List<AuditedApp>) {
-    val highCount = audited.count { it.riskLevel == PermissionRiskLevel.HIGH }
-    val medCount  = audited.count { it.riskLevel == PermissionRiskLevel.MEDIUM }
+    val context = LocalContext.current
+    val highCount = audited.count { it.category == PermissionCategory.SENSITIVE }
+    val medCount  = audited.count { it.category == PermissionCategory.CONNECTIVITY }
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -286,8 +312,41 @@ private fun PermissionSummaryBanner(audited: List<AuditedApp>) {
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SummaryPill("${audited.size} reviewed", CiyatoSec, Modifier.weight(1f))
-            SummaryPill("$highCount sensitive", CiyatoRed, Modifier.weight(1f))
-            SummaryPill("$medCount connectivity", Color(0xFFF5C542), Modifier.weight(1f))
+            SummaryPill("$highCount sensitive", CiyatoGold, Modifier.weight(1f))
+            SummaryPill("$medCount connectivity", CiyatoSec, Modifier.weight(1f))
+        }
+        // What an app CAN ask for is a different question from what it has
+        // actually done, and this screen only answers the first. Android keeps
+        // the second - which app used the camera, when - and it is the more
+        // useful one, so it is offered here rather than approximated (F-158).
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .clickable {
+                    // ACTION_PRIVACY_SETTINGS is where the dashboard lives on
+                    // Android 12+; older releases and some OEM builds do not
+                    // have it, so a missing screen falls back rather than
+                    // throwing ActivityNotFoundException at the person.
+                    val opened = runCatching {
+                        context.startActivity(Intent(Settings.ACTION_PRIVACY_SETTINGS))
+                    }.isSuccess
+                    if (!opened) {
+                        runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }
+                    }
+                }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Shield, null, tint = CiyatoSec, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "See what apps actually used, and when, in Android's Privacy dashboard",
+                color = CiyatoSec,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -308,15 +367,21 @@ private fun SummaryPill(text: String, color: Color, modifier: Modifier = Modifie
 
 @Composable
 private fun AuditAppCard(audited: AuditedApp, onClick: () -> Unit) {
-    val riskColor = when (audited.riskLevel) {
-        PermissionRiskLevel.HIGH   -> CiyatoRed
-        PermissionRiskLevel.MEDIUM -> Color(0xFFF5C542)
-        PermissionRiskLevel.LOW    -> CiyatoGreen
+    // Attention, not alarm.
+    //
+    // This was red / amber / green. Red on an app that declares CAMERA accuses
+    // it of something the manifest cannot support, and green on one that does
+    // not is reassurance nobody earned (F-158). Gold marks the rows worth
+    // reading first; everything else is ordinary chrome.
+    val categoryColor = when (audited.category) {
+        PermissionCategory.SENSITIVE -> CiyatoGold
+        PermissionCategory.CONNECTIVITY -> CiyatoSec
+        PermissionCategory.OTHER -> CiyatoMuted
     }
-    val riskLabel = when (audited.riskLevel) {
-        PermissionRiskLevel.HIGH   -> "Sensitive"
-        PermissionRiskLevel.MEDIUM -> "Connectivity"
-        PermissionRiskLevel.LOW    -> "Other"
+    val categoryLabel = when (audited.category) {
+        PermissionCategory.SENSITIVE   -> "Sensitive"
+        PermissionCategory.CONNECTIVITY -> "Connectivity"
+        PermissionCategory.OTHER    -> "Other"
     }
 
     var expanded by remember { mutableStateOf(false) }
@@ -326,7 +391,7 @@ private fun AuditAppCard(audited: AuditedApp, onClick: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(CiyatoBgEl)
-            .border(1.dp, if (audited.riskLevel == PermissionRiskLevel.HIGH) riskColor.copy(0.3f) else CiyatoSubtleBorder, RoundedCornerShape(16.dp))
+            .border(1.dp, if (audited.category == PermissionCategory.SENSITIVE) categoryColor.copy(0.3f) else CiyatoSubtleBorder, RoundedCornerShape(16.dp))
             .clickable(role = Role.Button) { expanded = !expanded }
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -335,31 +400,31 @@ private fun AuditAppCard(audited: AuditedApp, onClick: () -> Unit) {
             RealAppIcon(drawable = audited.app.icon, size = 36.dp, scale = audited.app.iconScale, rotation = audited.app.iconRotation, accentHex = audited.app.iconAccent)
             Column(modifier = Modifier.weight(1f)) {
                 Text(audited.app.label, color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Text(audited.app.packageName.take(36), color = CiyatoMuted, fontSize = 10.sp)
+                Text(audited.app.packageName.take(36), color = CiyatoMuted, fontSize = 11.sp)
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.clip(RoundedCornerShape(6.dp))
-                        .background(riskColor.copy(0.15f)).padding(horizontal = 8.dp, vertical = 3.dp),
+                        .background(categoryColor.copy(0.15f)).padding(horizontal = 8.dp, vertical = 3.dp),
                 ) {
-                    Text(riskLabel, color = riskColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(categoryLabel, color = categoryColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
-                Text("${audited.permissions.size} perms", color = CiyatoMuted, fontSize = 10.sp)
+                Text("${audited.permissions.size} perms", color = CiyatoMuted, fontSize = 11.sp)
             }
         }
 
         if (expanded) {
             HorizontalDivider(color = CiyatoSubtleBorder)
-            if (audited.highRisk.isNotEmpty()) {
-                Text("Sensitive declared permissions:", color = CiyatoRed, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                audited.highRisk.forEach { perm ->
+            if (audited.sensitive.isNotEmpty()) {
+                Text("Sensitive declared permissions:", color = CiyatoGold, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                audited.sensitive.forEach { perm ->
                     Text("• ${perm.substringAfterLast(".")}", color = CiyatoSec, fontSize = 11.sp)
                 }
             }
-            if (audited.medRisk.isNotEmpty()) {
-                Text("Connectivity declared permissions:", color = Color(0xFFF5C542), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                audited.medRisk.forEach { perm ->
+            if (audited.connectivity.isNotEmpty()) {
+                Text("Connectivity declared permissions:", color = CiyatoSec, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                audited.connectivity.forEach { perm ->
                     Text("• ${perm.substringAfterLast(".")}", color = CiyatoMuted, fontSize = 11.sp)
                 }
             }

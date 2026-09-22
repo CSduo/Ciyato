@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.ui.theme.CiyatoBg
 import com.ciyato.launcher.ui.theme.CiyatoRed
+import com.ciyato.launcher.ui.theme.labelXS
 
 /**
  * NotificationBadge — Suggestion #20
@@ -62,12 +63,14 @@ fun NotificationBadge(
             .padding(horizontal = 3.dp),
         contentAlignment = Alignment.Center,
     ) {
+        // See labelXS: the one slot allowed below the 11sp readable floor,
+        // because a badge numeral sits in a fixed circle that cannot absorb a
+        // larger glyph and its meaning is carried by the badge itself.
         Text(
             displayCount,
             color = Color.White,
-            fontSize = 9.sp,
+            style = labelXS,
             fontWeight = FontWeight.Bold,
-            lineHeight = 9.sp,
         )
     }
 }

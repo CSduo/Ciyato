@@ -927,7 +927,7 @@ private fun PhotoThumb(
             Text(
                 durationLabel,
                 color = CiyatoWhite,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(5.dp)

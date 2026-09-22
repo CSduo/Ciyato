@@ -342,7 +342,7 @@ private fun AnimeHailIceEffect() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Warning, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("ICE / HAIL ALERT", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("ICE / HAIL ALERT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -400,7 +400,7 @@ private fun AnimeHeatwaveEffect() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Warning, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("HEATWAVE ALERT", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("HEATWAVE ALERT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

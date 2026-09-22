@@ -103,11 +103,18 @@ fun IconWithBadge(
                     .clip(CircleShape)
                     .background(CiyatoRed)
             ) {
+                // Size comes from the type system, not from a literal.
+                //
+                // Three badges in this app each picked their own sub-readable
+                // size - 8sp here, 9sp in NotificationBadge - and none of them
+                // agreed (F-038). labelXS exists for exactly this and nothing
+                // else: a numeral inside a fixed circle whose meaning is
+                // already carried by the circle and its content description.
                 Text(
                     text = if (badgeCount > 99) "99+" else "$badgeCount",
                     color = CiyatoWhite,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold
+                    style = labelXS,
+                    fontWeight = FontWeight.Bold,
                 )
             }
         }

@@ -537,7 +537,7 @@ private fun HourlyTile(entry: WeatherRepository.HourlyEntry, useFahrenheit: Bool
         )
         Text("$temp°", color = CiyatoWhite, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         if (entry.rainPct > 0) {
-            Text("${entry.rainPct}%", color = CiyatoBlue, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+            Text("${entry.rainPct}%", color = CiyatoBlue, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -692,13 +692,13 @@ private fun WindCompassCard(state: WeatherState.Success) {
         Text("Wind Details", color = CiyatoMuted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Speed", color = CiyatoMuted, fontSize = 10.sp)
+                Text("Speed", color = CiyatoMuted, fontSize = 11.sp)
                 Text("${state.windKmh.toInt()} km/h", color = CiyatoWhite, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Direction", color = CiyatoMuted, fontSize = 10.sp)
+                Text("Direction", color = CiyatoMuted, fontSize = 11.sp)
                 Text(direction, color = CiyatoGold, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text("${state.windDirectionDeg}°", color = CiyatoMuted, fontSize = 10.sp)
+                Text("${state.windDirectionDeg}°", color = CiyatoMuted, fontSize = 11.sp)
             }
         }
     }
@@ -784,6 +784,6 @@ private fun WeatherInfoCard(
 @Composable
 private fun WeatherAttribution() {
     Text("Weather by Open-Meteo.com · Geocoding by Nominatim / OpenStreetMap · Air quality by Open-Meteo",
-        color = CiyatoMuted, fontSize = 10.sp, textAlign = TextAlign.Center,
+        color = CiyatoMuted, fontSize = 11.sp, textAlign = TextAlign.Center,
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
 }

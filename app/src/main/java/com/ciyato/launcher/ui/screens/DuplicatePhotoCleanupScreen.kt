@@ -327,7 +327,7 @@ fun DuplicatePhotoCleanupScreen(
                                             Text(
                                                 if (isKeeper) "Keep" else formatBytesShort(photo.sizeBytes),
                                                 color = if (isKeeper) CiyatoGreen else CiyatoMuted,
-                                                fontSize = 10.sp,
+                                                fontSize = 11.sp,
                                                 maxLines = 1,
                                             )
                                         }

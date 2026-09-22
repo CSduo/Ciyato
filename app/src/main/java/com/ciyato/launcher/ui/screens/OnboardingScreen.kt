@@ -396,7 +396,7 @@ private fun VisualStep(icon: ImageVector, title: String, detail: String, modifie
         Icon(icon, contentDescription = null, tint = CiyatoGold, modifier = Modifier.size(18.dp))
         Column {
             Text(title, color = CiyatoWhite, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text(detail, color = CiyatoMuted, fontSize = 9.sp, maxLines = 1)
+            Text(detail, color = CiyatoMuted, fontSize = 11.sp, maxLines = 1)
         }
     }
 }
@@ -665,7 +665,7 @@ private fun PreviewWidget(title: String, body: String, modifier: Modifier = Modi
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(title, color = CiyatoWhite, fontSize = 21.sp, fontWeight = FontWeight.Medium)
-        Text(body, color = CiyatoSec, fontSize = 10.sp, lineHeight = 14.sp)
+        Text(body, color = CiyatoSec, fontSize = 11.sp, lineHeight = 14.sp)
     }
 }
 
@@ -683,7 +683,7 @@ private fun PreviewCategory(index: Int, modifier: Modifier = Modifier) {
     ) {
         Column {
             Text(labels[index], color = CiyatoWhite, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text("Organized apps", color = CiyatoMuted, fontSize = 9.sp)
+            Text("Organized apps", color = CiyatoMuted, fontSize = 11.sp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             repeat(3) { dot ->

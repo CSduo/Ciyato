@@ -215,7 +215,7 @@ private fun UsageStatRow(stat: AppUsageStat, totalMs: Long, rank: Int) {
                             .background(barColor.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("#$rank", color = barColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text("#$rank", color = barColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                     Text(stat.appLabel, color = CiyatoWhite, fontWeight = FontWeight.Medium, fontSize = 15.sp)
                 }

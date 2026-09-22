@@ -195,7 +195,7 @@ private fun CategoryChip(name: String) {
     androidx.compose.material3.Text(
         text = name,
         color = CiyatoGold,
-        fontSize = 10.sp,
+        fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
