@@ -109,6 +109,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
 import android.net.Uri
+import com.ciyato.launcher.data.PhotoAiCollectionStore
+import androidx.compose.runtime.collectAsState
 
 private enum class LibraryTab(val label: String) {
     COLLECTIONS("Collections"), GRID("Grid"), TIMELINE("Timeline"), TRASH("Trash")
@@ -264,7 +266,20 @@ fun PhotosLibraryScreen(
     BackHandler(enabled = selecting) { selected = emptySet() }
 
     // Free on-device AI pass (ML Kit) — builds extra collections like Food/Pets/Nature.
+    // Restored from storage rather than starting empty.
+    //
+    // This was remember-only, so an on-device pass over hundreds of photos -
+    // seconds of CPU and battery - was discarded the moment the person navigated
+    // away, and had to run again from scratch. That makes the feature feel like
+    // a demo rather than an organizer: the organisation did not survive leaving
+    // the screen (F-105).
+    val storedAiCollections by viewModel.photoAiCollections.collectAsState()
     var aiResult by remember { mutableStateOf<PhotoAiLabeler.AiScanResult?>(null) }
+    LaunchedEffect(storedAiCollections, images) {
+        if (aiResult == null && storedAiCollections.isNotBlank()) {
+            aiResult = PhotoAiCollectionStore.restore(storedAiCollections, images)
+        }
+    }
     var aiProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val scanScope = rememberCoroutineScope()
     val aiCollections = aiResult?.collections.orEmpty()
@@ -524,17 +539,25 @@ fun PhotosLibraryScreen(
                     item(span = { GridItemSpan(2) }) {
                         AiScanBanner(
                             progress = aiProgress,
+                            libraryTotal = libraryTotal,
                             result = aiResult,
                             onScan = {
                                 aiProgress = 0 to 0
                                 scanScope.launch {
-                                    aiResult = PhotoAiLabeler.categorize(
+                                    val scanned = PhotoAiLabeler.categorize(
                                         context = context,
                                         // Photos only: the labeler decodes still
                                         // images, so every video handed to it
                                         // would be a guaranteed failed decode.
                                         images = images.filter { !it.isVideo },
                                         onProgress = { done, total -> aiProgress = done to total },
+                                    )
+                                    aiResult = scanned
+                                    // Persist immediately: an expensive scan
+                                    // should not need repeating because someone
+                                    // pressed back.
+                                    viewModel.setPhotoAiCollections(
+                                        PhotoAiCollectionStore.serialize(scanned),
                                     )
                                     aiProgress = null
                                 }
@@ -726,6 +749,8 @@ private fun PartialAccessBanner(onManage: () -> Unit) {
 private fun AiScanBanner(
     progress: Pair<Int, Int>?,
     result: PhotoAiLabeler.AiScanResult?,
+    /** Photos MediaStore can see, so the coverage limit can be stated in context. */
+    libraryTotal: Int,
     onScan: () -> Unit,
 ) {
     val hasResults = result != null && result.collections.isNotEmpty()
@@ -764,7 +789,16 @@ private fun AiScanBanner(
                         "Scanned your newest " +
                             pluralStringResource(R.plurals.count_photos, result.scannedCount, result.scannedCount) +
                             " — nothing grouped confidently yet."
-                    else -> "Group photos by what's in them — free, on-device, private."
+                    // The coverage limit is stated BEFORE the scan, not only in
+                    // the result (F-104, F-203). Saying only "group photos by
+                    // what's in them" invites someone with 8,000 photos to
+                    // expect all 8,000 labelled, then conclude the model failed
+                    // or that their older pets and documents do not exist -
+                    // when those images were simply never looked at.
+                    libraryTotal > PhotoAiLabeler.DEFAULT_MAX_IMAGES ->
+                        "Groups your newest ${PhotoAiLabeler.DEFAULT_MAX_IMAGES} photos by what's " +
+                            "in them, out of ${libraryTotal} on this device. Free, on-device, private."
+                    else -> "Groups your photos by what's in them — free, on-device, private."
                 },
                 color = CiyatoMuted,
                 fontSize = 12.sp,

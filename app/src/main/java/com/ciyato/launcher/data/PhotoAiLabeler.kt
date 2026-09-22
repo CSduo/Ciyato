@@ -32,6 +32,16 @@ object PhotoAiLabeler {
 
     private const val MIN_CONFIDENCE = 0.72f
 
+    /**
+     * How many images one pass will label.
+     *
+     * Public because any screen offering this has to be able to state the
+     * coverage up front. It was a default parameter only, so the UI promised to
+     * "group photos by what's in them" with no way to know it meant the newest
+     * 250 of them (F-104, F-203).
+     */
+    const val DEFAULT_MAX_IMAGES = 250
+
     data class AiScanResult(
         val collections: Map<String, List<PhotoDeviceLibrary.DeviceImage>>,
         val scannedCount: Int,
@@ -44,7 +54,7 @@ object PhotoAiLabeler {
     suspend fun categorize(
         context: Context,
         images: List<PhotoDeviceLibrary.DeviceImage>,
-        maxImages: Int = 250,
+        maxImages: Int = DEFAULT_MAX_IMAGES,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
     ): AiScanResult = withContext(Dispatchers.Default) {
         val labeler = ImageLabeling.getClient(

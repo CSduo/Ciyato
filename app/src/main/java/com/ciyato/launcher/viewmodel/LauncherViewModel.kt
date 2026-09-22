@@ -371,6 +371,19 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }.filter { it.uris.isNotEmpty() }
         settings.setPhotoCollections(PhotoLibraryStore.serializeCollections(collections))
     }
+    /**
+     * The stored on-device photo-labelling result.
+     *
+     * Kept so an expensive ML Kit pass is not repeated every time the
+     * person leaves the Photos screen and comes back (F-105).
+     */
+    val photoAiCollections = settings.photoAiCollections
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
+    fun setPhotoAiCollections(v: String) = viewModelScope.launch {
+        settings.setPhotoAiCollections(v)
+    }
+
     fun clearPhotoLibrary() = viewModelScope.launch {
         settings.setPhotoMediaUris("[]")
         settings.setPhotoCollections("[]")

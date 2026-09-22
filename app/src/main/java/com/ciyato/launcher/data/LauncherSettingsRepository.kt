@@ -191,6 +191,8 @@ class LauncherSettingsRepository(private val context: Context) {
         val KEY_DRAWER_STYLE           = stringPreferencesKey("drawer_style")       // smart | dense | spacious
         val KEY_PHOTO_MEDIA_URIS       = stringPreferencesKey("photo_media_uris")
         val KEY_PHOTO_COLLECTIONS      = stringPreferencesKey("photo_collections")
+        /** Persisted on-device photo-labelling result (F-105). */
+        val KEY_PHOTO_AI_COLLECTIONS   = stringPreferencesKey("photo_ai_collections")
         val KEY_FILE_SEARCH_HISTORY    = stringPreferencesKey("file_search_history")
         val KEY_SAVE_FILE_SEARCH_HISTORY = booleanPreferencesKey("save_file_search_history")
         val KEY_FILE_SEARCH_INDEX      = stringPreferencesKey("file_search_index")
@@ -328,6 +330,7 @@ class LauncherSettingsRepository(private val context: Context) {
     val stickyNotes:            Flow<String>  = pref(KEY_STICKY_NOTES,            "[]")
 
     val photoBackupFolderUri:   Flow<String>  = pref(KEY_PHOTO_BACKUP_FOLDER_URI,   "")
+    val photoAiCollections:     Flow<String>  = pref(KEY_PHOTO_AI_COLLECTIONS,     "")
     val photoBackupAutoEnabled: Flow<Boolean> = pref(KEY_PHOTO_BACKUP_AUTO_ENABLED, false)
     val photoBackupLastRunAt:   Flow<Long>    = pref(KEY_PHOTO_BACKUP_LAST_RUN_AT,  0L)
     val photoBackupLastCount:   Flow<Int>     = pref(KEY_PHOTO_BACKUP_LAST_COUNT,   0)
@@ -446,6 +449,7 @@ class LauncherSettingsRepository(private val context: Context) {
     suspend fun setDrawerStyle(v: String)              = set(KEY_DRAWER_STYLE,             v)
     suspend fun setPhotoMediaUris(v: String)           = set(KEY_PHOTO_MEDIA_URIS,         v)
     suspend fun setPhotoCollections(v: String)         = set(KEY_PHOTO_COLLECTIONS,        v)
+    suspend fun setPhotoAiCollections(v: String)       = set(KEY_PHOTO_AI_COLLECTIONS,     v)
     suspend fun setFileSearchHistory(v: String)        = set(KEY_FILE_SEARCH_HISTORY,      v)
     suspend fun setSaveFileSearchHistory(v: Boolean)   = set(KEY_SAVE_FILE_SEARCH_HISTORY, v)
     suspend fun setFileSearchIndex(v: String)          = set(KEY_FILE_SEARCH_INDEX,       v)
