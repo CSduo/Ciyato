@@ -1,3 +1,4 @@
+import com.android.build.api.artifact.SingleArtifact
 import org.gradle.api.tasks.PathSensitivity
 // `java` resolves to the Android/Gradle extension inside this script, so the
 // package cannot be referenced inline — import the type explicitly.
@@ -310,4 +311,126 @@ tasks.withType<Test>().configureEach {
     inputs.file(rootProject.file("STORE_READINESS.md"))
         .withPropertyName("storeReadinessDoc")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+    // Same reason: PermissionRegistryTest reads DATA_INVENTORY.md from disk, so
+    // without this an edit to it alone would leave the test task up to date.
+    inputs.file(rootProject.file("DATA_INVENTORY.md"))
+        .withPropertyName("dataInventoryDoc")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
+
+// ── Merged-manifest gate ─────────────────────────────────────────────────────
+//
+// What ships is the MERGED manifest, not app/src/main/AndroidManifest.xml.
+// AndroidX, WorkManager and the profile installer each contribute permissions
+// and components the source manifest never mentions, and a dependency upgrade
+// can add one without anybody noticing. Comments in one XML file are not proof
+// of what a Play reviewer will see (F-184).
+//
+// This diffs the merged release manifest against release-manifest-allowlist.txt
+// in both directions and archives the inventory. An ADDITION is a capability
+// nobody reviewed. A REMOVAL is a feature that has gone quiet - which this
+// project has produced three times, each one silent: PACKAGE_USAGE_STATS
+// missing while six screens queried usage stats, two Quick Settings tiles
+// undeclared, and a notification listener marked exported="false" so the system
+// could never bind it.
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        val manifestFile = variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)
+        val allowlistFile = layout.projectDirectory.file("release-manifest-allowlist.txt")
+        val reportFile = layout.buildDirectory.file("reports/merged-manifest/release-inventory.txt")
+
+        tasks.register("verifyReleaseManifest") {
+            group = "verification"
+            description = "Diffs the merged release manifest against release-manifest-allowlist.txt."
+
+            inputs.file(manifestFile).withPropertyName("mergedManifest")
+            inputs.file(allowlistFile).withPropertyName("allowlist")
+                .withPathSensitivity(PathSensitivity.RELATIVE)
+            outputs.file(reportFile).withPropertyName("inventory")
+
+            doLast {
+                val manifest = manifestFile.get().asFile.readText()
+
+                val permissions = Regex("""<uses-permission[^>]*android:name="([^"]+)"""")
+                    .findAll(manifest).map { it.groupValues[1] }.toSortedSet()
+
+                val exported = Regex("""<(activity|service|receiver|provider)\b([^>]*)>""", RegexOption.DOT_MATCHES_ALL)
+                    .findAll(manifest)
+                    .mapNotNull { match ->
+                        val attrs = match.groupValues[2]
+                        if (!attrs.contains("android:exported=\"true\"")) return@mapNotNull null
+                        val name = Regex("""android:name="([^"]+)"""").find(attrs)?.groupValues?.get(1)
+                        name?.let { "${match.groupValues[1]} $it" }
+                    }
+                    .toSortedSet()
+
+                // Sections are parsed rather than the whole file being read as
+                // one list, so a permission cannot silently satisfy a component
+                // expectation or the reverse.
+                var section = ""
+                val allowedPermissions = sortedSetOf<String>()
+                val allowedExported = sortedSetOf<String>()
+                allowlistFile.asFile.readLines().forEach { raw ->
+                    val line = raw.substringBefore('#').trim()
+                    when {
+                        line.isEmpty() -> Unit
+                        line.startsWith("[") -> section = line.trim('[', ']')
+                        section == "permissions" -> allowedPermissions.add(line)
+                        section == "exported" -> allowedExported.add(line)
+                    }
+                }
+
+                val report = buildString {
+                    appendLine("Merged release manifest inventory")
+                    appendLine("Source: " + manifestFile.get().asFile.path)
+                    appendLine()
+                    appendLine("Permissions (" + permissions.size + "):")
+                    permissions.forEach { appendLine("  " + it) }
+                    appendLine()
+                    appendLine("Exported components (" + exported.size + "):")
+                    exported.forEach { appendLine("  " + it) }
+                }
+                val out = reportFile.get().asFile
+                out.parentFile.mkdirs()
+                out.writeText(report)
+
+                val problems = buildList {
+                    (permissions - allowedPermissions).forEach {
+                        add("UNDECLARED PERMISSION in the release build: " + it)
+                    }
+                    (allowedPermissions - permissions).forEach {
+                        add("EXPECTED PERMISSION MISSING from the release build: " + it +
+                            " - whatever depends on it is now silently inert")
+                    }
+                    (exported - allowedExported).forEach {
+                        add("UNREVIEWED EXPORTED COMPONENT: " + it)
+                    }
+                    (allowedExported - exported).forEach {
+                        add("EXPECTED EXPORTED COMPONENT MISSING: " + it +
+                            " - if the system binds it, it can no longer reach it")
+                    }
+                }
+
+                if (problems.isNotEmpty()) {
+                    throw GradleException(
+                        "Merged release manifest does not match release-manifest-allowlist.txt:\n" +
+                            problems.joinToString("\n") { "  - " + it } +
+                            "\n\nInventory written to " + out.path +
+                            "\nIf the change is intended, update the allowlist and say why in the " +
+                            "commit message; add a DATA_INVENTORY.md row if it is a permission."
+                    )
+                }
+                logger.lifecycle("Merged release manifest verified: " + permissions.size +
+                    " permissions, " + exported.size + " exported components. Inventory: " + out.path)
+            }
+        }
+    }
+}
+
+// The release bundle cannot be produced without passing the gate. Running it
+// only in CI would mean a local release build skips the one check that looks at
+// what actually ships.
+tasks.matching { it.name == "bundleRelease" || it.name == "assembleRelease" }.configureEach {
+    dependsOn("verifyReleaseManifest")
 }

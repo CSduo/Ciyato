@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.DataUsage
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.TrendingUp
@@ -76,6 +77,7 @@ fun InsightsScreen(
     onOpenTodaySummary: () -> Unit,
     onOpenSuggestions: () -> Unit,
     onOpenAnomalies: () -> Unit,
+    onOpenDataUsage: () -> Unit,
 ) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(hasUsageAccess(context)) }
@@ -187,6 +189,20 @@ fun InsightsScreen(
                     title = "Unusual Usage",
                     description = "Apps well above or below their own recent daily average.",
                     onClick = onOpenAnomalies,
+                )
+            }
+            item {
+                // Data usage was a complete, working screen that no route
+                // reached (F-170). It runs on the same Usage access grant as
+                // everything else here, which is precisely why it belongs
+                // behind this one door rather than its own (F-130) - the
+                // permission is asked for once and everything it buys is in one
+                // place.
+                InsightEntry(
+                    icon = Icons.Default.DataUsage,
+                    title = "Data Usage",
+                    description = "Mobile data per app over the last 30 days. Not a billing cycle - Android does not expose one.",
+                    onClick = onOpenDataUsage,
                 )
             }
         }

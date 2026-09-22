@@ -1,12 +1,17 @@
 package com.ciyato.launcher.viewmodel
 
 import com.ciyato.launcher.data.InstalledApp
-import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * Extension properties and functions for LauncherViewModel.
- * Adds pin/hide helpers and custom greeting.
- * Suggestions: #100 (custom greeting), #16 (pin/hide helpers).
+ * Pin and hide helpers for LauncherViewModel.
+ *
+ * The custom greeting used to live here too, and it could not have worked. It
+ * was a file-level private MutableStateFlow read through a plain getter: not
+ * persisted, so it vanished on process death; not collected, so Compose never
+ * recomposed when it changed; and top-level rather than per-instance, so every
+ * ViewModel shared one value. CustomGreetingScreen was its only writer and was
+ * reachable from no route at all — a screen that could not work, wired to state
+ * that could not hold it. Both are gone (F-170).
  *
  * Search history used to live here as a separate in-memory StateFlow
  * (searchHistory/addSearchQuery/clearSearchHistory/removeSearchQuery), but it
@@ -15,18 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * LauncherSettingsRepository (see SearchScreen/SearchHistoryScreen).
  */
 
-private val _customGreeting = MutableStateFlow<String?>(null)
-
-val LauncherViewModel.customGreeting: String?
-    get() = _customGreeting.value
-
-// ── Custom greeting (#100) ─────────────────────────────────────────────────────
-
-fun LauncherViewModel.setCustomGreeting(text: String?) {
-    _customGreeting.value = text
-}
-
-// ── Pin helpers (#16) ──────────────────────────────────────────────────────────
+// ── Pin helpers ────────────────────────────────────────────────────────────────
 
 fun LauncherViewModel.isPinned(app: InstalledApp): Boolean {
     return isPinnedToDock(app.packageName)

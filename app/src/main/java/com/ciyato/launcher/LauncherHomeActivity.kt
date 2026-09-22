@@ -169,6 +169,7 @@ private sealed class LauncherDest {
     object WidgetHost         : LauncherDest()   // Suggestion 15 — AppWidgetHost placement
     object Insights           : LauncherDest()   // One entry for everything built on Usage Access
     object AppUsage           : LauncherDest()   // Screen Time — was an orphan (F-154)
+    object NetworkUsage       : LauncherDest()   // Data Usage — was an orphan (F-170)
 }
 
 /**
@@ -189,6 +190,7 @@ private val ARGLESS_DESTS: List<LauncherDest> = listOf(
     LauncherDest.DataBreachChecker, LauncherDest.SafeBrowsing, LauncherDest.SearchHistory,
     LauncherDest.StickyNotes, LauncherDest.AutoBackup, LauncherDest.DuplicateShortcuts,
     LauncherDest.WidgetHost, LauncherDest.Insights, LauncherDest.AppUsage,
+    LauncherDest.NetworkUsage,
 )
 
 private val DEST_BY_KEY: Map<String, LauncherDest> =
@@ -388,12 +390,18 @@ private fun LauncherRoot(
             onBack = { dest = LauncherDest.Insights },
         )
 
+        is LauncherDest.NetworkUsage -> NetworkUsageScreen(
+            viewModel = viewModel,
+            onBack = { dest = LauncherDest.Insights },
+        )
+
         is LauncherDest.Insights -> InsightsScreen(
             onBack = { dest = LauncherDest.Settings },
             onOpenScreenTime = { dest = LauncherDest.AppUsage },
             onOpenTodaySummary = { dest = LauncherDest.AiChangelog },
             onOpenSuggestions = { dest = LauncherDest.ContextualSuggestions },
             onOpenAnomalies = { dest = LauncherDest.AnomalyDetection },
+            onOpenDataUsage = { dest = LauncherDest.NetworkUsage },
         )
 
         is LauncherDest.Search -> SearchScreen(

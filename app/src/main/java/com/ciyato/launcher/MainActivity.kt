@@ -441,7 +441,11 @@ class MainActivity : FragmentActivity() {
                             onOpenTodaySummary = { navController.navigate("ai_changelog") { launchSingleTop = true } },
                             onOpenSuggestions = { navController.navigate("contextual_suggestions") { launchSingleTop = true } },
                             onOpenAnomalies = { navController.navigate("anomaly_detection") { launchSingleTop = true } },
+                            onOpenDataUsage = { navController.navigate("network_usage") { launchSingleTop = true } },
                         )
+                    }
+                    composable("network_usage") {
+                        NetworkUsageScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
                     }
                     composable("app_usage") {
                         AppUsageStatsScreen(viewModel = viewModel, onBack = { navController.popBackStack() })

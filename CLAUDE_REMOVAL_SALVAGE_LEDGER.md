@@ -128,6 +128,22 @@ Reachability was measured per component rather than per file, because the file i
 | `PlacedWidgetStore` (whole file, 31 lines) | **DELETED** | Its only caller was `WidgetHostScreen`, which now uses `WidgetPlacementStore`. `grep` over the tree returns no other reference. | It persisted a bare array of AppWidget IDs, which cannot carry a size, and a widget placed on Home needs one that survives a restart. Not a rename: `WidgetPlacementStore.parse` still reads the old `[1,2,3]` format, and a migration test pins that. An AppWidget ID is allocated against a host and is not re-derivable, so a parser that silently dropped the old format would have made every already-placed widget vanish from Home **and** stay allocated in the system, reachable by nothing. |
 | `PlacedWidget` (data class in `WidgetHostScreen.kt`) | **SALVAGED** | Same file, one screen. | It held an `AppWidgetProviderInfo` alongside the ID, which forced every consumer to resolve provider info before it could hold a record at all. Replaced by `WidgetPlacement`, which stores only what is durable (ID and size) and resolves provider info live — a provider can change or vanish between sessions. |
 
+## Unrouted screens, disposed of rather than wired (F-170 / F-208)
+
+Five screens compiled, looked like features in the source tree, and could not be opened.
+Leaving them was the risk: the obvious next task for anyone reading an unwired screen is to
+wire it, which is how a deliberately-dropped feature comes back.
+
+| Component | Disposition | Reachability proof | Reasoning |
+|---|---|---|---|
+| `NetworkUsageScreen` (289 lines) | **ROUTED** | Referenced by no file but its own. | It works, and it runs on the same Usage access grant as everything else under Insights. F-130's rule is one door for everything that permission buys, so it became the fifth entry there rather than its own Settings row. Now reachable from both hosts and restorable after process death. |
+| `CustomGreetingScreen` (182 lines) | **DELETED** | Zero call sites. | Not merely unrouted — it could not have worked. Its only state was a file-level private `MutableStateFlow` in `LauncherViewModelExtensions`, read through a plain getter: never persisted, so it died with the process; never collected, so Compose would not have recomposed on change; top-level rather than per-instance, so every ViewModel shared one value. Routing it would have shipped a screen where you type a greeting and nothing happens. The phantom state went with it. |
+| `AiDailyAgendaScreen` (209 lines) | **DELETED** | Zero call sites. | A second “today's summary”, duplicating `AiChangelogScreen`, which is routed from Insights and has had the honesty work done on it (F-125, F-126). Keeping both would mean two screens to fix every time the definition of “today” changed — which it already did once. |
+| `BulkDeleteFilesScreen` (278 lines) | **DELETED** | Zero call sites. | `PhotosLibraryScreen` already has multi-select with system delete consent, trash-versus-purge and undo, and it is the one people reach. A second bulk deleter is a second place for a destructive path to be wrong. |
+| `StressFreeModeScreen` (216 lines) | **DELETED** | Zero call sites. | Once F-131 removed the CALM/MILD/STRESSED verdict it inferred from the clock and a recent-app count, what remained was a paced breathing exercise. It is a nice thing and it is not a launcher feature; `PLAY_POSITIONING.md` is explicit that breadth without hierarchy is what makes a restricted-permission argument implausible. Its KDoc still described the removed signals as though it acted on them, which was F-132. |
+
+Restoring any of these means re-deciding the product question, not just reverting a commit.
+
 ## Preserved infrastructure (do not delete while refactoring)
 
 The audit is explicit that these are good decisions to keep: SAF-first storage, system-owned

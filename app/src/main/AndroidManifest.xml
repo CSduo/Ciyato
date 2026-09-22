@@ -152,9 +152,24 @@
           service simply never starts, which is why badges are treated as
           absent rather than zero.
         -->
+        <!--
+          Bound by the system, so it has to be exported.
+
+          This was android:exported="false", which means "only this UID may bind
+          me" - and the process that binds a notification listener is
+          system_server. The service could never be bound, so notification
+          badges never appeared no matter what the person turned on in Settings.
+          Nothing failed loudly; the counts were simply always zero.
+
+          exported="true" is not a hole here, and the two Quick Settings tiles
+          below are the same shape: what protects the service is
+          BIND_NOTIFICATION_LISTENER_SERVICE, a signature-level permission only
+          the system holds. Without the bind permission an exported service
+          would be a hole; with it, exported is the requirement.
+        -->
         <service
             android:name=".services.CiyatoNotificationListenerService"
-            android:exported="false"
+            android:exported="true"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
