@@ -121,6 +121,13 @@ Reachability was measured per component rather than per file, because the file i
 | `SettingsSlider` (private, `SettingsScreen.kt`) | **DELETED** (16 lines) | Zero call sites; private, so the file itself is proof. | Same per-frame contract, dead. |
 | `CiyatoPasswordField` | **SALVAGED** | Zero call sites, while `DataBreachCheckerScreen` hand-rolled its own password field — the duplication the design system exists to prevent. | Deleting it would have left the duplicate and buried a P0: the component did not mask its input (see N-01). Fixed and adopted by the breach screen instead, so the design-system field is now exercised by a real screen. |
 
+## Superseded by the Home widget integration (F-138 / F-179 / F-180)
+
+| Component | Disposition | Reachability proof | Reasoning |
+|---|---|---|---|
+| `PlacedWidgetStore` (whole file, 31 lines) | **DELETED** | Its only caller was `WidgetHostScreen`, which now uses `WidgetPlacementStore`. `grep` over the tree returns no other reference. | It persisted a bare array of AppWidget IDs, which cannot carry a size, and a widget placed on Home needs one that survives a restart. Not a rename: `WidgetPlacementStore.parse` still reads the old `[1,2,3]` format, and a migration test pins that. An AppWidget ID is allocated against a host and is not re-derivable, so a parser that silently dropped the old format would have made every already-placed widget vanish from Home **and** stay allocated in the system, reachable by nothing. |
+| `PlacedWidget` (data class in `WidgetHostScreen.kt`) | **SALVAGED** | Same file, one screen. | It held an `AppWidgetProviderInfo` alongside the ID, which forced every consumer to resolve provider info before it could hold a record at all. Replaced by `WidgetPlacement`, which stores only what is durable (ID and size) and resolves provider info live — a provider can change or vanish between sessions. |
+
 ## Preserved infrastructure (do not delete while refactoring)
 
 The audit is explicit that these are good decisions to keep: SAF-first storage, system-owned

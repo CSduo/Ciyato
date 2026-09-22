@@ -96,6 +96,14 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.ciyato.launcher.data.rememberLauncherWidgetHost
+import com.ciyato.launcher.data.WidgetPlacementStore
+import com.ciyato.launcher.data.WidgetPlacement
+import com.ciyato.launcher.data.LauncherWidgetHost
+import android.appwidget.AppWidgetProviderInfo
+import android.appwidget.AppWidgetManager
 
 // Automatic Home content is limited to the approved six. The remaining
 // classifications are available in the App Library or through manual placement.
@@ -181,6 +189,38 @@ fun HomeScreen(
     val haptic = LocalHapticFeedback.current
     val view = LocalView.current
     val homeContext = LocalContext.current
+
+    // ── Android widgets, as Home canvas objects ──────────────────────────────
+    // A placed widget is an object on this canvas like any other: its id is
+    // "widget:<appWidgetId>", so it inherits dragging, z-order, reset-to-flow
+    // and the long-press menu from the same engine as the greeting and the
+    // weather card. Until now widgets were hosted only inside the widget
+    // manager screen, so Settings promised placement on the home screen and
+    // delivered a gallery you had to open in order to see it (F-179).
+    //
+    // Retaining the process-wide host here is what keeps widgets ticking while
+    // Home is in front of you. The host used to belong to the manager screen
+    // and stopped listening on the way out of it (F-138).
+    rememberLauncherWidgetHost()
+    val placedWidgetsRaw by viewModel.placedWidgets.collectAsState()
+    var homeWidgets by remember {
+        mutableStateOf<List<Pair<WidgetPlacement, AppWidgetProviderInfo>>>(emptyList())
+    }
+    LaunchedEffect(placedWidgetsRaw) {
+        // getAppWidgetInfo is a binder call per widget. Few widgets means few
+        // calls, but this runs on Home's first frame and the main thread is the
+        // one thing Home cannot afford to spend there (the lesson of F-157).
+        homeWidgets = withContext(Dispatchers.IO) {
+            val manager = AppWidgetManager.getInstance(homeContext)
+            WidgetPlacementStore.parse(placedWidgetsRaw).mapNotNull { placement ->
+                // A provider that has been uninstalled resolves to null and is
+                // simply absent from Home rather than rendered as a dead tile.
+                runCatching { manager.getAppWidgetInfo(placement.appWidgetId) }
+                    .getOrNull()
+                    ?.let { placement to it }
+            }
+        }
+    }
 
     // Real calendar events for the Today card, refreshed on each resume-ish recomposition.
     var agendaEvents by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
@@ -552,7 +592,7 @@ fun HomeScreen(
     val visibleHomeSections = remember(
         showHomeGreeting, showHomeSearch, showHomeWeather, showHomeAgenda,
         showRecentLaunched, recentApps, privacyMode, showSmartCategories, homeSectionOrderVal,
-        homeHiddenObjects,
+        homeHiddenObjects, homeWidgets,
     ) {
         val present = buildList {
             if (showHomeGreeting) add("greeting")
@@ -566,6 +606,12 @@ fun HomeScreen(
             if (showHomeAgenda) add("today")
             if (showRecentLaunched && recentApps.isNotEmpty() && !privacyMode) add("recent")
             if (showSmartCategories) add("categories-heading")
+            // Widgets have no global on/off switch of their own: a widget is
+            // present because someone added it and absent because they removed
+            // it, and removing it deletes the binding. A hidden-but-bound
+            // widget would be an allocated AppWidget ID that nothing on screen
+            // accounts for.
+            homeWidgets.forEach { (placement, _) -> add(placement.objectId) }
         }
         val order = homeSectionOrderVal.split(",").map(String::trim).filter(String::isNotEmpty)
         if (order.isEmpty()) {
@@ -1278,6 +1324,32 @@ fun HomeScreen(
 
             else -> if (sectionKey.startsWith("category:")) {
                 CategoryCardObject(catKey = sectionKey.removePrefix("category:"), hasPosition = hasPosition)
+            } else {
+                val appWidgetId = WidgetPlacement.appWidgetIdIn(sectionKey)
+                val placed = appWidgetId?.let { id -> homeWidgets.firstOrNull { it.first.appWidgetId == id } }
+                if (placed != null) {
+                    val (placement, info) = placed
+                    CanvasObject(
+                        pageIndex = 1,
+                        objectId = sectionKey,
+                        label = remember(info) { info.loadLabel(homeContext.packageManager).toString() },
+                        hasPosition = hasPosition,
+                        onRemove = {
+                            // Removing a widget from Home deletes it, because
+                            // Home is where it lives. Both halves are needed:
+                            // dropping the record without deallocating the ID
+                            // leaves it allocated in the system for the life of
+                            // the install, reachable by nothing.
+                            viewModel.removePlacedWidget(placement.appWidgetId)
+                            LauncherWidgetHost.deleteAppWidgetId(homeContext, placement.appWidgetId)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        key(placement.appWidgetId) {
+                            HostedWidget(placement = placement, info = info)
+                        }
+                    }
+                }
             }
         }
     }

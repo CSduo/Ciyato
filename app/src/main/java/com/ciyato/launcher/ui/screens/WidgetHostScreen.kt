@@ -1,14 +1,10 @@
 package com.ciyato.launcher.ui.screens
 
-import android.appwidget.AppWidgetHost
-import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
-import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,149 +20,121 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.ciyato.launcher.data.LauncherSettingsRepository
-import com.ciyato.launcher.data.PlacedWidgetStore
+import com.ciyato.launcher.data.LauncherWidgetHost
+import com.ciyato.launcher.data.WidgetPlacement
+import com.ciyato.launcher.data.WidgetPlacementStore
+import com.ciyato.launcher.data.rememberLauncherWidgetHost
 import com.ciyato.launcher.ui.components.CiyatoTopBar
+import com.ciyato.launcher.ui.components.HostedWidget
 import com.ciyato.launcher.ui.theme.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import androidx.compose.ui.platform.LocalDensity
 
 /**
- * WidgetHostScreen — Suggestion #15
- * A widget panel inside Ciyato — NOT Home placement.
+ * Add, configure, resize and remove the widgets that live on Home.
  *
- * The doc used to say widgets are placed "on the Ciyato home screen". They are
- * not: HomeScreen contains no AppWidgetHostView and never hosted one, so the
- * central claim of the feature was false (F-135). Widgets bound here are bound,
- * configured, persisted and rendered on this screen only.
+ * This screen used to BE the feature: it allocated widget IDs, hosted the views
+ * inside its own list, and owned the AppWidgetHost lifecycle. Settings promised
+ * placement on the home screen and delivered a gallery you had to open in order
+ * to see (F-179), while the host stopped listening the moment you left it, so
+ * widgets updated only while the management screen was in front of you (F-138).
  *
- * Integrating them as Home canvas objects is the correct end state and the
- * infrastructure below (host, binding, persisted IDs, configuration) is what
- * that would build on. Until then this screen describes itself accurately
- * rather than promising a placement that never happens
- * using AppWidgetHost + AppWidgetManager APIs.
- *
- * Placed widget IDs are persisted through [LauncherSettingsRepository] (see
- * [PlacedWidgetStore]) so they survive leaving this screen — the host's
- * widget-ID allocation already outlives the screen, so keeping only an
- * in-memory list of what's placed both loses widgets on navigation and leaks
- * the IDs the host allocated for them. On load, every saved ID is reconciled
- * against [AppWidgetManager]: an ID whose provider no longer exists (e.g. the
- * providing app was uninstalled) is deallocated via
- * [AppWidgetHost.deleteAppWidgetId] and dropped, rather than rendered as a
- * broken tile.
+ * Now the widgets are Home canvas objects — see [WidgetPlacement] — and this is
+ * a management surface over that list. It is deliberately secondary: every
+ * action here changes what Home shows.
  */
-
-private const val WIDGET_HOST_ID = 1001
-
-data class PlacedWidget(
-    val appWidgetId: Int,
-    val label: String,
-    val providerInfo: AppWidgetProviderInfo,
-)
-
 @Composable
 fun WidgetHostScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val settingsRepo = remember { LauncherSettingsRepository(context) }
     val widgetManager = remember { AppWidgetManager.getInstance(context) }
-    val widgetHost = remember { AppWidgetHost(context, WIDGET_HOST_ID).also { it.startListening() } }
 
-    var placedWidgets by remember { mutableStateOf<List<PlacedWidget>>(emptyList()) }
+    // The process-wide host, retained while this screen is composed and released
+    // without disturbing Home's own retain (F-138).
+    val widgetHost = rememberLauncherWidgetHost()
+
+    var placements by remember { mutableStateOf<List<WidgetPlacement>>(emptyList()) }
     var availableProviders by remember { mutableStateOf<List<AppWidgetProviderInfo>>(emptyList()) }
     var showPickerDialog by remember { mutableStateOf(false) }
     var isLoaded by remember { mutableStateOf(false) }
 
-    fun persistIds(widgets: List<PlacedWidget>) {
-        scope.launch { settingsRepo.setPlacedWidgetIds(PlacedWidgetStore.serialize(widgets.map { it.appWidgetId })) }
+    fun persist(updated: List<WidgetPlacement>) {
+        placements = updated
+        scope.launch { settingsRepo.setPlacedWidgetIds(WidgetPlacementStore.serialize(updated)) }
     }
 
     LaunchedEffect(Unit) {
-        availableProviders = widgetManager.installedProviders
+        availableProviders = runCatching { widgetManager.installedProviders }.getOrDefault(emptyList())
 
-        val savedIds = PlacedWidgetStore.parse(settingsRepo.placedWidgetIds.first())
-        val valid = mutableListOf<PlacedWidget>()
-        val staleIds = mutableListOf<Int>()
-        savedIds.forEach { id ->
-            val info = widgetManager.getAppWidgetInfo(id)
-            if (info != null) {
-                valid += PlacedWidget(appWidgetId = id, label = info.loadLabel(context.packageManager), providerInfo = info)
-            } else {
-                staleIds += id
-            }
+        val saved = WidgetPlacementStore.parse(settingsRepo.placedWidgetIds.first())
+        val valid = saved.filter { widgetManager.getAppWidgetInfo(it.appWidgetId) != null }
+        val stale = saved.filter { placement -> valid.none { it.appWidgetId == placement.appWidgetId } }
+        if (stale.isNotEmpty()) {
+            // The provider is gone (app uninstalled, or binding never completed):
+            // give the ID back rather than leave it allocated forever, and drop it
+            // from storage so Home does not render a dead tile for it.
+            stale.forEach { LauncherWidgetHost.deleteAppWidgetId(context, it.appWidgetId) }
+            settingsRepo.setPlacedWidgetIds(WidgetPlacementStore.serialize(valid))
         }
-        if (staleIds.isNotEmpty()) {
-            // The provider is gone (app uninstalled, or binding never completed) —
-            // deallocate the ID rather than leave it dangling on the host, and drop
-            // it from what we persist so it isn't rendered as a broken tile.
-            staleIds.forEach { widgetHost.deleteAppWidgetId(it) }
-            settingsRepo.setPlacedWidgetIds(PlacedWidgetStore.serialize(valid.map { it.appWidgetId }))
-        }
-        placedWidgets = valid
+        placements = valid
         isLoaded = true
     }
 
     // The ID allocated for an in-flight bind, so it can be reclaimed if the flow
     // does not complete. Without this, cancelling the system bind dialog leaked
     // the ID permanently: result.data is null on cancel, so appWidgetId came back
-    // as -1 and the cleanup branch below was never reached (F-139). The old
-    // comment claimed it handled cancellation; it only handled "bound, but info
-    // missing", which is a different and rarer case.
+    // as -1 and the cleanup branch was never reached (F-139).
     var pendingWidgetId by remember { mutableStateOf(AppWidgetManager.INVALID_APPWIDGET_ID) }
 
     DisposableEffect(Unit) {
         onDispose {
-            widgetHost.stopListening()
             // An allocation still in flight when the screen dies would otherwise
-            // be orphaned with no owner and no way to reclaim it.
+            // be orphaned with no owner and no way to reclaim it. The host itself
+            // is NOT stopped here: Home may still be showing widgets.
             if (pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                widgetHost.deleteAppWidgetId(pendingWidgetId)
+                LauncherWidgetHost.deleteAppWidgetId(context, pendingWidgetId)
             }
         }
     }
 
     fun releasePending() {
         if (pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-            widgetHost.deleteAppWidgetId(pendingWidgetId)
+            LauncherWidgetHost.deleteAppWidgetId(context, pendingWidgetId)
             pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
         }
     }
 
-    fun addBound(appWidgetId: Int, info: AppWidgetProviderInfo) {
-        val updated = placedWidgets + PlacedWidget(
-            appWidgetId = appWidgetId,
-            label = info.loadLabel(context.packageManager),
-            providerInfo = info,
-        )
-        placedWidgets = updated
-        persistIds(updated)
+    fun addBound(appWidgetId: Int) {
+        persist(placements + WidgetPlacement(appWidgetId = appWidgetId))
         pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
     }
 
     // Some providers ship a configuration activity and are not usable until it
-    // has run — a clock with no timezone chosen, a folder widget with no folder.
+    // has run: a clock with no timezone chosen, a folder widget with no folder.
     // That step was never launched, so those widgets bound and then rendered
-    // empty or default forever (F-136).
+    // empty or default forever (F-136, F-180).
     val configureWidgetLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
+        contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         val id = pendingWidgetId
-        val info = if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
-            widgetManager.getAppWidgetInfo(id)
-        } else null
-        if (result.resultCode == android.app.Activity.RESULT_OK && info != null) {
-            addBound(id, info)
+        val stillBound = id != AppWidgetManager.INVALID_APPWIDGET_ID &&
+            widgetManager.getAppWidgetInfo(id) != null
+        if (result.resultCode == android.app.Activity.RESULT_OK && stillBound) {
+            addBound(id)
         } else {
             // Configuration cancelled: an unconfigured widget is not useful, so
-            // the binding is undone rather than left half-made.
+            // the binding is undone rather than left half-made on Home.
             releasePending()
         }
         showPickerDialog = false
@@ -182,17 +151,17 @@ fun WidgetHostScreen(
             if (!launched) {
                 // Provider declares a config activity that cannot be started.
                 // Keep the widget rather than losing it; it may still render.
-                addBound(appWidgetId, provider)
+                addBound(appWidgetId)
                 showPickerDialog = false
             }
         } else {
-            addBound(appWidgetId, provider)
+            addBound(appWidgetId)
             showPickerDialog = false
         }
     }
 
     val bindWidgetLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
+        contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         val id = pendingWidgetId
         val provider = if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
@@ -211,7 +180,9 @@ fun WidgetHostScreen(
     fun pickWidget(provider: AppWidgetProviderInfo) {
         val appWidgetId = widgetHost.allocateAppWidgetId()
         pendingWidgetId = appWidgetId
-        val granted = widgetManager.bindAppWidgetIdIfAllowed(appWidgetId, provider.provider)
+        val granted = runCatching {
+            widgetManager.bindAppWidgetIdIfAllowed(appWidgetId, provider.provider)
+        }.getOrDefault(false)
         if (!granted) {
             val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND).apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
@@ -235,22 +206,26 @@ fun WidgetHostScreen(
                     }
                 },
             )
-        }
+        },
     ) { padding ->
         if (!isLoaded) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = CiyatoGold)
             }
-        } else if (placedWidgets.isEmpty()) {
-            Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        } else if (placements.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                ) {
                     Icon(Icons.Default.Widgets, null, tint = CiyatoMuted, modifier = Modifier.size(56.dp))
-                    Text("No widgets placed", color = CiyatoWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Tap + to pick a widget from installed apps", color = CiyatoMuted, fontSize = 13.sp)
+                    Text("No widgets on Home", color = CiyatoWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Widgets you add appear on your home screen, where you can drag them anywhere.",
+                        color = CiyatoMuted,
+                        fontSize = 13.sp,
+                    )
                     Button(
                         onClick = { showPickerDialog = true },
                         colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold),
@@ -267,18 +242,42 @@ fun WidgetHostScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.padding(padding),
             ) {
-                items(placedWidgets, key = { it.appWidgetId }) { widget ->
-                    WidgetCard(
-                        context = context,
-                        widget = widget,
-                        host = widgetHost,
-                        onRemove = {
-                            val updated = placedWidgets.filter { it.appWidgetId != widget.appWidgetId }
-                            placedWidgets = updated
-                            widgetHost.deleteAppWidgetId(widget.appWidgetId)
-                            persistIds(updated)
-                        },
+                item {
+                    Text(
+                        "These are on your home screen. Long-press one there to move or remove it.",
+                        color = CiyatoMuted,
+                        fontSize = 12.sp,
                     )
+                }
+                items(placements, key = { it.appWidgetId }) { placement ->
+                    val info = remember(placement.appWidgetId) {
+                        widgetManager.getAppWidgetInfo(placement.appWidgetId)
+                    }
+                    if (info != null) {
+                        val providerMinHeightDp = remember(info.minHeight) {
+                            with(density) { info.minHeight.coerceAtLeast(0).toDp().value.toInt() }
+                        }
+                        WidgetCard(
+                            placement = placement,
+                            info = info,
+                            label = remember(info) { info.loadLabel(context.packageManager) },
+                            onResize = { steps ->
+                                persist(
+                                    placements.map {
+                                        if (it.appWidgetId == placement.appWidgetId) {
+                                            WidgetPlacementStore.resized(it, providerMinHeightDp, steps)
+                                        } else {
+                                            it
+                                        }
+                                    },
+                                )
+                            },
+                            onRemove = {
+                                persist(placements.filter { it.appWidgetId != placement.appWidgetId })
+                                LauncherWidgetHost.deleteAppWidgetId(context, placement.appWidgetId)
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -290,18 +289,29 @@ fun WidgetHostScreen(
             containerColor = CiyatoBgEl,
             title = { Text("Choose Widget", color = CiyatoWhite, fontWeight = FontWeight.SemiBold) },
             text = {
-                LazyColumn(modifier = Modifier.height(300.dp)) {
-                    items(availableProviders, key = { it.provider.className + "_" + it.provider.packageName }) { provider ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { pickWidget(provider) }
-                                .padding(vertical = 10.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Default.Widgets, null, tint = CiyatoGold, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(10.dp))
-                            Text(provider.loadLabel(context.packageManager), color = CiyatoWhite, fontSize = 14.sp)
+                if (availableProviders.isEmpty()) {
+                    Text("No installed app offers a widget.", color = CiyatoMuted, fontSize = 13.sp)
+                } else {
+                    LazyColumn(modifier = Modifier.height(300.dp)) {
+                        items(
+                            availableProviders,
+                            key = { it.provider.className + "_" + it.provider.packageName },
+                        ) { provider ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { pickWidget(provider) }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Default.Widgets, null, tint = CiyatoGold, modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    provider.loadLabel(context.packageManager),
+                                    color = CiyatoWhite,
+                                    fontSize = 14.sp,
+                                )
+                            }
                         }
                     }
                 }
@@ -310,16 +320,17 @@ fun WidgetHostScreen(
                 TextButton(onClick = { showPickerDialog = false }) {
                     Text("Cancel", color = CiyatoGold)
                 }
-            }
+            },
         )
     }
 }
 
 @Composable
 private fun WidgetCard(
-    context: Context,
-    widget: PlacedWidget,
-    host: AppWidgetHost,
+    placement: WidgetPlacement,
+    info: AppWidgetProviderInfo,
+    label: CharSequence,
+    onResize: (Int) -> Unit,
     onRemove: () -> Unit,
 ) {
     Card(
@@ -333,56 +344,34 @@ private fun WidgetCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    widget.label,
+                    label.toString(),
                     color = CiyatoWhite,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
+                // Height is stored per widget, so a resize survives a restart and
+                // Home renders the size chosen here (F-180).
+                IconButton(
+                    onClick = { onResize(-1) },
+                    modifier = Modifier.semantics { contentDescription = "Make $label shorter" },
+                ) {
+                    Icon(Icons.Default.Remove, null, tint = CiyatoSec, modifier = Modifier.size(18.dp))
+                }
+                IconButton(
+                    onClick = { onResize(1) },
+                    modifier = Modifier.semantics { contentDescription = "Make $label taller" },
+                ) {
+                    Icon(Icons.Default.Add, null, tint = CiyatoSec, modifier = Modifier.size(18.dp))
+                }
                 TextButton(onClick = onRemove) {
                     Text("Remove", color = Color(0xFFFF6B6B), fontSize = 12.sp)
                 }
             }
             Spacer(Modifier.height(8.dp))
-            // Height comes from the provider, not from a constant.
-            //
-            // Every widget was forced into a 120dp-high card regardless of what
-            // it asked for (F-137). A clock designed for 40dp floated in empty
-            // space; a 4x2 calendar was cut off. AppWidgetProviderInfo carries
-            // minHeight and the "resize" hints precisely so a host can respect
-            // them, and ignoring that is what makes third-party widgets look
-            // broken inside an otherwise careful launcher.
-            //
-            // Clamped at both ends: a provider can report an absurd minHeight,
-            // and a card that grows without limit would push everything else off
-            // the screen. updateAppWidgetSize tells the widget the box it
-            // actually got, so it can pick the right layout for it.
-            val density = LocalDensity.current
-            val providerHeightDp = widget.providerInfo.minHeight
-                .takeIf { it > 0 }
-                ?.let { px -> with(density) { px.toDp() } }
-                ?: 120.dp
-            val widgetHeight = providerHeightDp.coerceIn(48.dp, 320.dp)
-            AndroidView(
-                factory = {
-                    host.createView(context, widget.appWidgetId, widget.providerInfo) as AppWidgetHostView
-                },
-                update = { view ->
-                    // Without this the widget never learns its size and keeps
-                    // rendering for whatever default it assumed.
-                    val w = view.width.takeIf { it > 0 }
-                        ?.let { with(density) { it.toDp().value.toInt() } }
-                        ?: 0
-                    val h = widgetHeight.value.toInt()
-                    if (w > 0) {
-                        runCatching { view.updateAppWidgetSize(android.os.Bundle.EMPTY, w, h, w, h) }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(widgetHeight)
-                    .background(CiyatoBg, RoundedCornerShape(12.dp)),
-            )
+            key(placement.appWidgetId) {
+                HostedWidget(placement = placement, info = info)
+            }
         }
     }
 }

@@ -10,6 +10,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ciyato.launcher.BuildConfig
 import com.ciyato.launcher.data.*
+import com.ciyato.launcher.data.WidgetPlacementStore
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -382,6 +383,36 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setPhotoAiCollections(v: String) = viewModelScope.launch {
         settings.setPhotoAiCollections(v)
+    }
+
+    /**
+     * Widgets placed on Home, as [WidgetPlacementStore] writes them.
+     *
+     * Home reads this so a widget added in the manager appears on the home
+     * screen, which is what the feature always claimed to do (F-179). The raw
+     * string is exposed rather than parsed records because the parse depends on
+     * nothing else and both readers want to do it against the live
+     * AppWidgetManager anyway.
+     */
+    val placedWidgets = settings.placedWidgetIds
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "[]")
+
+    fun setPlacedWidgets(v: String) = viewModelScope.launch {
+        settings.setPlacedWidgetIds(v)
+    }
+
+    /**
+     * Takes a widget off Home.
+     *
+     * Deallocating the AppWidget ID is the caller's job (it needs a Context and
+     * the shared host); this only removes the record. Both halves are required:
+     * an ID dropped from storage but never deallocated stays allocated in the
+     * system for the life of the install.
+     */
+    fun removePlacedWidget(appWidgetId: Int) = viewModelScope.launch {
+        val remaining = WidgetPlacementStore.parse(placedWidgets.value)
+            .filter { it.appWidgetId != appWidgetId }
+        settings.setPlacedWidgetIds(WidgetPlacementStore.serialize(remaining))
     }
 
     fun clearPhotoLibrary() = viewModelScope.launch {
