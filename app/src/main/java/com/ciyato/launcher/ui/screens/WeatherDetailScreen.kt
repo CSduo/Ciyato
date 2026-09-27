@@ -42,6 +42,9 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import com.ciyato.launcher.ui.theme.decorativePulse
 import com.ciyato.launcher.ui.theme.decorativeSweep
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 
 /**
  * WeatherDetailScreen — Live weather powered by Open-Meteo (no API key).
@@ -55,6 +58,12 @@ fun WeatherDetailScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+
+    // Resolved once: it needs a PackageManager query, and the answer only changes
+    // when an app is installed or removed.
+    val systemWeatherPackage = remember(context) {
+        WeatherRepository.findSystemWeatherPackage(context)
+    }
 
     var localState by remember {
         mutableStateOf<WeatherState>(
@@ -139,6 +148,30 @@ fun WeatherDetailScreen(
                             viewModel.setTempUnit(if (useFahrenheit) "C" else "F")
                         }) {
                             Text(if (useFahrenheit) "°C" else "°F", color = CiyatoGold, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    // Delegating to the phone's weather app, as an explicit
+                    // choice rather than a surprise.
+                    //
+                    // Tapping the Home weather card used to try this FIRST and
+                    // fall back to Ciyato, so the same tap did different things on
+                    // different phones and looked like Ciyato had closed itself
+                    // (F-067). The capability is worth keeping and belongs here,
+                    // where it is labelled and the person picked it. Absent
+                    // entirely when no weather app is installed, rather than
+                    // present and inert.
+                    if (systemWeatherPackage != null && viewModel != null) {
+                        IconButton(
+                            onClick = { viewModel.launchPackage(systemWeatherPackage) },
+                            modifier = Modifier.semantics {
+                                contentDescription = "Open in your weather app"
+                            },
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.OpenInNew,
+                                null,
+                                tint = CiyatoSec,
+                            )
                         }
                     }
                     if (weatherState is WeatherState.Success || weatherState is WeatherState.Offline) {

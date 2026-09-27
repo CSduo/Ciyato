@@ -116,6 +116,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ciyato.launcher.ui.theme.adaptiveStaggeredGrid
 import com.ciyato.launcher.ui.theme.adaptiveGrid
 import com.ciyato.launcher.ui.theme.TileSize
+import com.ciyato.launcher.ui.theme.CiyatoBgEl2
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 
 private enum class LibraryTab(val label: String) {
     COLLECTIONS("Collections"), GRID("Grid"), TIMELINE("Timeline"), TRASH("Trash")
@@ -367,6 +370,13 @@ fun PhotosLibraryScreen(
         }
     }
     var aiProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    // The scan in flight, so it can be stopped.
+    //
+    // The banner showed progress and offered no way out (F-106). An on-device pass
+    // over 250 images is seconds of CPU and a measurable bite of battery, and
+    // starting one you cannot stop is the kind of thing that makes a person
+    // uninstall an app rather than wait.
+    var aiScanJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val scanScope = rememberCoroutineScope()
     val aiCollections = aiResult?.collections.orEmpty()
 
@@ -629,9 +639,17 @@ fun PhotosLibraryScreen(
                             progress = aiProgress,
                             libraryTotal = libraryTotal,
                             result = aiResult,
+                            onCancel = {
+                                // Cancel, then clear - in that order, so the
+                                // coroutine cannot write a final progress value
+                                // after the UI has reset.
+                                aiScanJob?.cancel()
+                                aiScanJob = null
+                                aiProgress = null
+                            },
                             onScan = {
                                 aiProgress = 0 to 0
-                                scanScope.launch {
+                                aiScanJob = scanScope.launch {
                                     val scanned = PhotoAiLabeler.categorize(
                                         context = context,
                                         // Photos only: the labeler decodes still
@@ -648,6 +666,7 @@ fun PhotosLibraryScreen(
                                         PhotoAiCollectionStore.serialize(scanned),
                                     )
                                     aiProgress = null
+                                    aiScanJob = null
                                 }
                             },
                         )
@@ -840,6 +859,7 @@ private fun AiScanBanner(
     /** Photos MediaStore can see, so the coverage limit can be stated in context. */
     libraryTotal: Int,
     onScan: () -> Unit,
+    onCancel: () -> Unit,
 ) {
     val hasResults = result != null && result.collections.isNotEmpty()
     Row(
@@ -903,6 +923,27 @@ private fun AiScanBanner(
                     .background(CiyatoGold)
                     .clickable(onClick = onScan)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        } else {
+            // A way out of a scan in progress (F-106). A pass over 250 images is
+            // seconds of CPU and a measurable bite of battery; offering progress
+            // without a stop is showing someone a countdown they cannot end.
+            //
+            // Deliberately discards the partial grouping rather than keeping it:
+            // a half-labelled library presented as collections would be the
+            // "partial result shown as complete" defect this audit found
+            // repeatedly, and the scan is cheap enough to simply run again.
+            Text(
+                "Stop",
+                color = CiyatoSec,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(CiyatoBgEl2)
+                    .clickable(onClick = onCancel)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .semantics { contentDescription = "Stop the photo scan" },
             )
         }
     }

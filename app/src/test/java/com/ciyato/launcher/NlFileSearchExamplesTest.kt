@@ -8,6 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.ciyato.launcher.ui.screens.startOfToday
 
 /**
  * Every example the search screen offers must be one it can actually answer.
@@ -28,7 +29,30 @@ import org.junit.Test
 class NlFileSearchExamplesTest {
 
     private val now = System.currentTimeMillis()
+
+    /**
+     * A rolling offset, for the rolling windows.
+     *
+     * "last week" and "last month" really are `now - 7d` and `now - 30d` in the
+     * engine, so an offset is the right fixture for them.
+     */
     private fun daysAgo(n: Long) = now - TimeUnit.DAYS.toMillis(n)
+
+    /**
+     * Anchored to the real calendar day, for the calendar-day windows.
+     *
+     * This test had a bug of exactly the kind it exists to catch. "Yesterday" was
+     * fixtured as `now - 24h + 2h`, a rolling offset — so after 22:00 local time
+     * that instant lands in TODAY, the yesterday window correctly excludes it, and
+     * the test failed. A test about calendar days versus rolling windows, using a
+     * rolling window to construct its calendar day.
+     *
+     * It was also the worst kind of flaky: green all day, red in the evening.
+     */
+    private fun yesterdayMidday() = startOfToday() - TimeUnit.HOURS.toMillis(12)
+
+    /** The earliest instant that is unambiguously today. */
+    private fun todayStart() = startOfToday()
 
     /** Runs the real engine end to end: parse, then match. */
     private fun matches(
@@ -52,7 +76,7 @@ class NlFileSearchExamplesTest {
         // One fixture per example, named the way Android really names these.
         val fixtures = mapOf(
             "screenshot from yesterday" to Triple(
-                "Screenshot_20260101_120000.png", "image/png", daysAgo(1) + TimeUnit.HOURS.toMillis(2),
+                "Screenshot_20260101_120000.png", "image/png", yesterdayMidday(),
             ),
             "photos from last week" to Triple(
                 "IMG_20260101_093000.jpg", "image/jpeg", daysAgo(3),
@@ -61,7 +85,9 @@ class NlFileSearchExamplesTest {
                 "VID_20251220_180000.mp4", "video/mp4", daysAgo(12),
             ),
             "pdf from today" to Triple(
-                "statement.pdf", "application/pdf", now - TimeUnit.MINUTES.toMillis(30),
+                // Start of today rather than "30 minutes ago", which is yesterday
+                // when the suite runs just after midnight.
+                "statement.pdf", "application/pdf", todayStart(),
             ),
             "large files" to Triple(
                 "backup.zip", "application/zip", daysAgo(40),
@@ -110,7 +136,7 @@ class NlFileSearchExamplesTest {
                 "payment screenshot from yesterday",
                 "Screenshot_20260101_120000.png",
                 "image/png",
-                daysAgo(1) + TimeUnit.HOURS.toMillis(2),
+                yesterdayMidday(),
             ),
         )
         // And it works only for a file someone had already named for them,
@@ -120,7 +146,7 @@ class NlFileSearchExamplesTest {
                 "payment screenshot from yesterday",
                 "payment-screenshot.png",
                 "image/png",
-                daysAgo(1) + TimeUnit.HOURS.toMillis(2),
+                yesterdayMidday(),
             ),
         )
     }
@@ -163,8 +189,8 @@ class NlFileSearchExamplesTest {
         )
     }
 
-    private fun startOfYesterdayEvening(): Long =
-        com.ciyato.launcher.ui.screens.startOfToday() - TimeUnit.HOURS.toMillis(6)
+    /** Six hours before midnight: reliably yesterday, whatever time the suite runs. */
+    private fun startOfYesterdayEvening(): Long = startOfToday() - TimeUnit.HOURS.toMillis(6)
 
     @Test
     fun `size words filter by size`() {

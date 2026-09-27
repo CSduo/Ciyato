@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
+import kotlinx.coroutines.ensureActive
 
 /**
  * Free on-device photo categorization via ML Kit's bundled image-labeling
@@ -66,6 +67,18 @@ object PhotoAiLabeler {
         val grouped = mutableMapOf<String, MutableList<PhotoDeviceLibrary.DeviceImage>>()
         try {
             targets.forEachIndexed { index, image ->
+                // Checked before each image rather than relying on the next
+                // suspension point to throw (F-106). It makes cancellation
+                // immediate and, more importantly, explicit: a reader can see
+                // that this loop is cancellable instead of having to reason about
+                // where it happens to suspend.
+                //
+                // What this CANNOT do is cancel an ML Kit task already in flight -
+                // ImageLabeler.process() returns a Task with no cancellation API.
+                // So the honest description is that we stop consuming results and
+                // release the labeler; at most one image's work outlives the
+                // cancellation, and `finally` closes the client either way.
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 val labels = labelUri(context, labeler, image.uri)
                 labels
                     .mapNotNull { LABEL_BUCKETS[it] }

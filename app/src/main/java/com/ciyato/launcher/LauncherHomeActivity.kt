@@ -313,18 +313,20 @@ private fun LauncherRoot(
                 )
             },
             onCategoryTap   = { category -> dest = LauncherDest.CategoryDetail(category) },
-            onWeatherTap    = {
-                // The phone's own weather app is the primary target; Ciyato's
-                // forecast screen only covers phones without one, or setup.
-                val hasWeather = viewModel.weatherState.value is com.ciyato.launcher.data.WeatherRepository.WeatherState.Success
-                val weatherPkg = if (hasWeather) {
-                    com.ciyato.launcher.data.WeatherRepository.findSystemWeatherPackage(context)
-                } else null
-                // Launched through the viewmodel so Focus blocking and App Lock
-                // apply here as they do everywhere else.
-                val opened = weatherPkg != null && viewModel.launchPackage(weatherPkg)
-                if (!opened) dest = LauncherDest.WeatherDetail
-            },
+            // One tap, one outcome: Ciyato's own forecast.
+            //
+            // This used to try the phone's weather app first and fall back to
+            // Ciyato's screen, so the same tap did different things on different
+            // phones - and on a device with a weather app it looked like Ciyato
+            // had closed itself (F-067). A launcher's card tapping through to a
+            // third-party app the person did not choose is not continuity, it is
+            // a surprise, and it is one the audit is explicit about: pick a
+            // contract, and delegate only from an explicit action.
+            //
+            // The detail screen carries an "Open in weather app" action for
+            // people who want that, which keeps the capability and makes it a
+            // choice. findSystemWeatherPackage still exists and is used there.
+            onWeatherTap    = { dest = LauncherDest.WeatherDetail },
             onAgendaTap     = { dest = LauncherDest.Agenda },
         )
 
