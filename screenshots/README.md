@@ -12,44 +12,80 @@ the next attempt does not repeat it.
 
 ## What was tried
 
+Four attempts, and they converge on one cause.
+
 | Attempt | Result |
 |---|---|
-| Paparazzi **1.3.5** | Broke `:app:kspDebugKotlin` with an internal compiler error. It puts `kotlin-compiler-embeddable:2.0.21` on the build classpath while this project is on Kotlin 2.0.0 / KSP 2.0.0-1.0.21, and KSP cannot survive the mismatch. |
-| Paparazzi **1.3.4** | KSP builds fine. Every snapshot then fails at `Renderer.configureBuildProperties` with `NoSuchElementException: Array contains no element matching the predicate` — the layoutlib it ships does not know `compileSdk = 36`. |
+| Paparazzi **1.3.5** | Breaks `:app:kspDebugKotlin` with an internal compiler error. It puts `kotlin-compiler-embeddable:2.0.21` on the build classpath against this project's Kotlin 2.0.0 / KSP 2.0.0-1.0.21. |
+| Paparazzi **1.3.4** | KSP survives. Every render then fails in `Renderer.configureBuildProperties` — its layoutlib does not know `compileSdk = 36`. |
+| Paparazzi **2.0.0-alpha05** | Would know API 36. Its POM requires **Kotlin 2.3.0**. |
+| Roborazzi **1.75.0** + Robolectric 4.17 | Chosen because it is a test *dependency* rather than a Gradle plugin carrying a compiler, and `@Config(sdk = …)` decouples the render SDK from `compileSdk` — so neither Paparazzi failure applies to it. It fails anyway: `Module was compiled with an incompatible version of Kotlin. The binary version of its metadata is 2.3.0, expected version is 2.0.0.` |
 
-So the two versions fail for opposite reasons: the newer one is incompatible with
-this project's Kotlin toolchain, and the older one is incompatible with its
-`compileSdk`. There is no version of Paparazzi that satisfies both today.
+**The cause is not the tool.** Every current Compose screenshot-testing library has
+moved to Kotlin 2.3.x metadata, and this project is on Kotlin 2.0.0, released
+mid-2024. Two libraries chosen for opposite architectures fail at the same version
+boundary.
+
+So F-165 is blocked behind a **Kotlin toolchain upgrade**, which is a different and
+much larger piece of work than adding a test harness.
 
 ## Why it was left out rather than forced
 
-The available fix is to upgrade Kotlin to 2.0.21+ and KSP with it, then take a
-Paparazzi that supports API 36. That is a compiler upgrade to a working
-40-thousand-line Compose app — it can change codegen, the Compose compiler plugin,
-lint output and Room's generated code — performed in order to add a *test harness*.
+The fix is to move this project from Kotlin 2.0.0 to 2.3.x. That is not a version
+bump. Since Kotlin 2.0 the Compose compiler plugin is versioned *with* Kotlin, KSP
+must match the compiler exactly, and Room's KSP processor has to support the new
+version — so it moves the UI compiler, the annotation processor and the database
+codegen at once, on a 40-thousand-line Compose app, in order to add a test harness.
 
-Lowering `compileSdk` is not an option either: API 36 is where the predictive-back
-and large-screen work has to be verified (F-186, F-187).
+It is worth doing on its own terms. Kotlin 2.0.0 will keep blocking things, and this
+is the second time it has. But it is its own change with its own verification, and
+it should not be carried out underneath a screenshot-test task — the risk that
+matters is not a compile error, it is a KSP processor silently generating different
+code.
 
-Adding the plugin and leaving the suite failing would have been worse than both:
-a red build that everyone learns to ignore.
+Adding a plugin and leaving five tests red would have been worse than either. A red
+build everyone learns to ignore is the exact failure `.github/workflows/` was just
+repaired to stop.
 
 ## To enable it
 
-1. Bump `kotlin` and `ksp` in `gradle/libs.versions.toml` together, and run the
-   full suite plus `lintDebug` before anything else. Treat that as its own change.
-2. Add Paparazzi at a version whose layoutlib supports API 36:
-   ```toml
-   paparazzi = { id = "app.cash.paparazzi", version.ref = "paparazzi" }
-   ```
-   declared `apply false` in the root `build.gradle.kts` and applied in
-   `app/build.gradle.kts`.
-3. Move `HomeCanvasGoldenTest.kt` to
-   `app/src/test/java/com/ciyato/launcher/ui/`.
-4. `./gradlew :app:recordPaparazziDebug` to create the goldens, then commit
-   `app/src/test/snapshots/`.
-5. `./gradlew :app:verifyPaparazziDebug` in CI. **A diff is a review item, never
-   an automatic re-record** — the point of a golden is that someone looks.
+Two independent pieces of work, in this order.
+
+**1. Upgrade the Kotlin toolchain** — its own change, its own commit, verified before
+anything else touches it:
+
+```
+kotlin  2.0.0          -> 2.3.x
+ksp     2.0.0-1.0.21   -> the matching 2.3.x release
+```
+
+Then `./gradlew testDebugUnitTest lintDebug bundleRelease` must be green, and the
+Compose compiler plugin and Room's generated code both need a real look.
+
+**2. Add the harness.** Roborazzi is the better fit and the reasoning holds
+regardless of version: a test dependency rather than a plugin embedding a compiler,
+so it cannot conflict with KSP, and `@Config(sdk = [34])` pins the render SDK
+independently of `compileSdk` — which is what defeated Paparazzi twice here.
+
+```kotlin
+testImplementation("org.robolectric:robolectric:4.17")
+testImplementation("io.github.takahirom.roborazzi:roborazzi:1.75.0")
+testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.75.0")
+testImplementation(libs.androidx.ui.test.junit4)
+```
+
+plus `android { testOptions { unitTests { isIncludeAndroidResources = true } } }`,
+because Robolectric inflates real resources and without it a golden is a picture of
+nothing.
+
+Move `HomeCanvasGoldenTest.kt` into `app/src/test/java/com/ciyato/launcher/ui/` and
+annotate it `@RunWith(AndroidJUnit4::class)`, `@GraphicsMode(NATIVE)` — the default
+mode does not rasterise, so every capture would be a blank image that passes
+forever — and `@Config(sdk = [34], qualifiers = "w411dp-h891dp-xhdpi")`.
+
+Record with `-Proborazzi.record.image=true`, verify with `-Proborazzi.verify=true`,
+and commit `app/src/test/screenshots/`. **A diff is a review item, never an automatic
+re-record** — the entire point of a golden is that a person looks at it.
 
 ## The larger prerequisite
 

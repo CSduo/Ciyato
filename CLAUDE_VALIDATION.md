@@ -251,11 +251,19 @@ be the exact kind of defect this audit is about, so:
 
 | Attempt | Result |
 |---|---|
-| Paparazzi 1.3.5 | Broke `:app:kspDebugKotlin` with an internal compiler error - it puts `kotlin-compiler-embeddable:2.0.21` on the build classpath against this project's Kotlin 2.0.0 / KSP 2.0.0-1.0.21 |
+| Paparazzi 1.3.5 | Breaks `:app:kspDebugKotlin` - it puts `kotlin-compiler-embeddable:2.0.21` on the build classpath against this project's Kotlin 2.0.0 / KSP 2.0.0-1.0.21 |
 | Paparazzi 1.3.4 | KSP survives; every snapshot fails in `Renderer.configureBuildProperties` because its layoutlib does not know `compileSdk = 36` |
+| Paparazzi 2.0.0-alpha05 | Would know API 36. Requires **Kotlin 2.3.0** |
+| Roborazzi 1.75.0 + Robolectric 4.17 | Chosen because it is a test dependency rather than a plugin carrying a compiler, and `@Config(sdk)` decouples the render SDK from `compileSdk` - so neither Paparazzi failure applies. Fails anyway: *"metadata is 2.3.0, expected version is 2.0.0"* |
 
-The two versions fail for opposite reasons - one is incompatible with the Kotlin toolchain,
-the other with the compile SDK - and there is no version that satisfies both today.
+**The cause is the toolchain, not the tool.** Every current Compose screenshot library has
+moved to Kotlin 2.3.x metadata; this project is on Kotlin 2.0.0 from mid-2024. Two libraries
+chosen for opposite architectures fail at the same version boundary.
+
+F-165 is therefore blocked behind a **Kotlin 2.0.0 -> 2.3.x upgrade**, which since Kotlin 2.0
+moves the Compose compiler plugin, KSP and Room's codegen together. Worth doing on its own
+terms - this is the second time Kotlin 2.0.0 has blocked something - but it is its own change
+with its own verification, not something to carry out under a screenshot-test task.
 
 **Not forced, deliberately.** The fix is a Kotlin/KSP upgrade on a working 40k-line Compose
 app, performed to add a test harness; it can move codegen, the Compose compiler plugin, lint
