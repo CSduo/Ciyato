@@ -91,23 +91,55 @@ object DuplicatePhotoDetector {
     /** Groups plus the coverage they were derived from, so the UI can be honest. */
     data class DuplicateScan(
         val groups: List<DuplicateGroup>,
-        /** Photos actually hashed. */
+        /**
+         * Photos actually hashed.
+         *
+         * This was `photos.size` - the number LOADED - while its own comment said
+         * hashed. Decoding is per-photo and each failure was swallowed, so a
+         * library with unreadable images reported comparing more than it compared.
+         */
         val scanned: Int,
-        /** Photos in the library, so "scanned X of Y" is possible. */
-        val libraryTotal: Int,
+        /**
+         * Photos in the library, or null when the count query failed.
+         *
+         * Null rather than 0. It was 0 on failure, and `wasBounded` read
+         * `libraryTotal > scanned` - so a FAILED count made `0 > 500` false, the
+         * scan claimed to be exhaustive, and the screen said "across all 500
+         * photos". A failure rendered as completeness, which is the single pattern
+         * this audit found most often.
+         */
+        val libraryTotal: Int?,
+        /**
+         * Photos that could not be decoded, so were never compared.
+         *
+         * Corrupt files, a format with no decoder on this device, a permission
+         * that evaporated mid-scan. Each was silently dropped. Somebody with 200
+         * unreadable photos got "No duplicates found" with no hint that a quarter
+         * of their library was never looked at.
+         */
+        val unreadable: Int,
     ) {
-        val wasBounded: Boolean get() = libraryTotal > scanned
+        /**
+         * True unless completeness can be PROVEN.
+         *
+         * Three things have to hold: the library size is known, the scan reached
+         * all of it, and nothing was skipped. Any unknown counts as bounded,
+         * because the cost of wrongly claiming completeness here is somebody
+         * believing their library has no duplicates left in it.
+         */
+        val wasBounded: Boolean
+            get() = libraryTotal == null || libraryTotal > scanned || unreadable > 0
     }
 
     /** Total images in the library, for coverage reporting. Cheap COUNT query. */
-    private fun libraryTotal(context: Context): Int =
+    private fun libraryTotal(context: Context): Int? =
         runCatching {
             context.contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 arrayOf(MediaStore.Images.Media._ID),
                 null, null, null,
-            )?.use { it.count } ?: 0
-        }.getOrDefault(0)
+            )?.use { it.count }
+        }.getOrNull()
 
     /** Load the newest [SCAN_LIMIT] photos from MediaStore. */
     private fun loadPhotos(context: Context): List<PhotoEntry> {
@@ -153,7 +185,12 @@ object DuplicatePhotoDetector {
                         bmp.recycle()
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                // Counted rather than swallowed. A photo that cannot be decoded is
+                // a photo that was never compared, and the difference between
+                // "no duplicates" and "no duplicates among the ones I could read"
+                // is the whole value of this screen.
+            }
         }
 
         val visited = mutableSetOf<PhotoEntry>()
@@ -188,6 +225,12 @@ object DuplicatePhotoDetector {
             }
         }
 
-        DuplicateScan(groups = groups, scanned = photos.size, libraryTotal = total)
+        DuplicateScan(
+            groups = groups,
+            // hashes.size, not photos.size: the number actually compared.
+            scanned = hashes.size,
+            libraryTotal = total,
+            unreadable = photos.size - hashes.size,
+        )
     }
 }

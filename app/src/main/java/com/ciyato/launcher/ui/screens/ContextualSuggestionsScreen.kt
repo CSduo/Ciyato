@@ -62,7 +62,9 @@ fun ContextualSuggestionsScreen(
 ) {
     val context = LocalContext.current
     val apps by viewModel.apps.collectAsStateWithLifecycle()
-    var suggestions by remember { mutableStateOf<List<AppSuggestion>>(emptyList()) }
+    // Null means the query failed, which is not the same as having nothing to
+    // show. An empty list means it worked and found nothing.
+    var suggestions by remember { mutableStateOf<List<AppSuggestion>?>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var hasPermission by remember { mutableStateOf(hasUsageStatsPermission(context)) }
 
@@ -153,7 +155,30 @@ fun ContextualSuggestionsScreen(
                 }
             }
 
-            if (suggestions.isEmpty()) {
+            val current = suggestions
+            if (current == null) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("⚠️", fontSize = 40.sp)
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "Couldn't read your app usage",
+                                color = CiyatoWhite,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "Android didn't return usage data. Waiting won't help — this is " +
+                                    "a failure, not a lack of history.",
+                                color = CiyatoMuted,
+                                fontSize = 13.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+            } else if (current.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -161,14 +186,18 @@ fun ContextualSuggestionsScreen(
                             Spacer(Modifier.height(12.dp))
                             Text("Not enough data yet", color = CiyatoWhite, fontSize = 18.sp,
                                 fontWeight = FontWeight.SemiBold)
-                            Text("Use your phone for a few days — Ciyato will start learning your patterns.",
+                            // "Ciyato will start learning your patterns" is the
+                            // F-122 claim again, in the copy I missed when fixing
+                            // the title and the body. It counts launches; it does
+                            // not learn patterns, and it never did.
+                            Text("Open a few apps over the next few days and the ones you use most will appear here.",
                                 color = CiyatoMuted, fontSize = 13.sp,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         }
                     }
                 }
             } else {
-                val grouped = suggestions.groupBy { it.timeSlot }
+                val grouped = current.groupBy { it.timeSlot }
                 grouped.forEach { (slot, slotSuggestions) ->
                     item {
                         Text(slot, color = CiyatoGold, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
@@ -240,7 +269,7 @@ private fun SuggestionCard(suggestion: AppSuggestion, viewModel: LauncherViewMod
 private fun buildContextualSuggestions(
     context: Context,
     apps: List<Pair<String, String>>,
-): List<AppSuggestion> {
+): List<AppSuggestion>? {
     val suggestions = mutableListOf<AppSuggestion>()
     try {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
@@ -273,7 +302,13 @@ private fun buildContextualSuggestions(
                 ))
             }
         }
-    } catch (_: Exception) {}
+    } catch (_: Exception) {
+        // The usage query is the whole basis of this screen. Returning an empty
+        // list from here rendered as "Not enough data yet - use your phone for a
+        // few days", which invites the person to wait for something that will
+        // never arrive. Same pattern as F-129, in a different screen.
+        return null
+    }
     return suggestions
 }
 

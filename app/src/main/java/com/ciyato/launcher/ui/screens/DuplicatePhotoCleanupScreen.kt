@@ -195,14 +195,30 @@ fun DuplicatePhotoCleanupScreen(
                     // (F-102). The coverage is now stated instead of implied.
                     Text(
                         scan?.let { s ->
-                            if (s.wasBounded) {
-                                "Checked the ${s.scanned} most recent of " +
-                                pluralStringResource(R.plurals.count_photos, s.libraryTotal, s.libraryTotal) + ". " +
-                                    "Older photos were not examined."
-                            } else {
-                                "Checked all " +
-                                pluralStringResource(R.plurals.count_photos, s.scanned, s.scanned) +
-                                " on this device."
+                            val total = s.libraryTotal
+                            when {
+                                // Unknown library size: state what was checked
+                                // without a denominator rather than inventing one.
+                                // It used to read 0 on a failed count, which made
+                                // wasBounded false and produced "Checked all 500
+                                // on this device" - a failure reported as
+                                // completeness.
+                                total == null ->
+                                    "Checked the ${s.scanned} most recent photos. " +
+                                        "Ciyato could not read how many are on this device, so " +
+                                        "there may be more it has not examined."
+                                total > s.scanned ->
+                                    "Checked the ${s.scanned} most recent of " +
+                                    pluralStringResource(R.plurals.count_photos, total, total) + ". " +
+                                        "Older photos were not examined."
+                                s.unreadable > 0 ->
+                                    "Checked " +
+                                    pluralStringResource(R.plurals.count_photos, s.scanned, s.scanned) +
+                                    ". ${s.unreadable} could not be opened and were not compared."
+                                else ->
+                                    "Checked all " +
+                                    pluralStringResource(R.plurals.count_photos, s.scanned, s.scanned) +
+                                    " on this device."
                             }
                         } ?: "",
                         color = CiyatoMuted, fontSize = 12.sp,
@@ -253,13 +269,25 @@ fun DuplicatePhotoCleanupScreen(
                         // an automatic cleaner (F-103).
                         Text(
                             scan?.let { s ->
-                                val coverage = if (s.wasBounded) {
-                                    "newest ${s.scanned} of " + pluralStringResource(R.plurals.count_photos, s.libraryTotal, s.libraryTotal)
+                                val total = s.libraryTotal
+                                val coverage = when {
+                                    // An unknown library size cannot be a
+                                    // denominator. Saying "newest 500" without one
+                                    // is honest; inventing one is not.
+                                    total == null ->
+                                        "newest " + pluralStringResource(R.plurals.count_photos, s.scanned, s.scanned)
+                                    total > s.scanned ->
+                                        "newest ${s.scanned} of " + pluralStringResource(R.plurals.count_photos, total, total)
+                                    else ->
+                                        "all " + pluralStringResource(R.plurals.count_photos, s.scanned, s.scanned)
+                                }
+                                val skipped = if (s.unreadable > 0) {
+                                    " ${s.unreadable} could not be opened and were not compared."
                                 } else {
-                                    "all " + pluralStringResource(R.plurals.count_photos, s.scanned, s.scanned)
+                                    ""
                                 }
                                 "Matched by appearance across the $coverage. Similar is not " +
-                                    "identical — check each group before trashing."
+                                    "identical — check each group before trashing.$skipped"
                             } ?: "",
                             color = CiyatoMuted, fontSize = 11.sp, lineHeight = 15.sp,
                         )
