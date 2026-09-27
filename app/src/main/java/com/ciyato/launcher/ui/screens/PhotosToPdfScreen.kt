@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -99,7 +100,7 @@ fun PhotosToPdfScreen(onBack: () -> Unit) {
 
     // Identity, not just a URI. Two pages can legitimately be the same image.
     var pages by remember { mutableStateOf<List<PdfPage>>(emptyList()) }
-    var nextId by remember { mutableStateOf(0L) }
+    var nextId by remember { mutableLongStateOf(0L) }
     var isExporting by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
 

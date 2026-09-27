@@ -63,7 +63,7 @@ fun AutoBackupScreen(
     val folderUri = remember(folderUriRaw) { folderUriRaw.takeIf { it.isNotBlank() }?.let { Uri.parse(it) } }
 
     var isBackingUp by remember { mutableStateOf(false) }
-    var backupProgress by remember { mutableStateOf(0f) }
+    var backupProgress by remember { mutableFloatStateOf(0f) }
     var statusMessage by remember { mutableStateOf("") }
 
     // Same permission-gate pattern as StorageCleanupScreen: check on entry,

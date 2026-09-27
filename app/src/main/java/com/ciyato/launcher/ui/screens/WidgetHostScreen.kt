@@ -95,7 +95,7 @@ fun WidgetHostScreen(
     // does not complete. Without this, cancelling the system bind dialog leaked
     // the ID permanently: result.data is null on cancel, so appWidgetId came back
     // as -1 and the cleanup branch was never reached (F-139).
-    var pendingWidgetId by remember { mutableStateOf(AppWidgetManager.INVALID_APPWIDGET_ID) }
+    var pendingWidgetId by remember { mutableIntStateOf(AppWidgetManager.INVALID_APPWIDGET_ID) }
 
     DisposableEffect(Unit) {
         onDispose {

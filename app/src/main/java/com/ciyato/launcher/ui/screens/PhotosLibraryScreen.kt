@@ -325,7 +325,7 @@ fun PhotosLibraryScreen(
     var pendingLegacyDelete by remember { mutableStateOf<List<Uri>?>(null) }
     // What MediaStore actually holds, so a capped list is never described as the
     // whole library (F-107).
-    var libraryTotal by remember { mutableStateOf(0) }
+    var libraryTotal by remember { mutableIntStateOf(0) }
     var loaded by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf(LibraryTab.COLLECTIONS) }
     var openCollection by remember { mutableStateOf<String?>(null) }

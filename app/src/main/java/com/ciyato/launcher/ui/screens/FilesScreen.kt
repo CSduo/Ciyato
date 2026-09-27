@@ -50,6 +50,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -166,7 +167,7 @@ fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
     // Tapping a category shows THAT category's files, using the scan already in
     // memory. Previously every row opened the same unfiltered browser (F-086).
     var openCategory by remember { mutableStateOf<String?>(null) }
-    var refreshNonce by remember { mutableStateOf(0) }
+    var refreshNonce by remember { mutableIntStateOf(0) }
     var cleanupResult by remember(rootUri) {
         mutableStateOf(rootUri?.let { uri -> FileCleanupResultStore.loadResult(context, uri.toString()) })
     }

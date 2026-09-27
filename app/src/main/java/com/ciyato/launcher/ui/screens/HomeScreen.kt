@@ -335,11 +335,11 @@ fun HomeScreen(
 
     // Dialog state for picking apps for custom pages
     var showPageAppPicker by remember { mutableStateOf(false) }
-    var pickerPageIndex by remember { mutableStateOf(0) }
+    var pickerPageIndex by remember { mutableIntStateOf(0) }
     var pageAppPickerQuery by remember { mutableStateOf("") }
     var pageAppPickerSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showWorkspaceCategoryPicker by remember { mutableStateOf(false) }
-    var workspaceCategoryPickerIndex by remember { mutableStateOf(0) }
+    var workspaceCategoryPickerIndex by remember { mutableIntStateOf(0) }
     var pendingWorkspaceDeletion by remember { mutableStateOf<Int?>(null) }
     var pendingWorkspaceMoveDestination by remember { mutableStateOf<Int?>(null) }
     var showWorkspaceOverview by remember { mutableStateOf(false) }

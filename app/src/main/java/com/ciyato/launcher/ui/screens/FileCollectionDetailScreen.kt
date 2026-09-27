@@ -79,7 +79,7 @@ fun FileCollectionDetailScreen(
     }
     var folderStack by remember(initialFolderUri) { mutableStateOf<List<DocumentFile>>(emptyList()) }
     var pendingDeletion by remember { mutableStateOf<CiyatoFile?>(null) }
-    var cacheBytes by remember { mutableStateOf(0L) }
+    var cacheBytes by remember { mutableLongStateOf(0L) }
     var isClearingCache by remember { mutableStateOf(false) }
     var accessMessage by remember { mutableStateOf<String?>(null) }
     val currentFolderName = folderStack.lastOrNull()?.name ?: collectionTitle

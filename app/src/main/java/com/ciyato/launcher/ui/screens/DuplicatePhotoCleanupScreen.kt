@@ -74,8 +74,8 @@ fun DuplicatePhotoCleanupScreen(
     // was actually examined, rather than implying the whole library.
     var scan by remember { mutableStateOf<DuplicatePhotoDetector.DuplicateScan?>(null) }
     var isLoading by remember { mutableStateOf(true) }
-    var deletedCount by remember { mutableStateOf(0) }
-    var savedBytes by remember { mutableStateOf(0L) }
+    var deletedCount by remember { mutableIntStateOf(0) }
+    var savedBytes by remember { mutableLongStateOf(0L) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -274,7 +274,7 @@ fun DuplicatePhotoCleanupScreen(
                     // criterion and the choice is editable.
                     val groupKey = group.photos.joinToString(",") { it.id.toString() }
                     var keepId by remember(groupKey) {
-                        mutableStateOf(group.photos.maxByOrNull { it.sizeBytes }?.id ?: group.photos.first().id)
+                        mutableLongStateOf(group.photos.maxByOrNull { it.sizeBytes }?.id ?: group.photos.first().id)
                     }
                     val keep = group.photos.firstOrNull { it.id == keepId } ?: group.photos.first()
 

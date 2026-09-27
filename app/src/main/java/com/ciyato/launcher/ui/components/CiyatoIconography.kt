@@ -160,7 +160,7 @@ fun StatusDot(
     size: Dp = 8.dp,
     pulsing: Boolean = false,
 ) {
-    val scale by if (pulsing) rememberPulse(0.9f, 1.2f) else androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(1f) }
+    val scale by if (pulsing) rememberPulse(0.9f, 1.2f) else androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
     Box(
         modifier = modifier
             .size(size * scale)

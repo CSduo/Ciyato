@@ -221,7 +221,7 @@ val CiyatoScreenExit: ExitTransition = CiyatoMotion.CiyatoScreenExit
  */
 @Composable
 fun rememberPulse(minScale: Float = 1f, maxScale: Float = 1.06f): State<Float> {
-    if (LocalReduceMotion.current) return remember(minScale) { mutableStateOf(minScale) }
+    if (LocalReduceMotion.current) return remember(minScale) { mutableFloatStateOf(minScale) }
     val transition = rememberInfiniteTransition(label = "pulse")
     return transition.animateFloat(
         initialValue = minScale,
@@ -238,7 +238,7 @@ fun rememberPulse(minScale: Float = 1f, maxScale: Float = 1.06f): State<Float> {
 fun rememberBreathing(min: Float = 0.6f, max: Float = 1f): State<Float> {
     // Rests at max, not min: this drives an ambient glow's alpha, and settling
     // at the dim end would leave the element looking disabled rather than still.
-    if (LocalReduceMotion.current) return remember(max) { mutableStateOf(max) }
+    if (LocalReduceMotion.current) return remember(max) { mutableFloatStateOf(max) }
     val transition = rememberInfiniteTransition(label = "breathing")
     return transition.animateFloat(
         initialValue = min,
@@ -253,7 +253,7 @@ fun rememberBreathing(min: Float = 0.6f, max: Float = 1f): State<Float> {
  */
 @Composable
 fun rememberShimmer(): State<Float> {
-    if (LocalReduceMotion.current) return remember { mutableStateOf(0.5f) }
+    if (LocalReduceMotion.current) return remember { mutableFloatStateOf(0.5f) }
     val transition = rememberInfiniteTransition(label = "shimmer")
     return transition.animateFloat(
         initialValue = 0f,
@@ -268,7 +268,7 @@ fun rememberShimmer(): State<Float> {
  */
 @Composable
 fun rememberOrbit(): State<Float> {
-    if (LocalReduceMotion.current) return remember { mutableStateOf(0f) }
+    if (LocalReduceMotion.current) return remember { mutableFloatStateOf(0f) }
     val transition = rememberInfiniteTransition(label = "orbit")
     return transition.animateFloat(
         initialValue = 0f,

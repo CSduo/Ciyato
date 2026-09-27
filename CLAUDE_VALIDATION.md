@@ -243,6 +243,33 @@ limit rather than a silently wrong number.
 
 Commands are in `ci/README.md`.
 
+## Golden image tests (F-165) - written, BLOCKED, not wired
+
+The suite exists at `screenshots/HomeCanvasGoldenTest.kt` and is not in the build. That
+directory is not a source set, so nothing there compiles or runs. Claiming otherwise would
+be the exact kind of defect this audit is about, so:
+
+| Attempt | Result |
+|---|---|
+| Paparazzi 1.3.5 | Broke `:app:kspDebugKotlin` with an internal compiler error - it puts `kotlin-compiler-embeddable:2.0.21` on the build classpath against this project's Kotlin 2.0.0 / KSP 2.0.0-1.0.21 |
+| Paparazzi 1.3.4 | KSP survives; every snapshot fails in `Renderer.configureBuildProperties` because its layoutlib does not know `compileSdk = 36` |
+
+The two versions fail for opposite reasons - one is incompatible with the Kotlin toolchain,
+the other with the compile SDK - and there is no version that satisfies both today.
+
+**Not forced, deliberately.** The fix is a Kotlin/KSP upgrade on a working 40k-line Compose
+app, performed to add a test harness; it can move codegen, the Compose compiler plugin, lint
+output and Room's generated code. Lowering `compileSdk` is not available either, since API 36
+is where F-186 and F-187 have to be verified. Adding the plugin and leaving five tests red
+would have been worse than both. `screenshots/README.md` has the enable steps.
+
+**The larger prerequisite, independent of the plugin:** F-165 asks for goldens of Home,
+Drawer, Files, Photos, Settings, onboarding and destructive dialogs. Each of those composables
+takes a `LauncherViewModel`, so rendering one needs a real DataStore and a real
+PackageManager. Whole-screen coverage needs their state hoisted first - a refactor of eight
+screens. The suite that exists targets `HomeCanvasSurface`, which takes plain data and is
+where spacing, overlap and displacement for every Home object actually live.
+
 ## Remaining device- and account-only gaps
 
 Recorded so they are never mistaken for completed code work: real-device gesture and OEM storage
