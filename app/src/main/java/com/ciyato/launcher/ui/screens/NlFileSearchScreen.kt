@@ -44,6 +44,7 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * NlFileSearchScreen — Suggestion #27
@@ -114,14 +115,14 @@ fun NlFileSearchScreen(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
-    val storedRoot by viewModel.filesRootUri.collectAsState()
+    val storedRoot by viewModel.filesRootUri.collectAsStateWithLifecycle()
     val selectedRoot = remember(storedRoot) {
         storedRoot.takeIf(String::isNotBlank)?.let(Uri::parse)
     }
-    val fileSearchHistoryRaw by viewModel.fileSearchHistory.collectAsState()
-    val saveFileSearchHistory by viewModel.saveFileSearchHistory.collectAsState()
+    val fileSearchHistoryRaw by viewModel.fileSearchHistory.collectAsStateWithLifecycle()
+    val saveFileSearchHistory by viewModel.saveFileSearchHistory.collectAsStateWithLifecycle()
     val fileSearchHistory = remember(fileSearchHistoryRaw) { FileSearchHistoryStore.parse(fileSearchHistoryRaw) }
-    val fileSearchIndexRaw by viewModel.fileSearchIndex.collectAsState()
+    val fileSearchIndexRaw by viewModel.fileSearchIndex.collectAsStateWithLifecycle()
     val fileSearchIndex = remember(fileSearchIndexRaw) { FileSearchIndexStore.parse(fileSearchIndexRaw) }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<NlFileResult>>(emptyList()) }

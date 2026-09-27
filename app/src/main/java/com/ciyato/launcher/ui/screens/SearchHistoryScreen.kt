@@ -19,6 +19,7 @@ import com.ciyato.launcher.ui.components.CiyatoEmptyState
 import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * SearchHistoryScreen — Suggestion #108
@@ -35,7 +36,7 @@ fun SearchHistoryScreen(
     onBack: () -> Unit,
     onQuerySelected: (String) -> Unit,
 ) {
-    val history by viewModel.recentSearches.collectAsState()
+    val history by viewModel.recentSearches.collectAsStateWithLifecycle()
     var showClearDialog by remember { mutableStateOf(false) }
 
     if (showClearDialog) {

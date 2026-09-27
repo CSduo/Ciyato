@@ -403,6 +403,24 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * The gradient preset most recently applied FROM Ciyato, or "".
+     *
+     * Not "the current wallpaper", and the distinction is the fix. The picker's
+     * tick used to live in `remember`, so it vanished on recreation and the screen
+     * could not say which preset was active (F-162). Persisting it makes the tick
+     * survive - but Ciyato cannot read the system wallpaper back and identify
+     * which gradient it is, so if the person changes it from the system picker or
+     * another app this value is stale. It therefore means what it can honestly
+     * mean: the last one applied from here.
+     */
+    val appliedGradientId = settings.appliedGradientId
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
+    fun setAppliedGradientId(v: String) = viewModelScope.launch {
+        settings.setAppliedGradientId(v)
+    }
+
+    /**
      * Notification counts per package, from the listener service.
      *
      * Everything needed for badges existed and nothing was connected: the
@@ -1631,8 +1649,32 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      * last-known-good snapshot so the user sees real (if stale) numbers
      * instead of a bare failure screen. See [applyWeatherResult].
      */
+    /**
+     * The fetch in flight, if any.
+     *
+     * Both activity roots call [fetchWeather] on start, and the weather screen
+     * calls it again when opened. The TTL short-circuit already stopped a fresh
+     * cache from hitting the network, but with a STALE cache nothing stopped two
+     * callers from starting two identical fetches at the same moment - three
+     * hosts each, twice, because the person navigated from Home to the organizer
+     * (F-050).
+     *
+     * The audit asks for refresh policy to live in the ViewModel with activities
+     * requesting state rather than performing business refresh. This is the part
+     * of that which actually costs something: a second caller joins the fetch in
+     * flight instead of racing it.
+     *
+     * A plain nullable Job is enough rather than a Mutex, because every caller
+     * arrives from composition on the main thread and `viewModelScope` dispatches
+     * there, so the check and the assignment cannot interleave.
+     */
+    private var weatherFetchJob: kotlinx.coroutines.Job? = null
+
     fun fetchWeather(context: Context) {
-        viewModelScope.launch {
+        // Already fetching: the result lands in the same StateFlow either way, so
+        // a second request would duplicate the work and change nothing.
+        if (weatherFetchJob?.isActive == true) return
+        weatherFetchJob = viewModelScope.launch {
             val cacheJson = settings.weatherCacheJson.first()
             val cacheAt   = settings.weatherCacheAt.first()
             val cacheAge  = System.currentTimeMillis() - cacheAt
@@ -1661,7 +1703,11 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun forceRefreshWeather(context: Context) {
-        viewModelScope.launch {
+        // An explicit refresh supersedes a passive one rather than joining it:
+        // the person asked for current data, and a fetch that started before they
+        // asked may already be waiting on a slow host.
+        weatherFetchJob?.cancel()
+        weatherFetchJob = viewModelScope.launch {
             // Deliberately does NOT clear the cache first: if the forced
             // refresh itself fails, the last known-good snapshot is still
             // there to fall back to (stale-labeled) instead of losing it.

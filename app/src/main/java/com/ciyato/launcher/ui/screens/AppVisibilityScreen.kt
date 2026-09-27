@@ -31,7 +31,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +53,7 @@ import com.ciyato.launcher.ui.theme.CiyatoSec
 import com.ciyato.launcher.ui.theme.CiyatoSubtleBorder
 import com.ciyato.launcher.ui.theme.CiyatoWhite
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 enum class AppVisibilityMode {
     Hidden,
@@ -67,9 +67,9 @@ fun AppVisibilityScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
 ) {
-    val allApps by viewModel.allApps.collectAsState()
-    val hiddenCsv by viewModel.hiddenApps.collectAsState()
-    val removedCsv by viewModel.removedApps.collectAsState()
+    val allApps by viewModel.allApps.collectAsStateWithLifecycle()
+    val hiddenCsv by viewModel.hiddenApps.collectAsStateWithLifecycle()
+    val removedCsv by viewModel.removedApps.collectAsStateWithLifecycle()
     val hidden = hiddenCsv.toPackageSet()
     val removed = removedCsv.toPackageSet()
     val apps = allApps.filter {

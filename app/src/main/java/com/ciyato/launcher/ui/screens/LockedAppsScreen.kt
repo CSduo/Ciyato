@@ -21,7 +21,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +37,7 @@ import com.ciyato.launcher.ui.theme.CiyatoMuted
 import com.ciyato.launcher.ui.theme.CiyatoSubtleBorder
 import com.ciyato.launcher.ui.theme.CiyatoWhite
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * The apps Ciyato asks to unlock, and where to stop asking.
@@ -56,8 +56,8 @@ fun LockedAppsScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
 ) {
-    val lockedCsv by viewModel.lockedApps.collectAsState()
-    val allApps by viewModel.allApps.collectAsState()
+    val lockedCsv by viewModel.lockedApps.collectAsStateWithLifecycle()
+    val allApps by viewModel.allApps.collectAsStateWithLifecycle()
     val lockedPackages = viewModel.parsePackageCsv(lockedCsv)
     // Resolved against the installed list so an uninstalled package does not
     // linger as an unexplained row, and sorted by name so the list is stable.

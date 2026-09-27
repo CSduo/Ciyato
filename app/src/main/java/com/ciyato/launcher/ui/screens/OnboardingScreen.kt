@@ -85,6 +85,9 @@ import com.ciyato.launcher.ui.theme.CiyatoSec
 import com.ciyato.launcher.ui.theme.CiyatoStrongBorder
 import com.ciyato.launcher.ui.theme.CiyatoSubtleBorder
 import com.ciyato.launcher.ui.theme.CiyatoWhite
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.DisposableEffect
 
 private data class OnboardingPanel(
     val icon: ImageVector,
@@ -188,10 +191,32 @@ fun OnboardingScreen(onDone: () -> Unit) {
     val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
 
+    // Whether the role request has been made and did not take. Saveable, because
+    // the system dialog can recreate this activity and losing the flag would put
+    // the person back on a button they have already pressed.
+    var setupDeclined by rememberSaveable { mutableStateOf(false) }
+
     val roleRequestLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
+        ActivityResultContracts.StartActivityForResult(),
     ) {
-        onDone()
+        // The result code is not the answer. A cancelled dialog and an accepted
+        // one can both come back RESULT_CANCELED depending on the OEM, so the
+        // only reliable question is whether the role is now held (F-164).
+        if (isDefaultLauncher(context)) onDone() else setupDeclined = true
+    }
+
+    // Returning from Android's Home-app settings screen delivers no result, so
+    // this is the only place that path can be checked. It also covers the role
+    // dialog on devices where isRoleHeld lags the result callback by a moment.
+    val onboardingLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(onboardingLifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && isDefaultLauncher(context)) {
+                onDone()
+            }
+        }
+        onboardingLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { onboardingLifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val directionalConnection = com.ciyato.launcher.ui.components.rememberDirectionalNestedScrollConnection()
@@ -249,12 +274,51 @@ fun OnboardingScreen(onDone: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 )
             } else {
-                // Final slide: primary action is Set as Home
-                CiyatoButton(
-                    text = "Set Ciyato as Home App",
-                    onClick = { requestDefaultLauncher(context, roleRequestLauncher::launch, onDone) },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // Final slide: primary action is Set as Home.
+                //
+                // When the request did not take, this says so rather than
+                // advancing. "Setup complete" while another launcher is still in
+                // charge is the single most misleading thing this screen could
+                // claim, and it claimed it on every declined or dismissed dialog
+                // (F-164).
+                if (setupDeclined) {
+                    Text(
+                        "Ciyato isn't your home screen yet",
+                        color = CiyatoWhite,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Android didn't apply the change. You can try again, or carry on " +
+                            "and set it later from Settings — everything else works either way.",
+                        color = CiyatoMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    CiyatoButton(
+                        text = "Try again",
+                        onClick = {
+                            setupDeclined = false
+                            requestDefaultLauncher(context, roleRequestLauncher::launch) {}
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+                        Text("Continue without setting it", color = CiyatoSec, fontSize = 13.sp)
+                    }
+                } else {
+                    CiyatoButton(
+                        text = "Set Ciyato as Home App",
+                        // The settings-screen route returns no result, so it
+                        // deliberately does nothing here: the ON_RESUME check
+                        // above is what notices if it worked.
+                        onClick = { requestDefaultLauncher(context, roleRequestLauncher::launch) {} },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
             Row(
@@ -752,10 +816,47 @@ private fun GuidancePanel(panel: OnboardingPanel) {
 }
 
 /** Request HOME role via RoleManager (API 29+) or open Default Apps settings. */
+/**
+ * Whether Ciyato is actually the home screen right now.
+ *
+ * Asked rather than assumed. Onboarding used to finish the moment the system role
+ * dialog closed, whatever the person chose (F-164) - so declining it, or
+ * dismissing it by accident, left someone believing setup had completed while
+ * their old launcher was still in charge. The one screen whose entire job is to
+ * get this right was the screen that did not check.
+ *
+ * Two routes because the platform has two. RoleManager is authoritative on
+ * Android 10 and up; below that, resolving the HOME intent and reading which
+ * package wins is the only answer available.
+ */
+fun isDefaultLauncher(context: Context): Boolean = runCatching {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val roleManager = context.getSystemService(Context.ROLE_SERVICE) as? RoleManager
+        if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_HOME)) {
+            return roleManager.isRoleHeld(RoleManager.ROLE_HOME)
+        }
+    }
+    val resolved = context.packageManager.resolveActivity(
+        Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+        android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
+    )
+    resolved?.activityInfo?.packageName == context.packageName
+}.getOrDefault(false)
+
+/**
+ * Asks Android to make Ciyato the home screen.
+ *
+ * @param onLaunchedSystemSettings called when the request could only be made by
+ *   sending the person to Android's own Home-app settings screen - which returns
+ *   no result, so the caller has to re-check on resume instead of assuming.
+ *   This used to be `fallback()`, invoked immediately after `startActivity`:
+ *   onboarding completed before the person had so much as seen the screen, let
+ *   alone chosen anything on it.
+ */
 fun requestDefaultLauncher(
     context: Context,
     launchIntent: (Intent) -> Unit,
-    fallback: () -> Unit,
+    onLaunchedSystemSettings: () -> Unit,
 ) {
     try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -770,8 +871,8 @@ fun requestDefaultLauncher(
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
-        fallback()
+        onLaunchedSystemSettings()
     } catch (e: Exception) {
-        fallback()
+        onLaunchedSystemSettings()
     }
 }

@@ -42,6 +42,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * What each installed app has declared it can access.
@@ -72,7 +73,7 @@ fun PermissionAuditScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val apps by viewModel.apps.collectAsState()
+    val apps by viewModel.apps.collectAsStateWithLifecycle()
 
     var filterLevel: String by remember { mutableStateOf("All") }
     val filters = listOf("All", "Sensitive", "Connectivity", "Other")

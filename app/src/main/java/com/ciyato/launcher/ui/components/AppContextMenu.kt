@@ -38,6 +38,7 @@ import com.ciyato.launcher.viewmodel.pinApp
 import com.ciyato.launcher.viewmodel.unpinApp
 import com.ciyato.launcher.viewmodel.hideApp
 import com.ciyato.launcher.viewmodel.unhideApp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * AppContextMenu — Suggestion #16
@@ -72,7 +73,7 @@ fun AppContextMenu(
     // Collected rather than read through derivedStateOf: lockedApps is a
     // StateFlow, and reading .value inside derivedStateOf does not subscribe to
     // it, so the label would not update when the set changes.
-    val lockedCsv by viewModel.lockedApps.collectAsState()
+    val lockedCsv by viewModel.lockedApps.collectAsStateWithLifecycle()
     val isLocked = app.packageName in viewModel.parsePackageCsv(lockedCsv)
 
     Dialog(
@@ -387,7 +388,7 @@ fun AppContextMenu(
         )
     }
 
-    val customCats by viewModel.customCategories.collectAsState()
+    val customCats by viewModel.customCategories.collectAsStateWithLifecycle()
     val customCatsList = remember(customCats) {
         customCats.split(",").map(String::trim).filter(String::isNotEmpty)
     }

@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.ciyato.launcher.data.InstalledApp
 import com.ciyato.launcher.ui.theme.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * App Lock — authentication before Ciyato opens a locked app.
@@ -53,7 +54,7 @@ enum class AuthState { IDLE, AUTHENTICATING, SUCCESS, FAILED }
  */
 @Composable
 fun AppLockHost(viewModel: LauncherViewModel) {
-    val pending by viewModel.pendingLockedApp.collectAsState()
+    val pending by viewModel.pendingLockedApp.collectAsStateWithLifecycle()
     pending?.let { app ->
         AppLockGate(
             app = app,

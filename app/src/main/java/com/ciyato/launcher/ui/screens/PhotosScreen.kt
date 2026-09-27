@@ -62,7 +62,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -94,6 +93,7 @@ import java.text.DateFormat
 import java.util.Date
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private enum class PhotosMode(val label: String) {
     GRID("Grid"),
@@ -107,8 +107,8 @@ fun PhotosScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val storedUrisJson by viewModel.photoMediaUris.collectAsState()
-    val collectionsJson by viewModel.photoCollections.collectAsState()
+    val storedUrisJson by viewModel.photoMediaUris.collectAsStateWithLifecycle()
+    val collectionsJson by viewModel.photoCollections.collectAsStateWithLifecycle()
     val storedUris = remember(storedUrisJson) { PhotoLibraryStore.parseUris(storedUrisJson) }
     val collections = remember(collectionsJson) { PhotoLibraryStore.parseCollections(collectionsJson) }
     val mediaRepository = remember(context) { PhotoMediaRepository(context.applicationContext) }

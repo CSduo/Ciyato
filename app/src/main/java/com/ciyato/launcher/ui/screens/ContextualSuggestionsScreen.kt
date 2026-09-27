@@ -32,6 +32,7 @@ import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * ContextualSuggestionsScreen — Suggestion #30
@@ -60,7 +61,7 @@ fun ContextualSuggestionsScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val apps by viewModel.apps.collectAsState()
+    val apps by viewModel.apps.collectAsStateWithLifecycle()
     var suggestions by remember { mutableStateOf<List<AppSuggestion>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var hasPermission by remember { mutableStateOf(hasUsageStatsPermission(context)) }

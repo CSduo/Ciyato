@@ -47,6 +47,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * WallpaperPickerScreen - Suggestion #93
@@ -81,14 +82,23 @@ fun WallpaperPickerScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val ciyatoImageWallpaper by viewModel.ciyatoImageWallpaper.collectAsState()
-    val ciyatoVideoWallpaper by viewModel.ciyatoVideoWallpaper.collectAsState()
-    val useSystemWallpaper by viewModel.useSystemWallpaper.collectAsState()
-    val wallpaperDim by viewModel.wallpaperDim.collectAsState()
-    val wallpaperImageScale by viewModel.wallpaperImageScale.collectAsState()
-    val wallpaperImageOffset by viewModel.wallpaperImageOffset.collectAsState()
-    val wallpaperBlur by viewModel.wallpaperBlur.collectAsState()
-    var selected by remember { mutableStateOf<String?>(null) }
+    val ciyatoImageWallpaper by viewModel.ciyatoImageWallpaper.collectAsStateWithLifecycle()
+    val ciyatoVideoWallpaper by viewModel.ciyatoVideoWallpaper.collectAsStateWithLifecycle()
+    val useSystemWallpaper by viewModel.useSystemWallpaper.collectAsStateWithLifecycle()
+    val wallpaperDim by viewModel.wallpaperDim.collectAsStateWithLifecycle()
+    val wallpaperImageScale by viewModel.wallpaperImageScale.collectAsStateWithLifecycle()
+    val wallpaperImageOffset by viewModel.wallpaperImageOffset.collectAsStateWithLifecycle()
+    val wallpaperBlur by viewModel.wallpaperBlur.collectAsStateWithLifecycle()
+    // Persisted, and honest about what it means.
+    //
+    // This was `remember`, so re-entering the screen lost which preset was ticked
+    // even though the wallpaper was still applied - the tick was decoration that
+    // could not be trusted (F-162). It now survives, and the label below says
+    // "applied from Ciyato" rather than "current", because Ciyato cannot read the
+    // system wallpaper back and identify which gradient it is: a change made from
+    // the system picker would leave this stale, and claiming otherwise would swap
+    // one wrong indicator for another.
+    val selected by viewModel.appliedGradientId.collectAsStateWithLifecycle()
     var imageStatus by remember { mutableStateOf<String?>(null) }
     var pendingWallpaperChoice by remember { mutableStateOf<File?>(null) }
     val personalImagePicker = rememberLauncherForActivityResult(
@@ -123,6 +133,8 @@ fun WallpaperPickerScreen(
                 imageStatus = if (localUri != null) {
                     viewModel.setCiyatoVideoWallpaper(localUri.toString())
                     viewModel.setCiyatoImageWallpaper("")
+                    // A video is not a gradient, so the gradient tick must go.
+                    viewModel.setAppliedGradientId("")
                     viewModel.setUseSystemWallpaper(false)
                     "Ciyato-only video background applied. It pauses when Ciyato is hidden, the screen is off, or Battery Saver is on."
                 } else {
@@ -162,6 +174,9 @@ fun WallpaperPickerScreen(
                 viewModel.setCiyatoImageWallpaper("")
                 viewModel.setCiyatoVideoWallpaper("")
                 viewModel.setUseSystemWallpaper(true)
+                // Following the system wallpaper means Ciyato no longer knows
+                // what it is, so it cannot keep claiming a preset.
+                viewModel.setAppliedGradientId("")
                 imageStatus = "Ciyato now follows the current Android system wallpaper."
             }
 
@@ -291,6 +306,7 @@ fun WallpaperPickerScreen(
                                         val resUri = "android.resource://${context.packageName}/$drawableRes"
                                         viewModel.setCiyatoImageWallpaper(resUri)
                                         viewModel.setCiyatoVideoWallpaper("")
+                                        viewModel.setAppliedGradientId("")
                                         viewModel.setUseSystemWallpaper(false)
                                         imageStatus = "$title set as Ciyato wallpaper."
                                     },
@@ -320,6 +336,22 @@ fun WallpaperPickerScreen(
             Spacer(Modifier.height(16.dp))
 
             Text("Minimal system wallpapers", color = CiyatoWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            // What the tick means, said once.
+            //
+            // It marks the preset applied FROM HERE, not the wallpaper currently
+            // on the device. Ciyato sets these as the Android system wallpaper and
+            // then cannot read it back to identify which one it is, so changing the
+            // wallpaper from Android's own picker leaves this tick behind. Saying
+            // so is the difference between a useful indicator and a decorative
+            // one that is sometimes wrong (F-162).
+            Text(
+                "Applied to Android as your system wallpaper. The tick marks the last one " +
+                    "you applied from Ciyato — changing it elsewhere won't move it.",
+                color = CiyatoMuted,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+            )
 
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -336,7 +368,7 @@ fun WallpaperPickerScreen(
                                     wp = wp,
                                     isSelected = selected == wp.id,
                                     onClick = {
-                                        selected = wp.id
+                                        viewModel.setAppliedGradientId(wp.id)
                                         applyGradientWallpaper(context, wp)
                                         viewModel.setCiyatoImageWallpaper("")
                                         viewModel.setCiyatoVideoWallpaper("")

@@ -1,4 +1,5 @@
 package com.ciyato.launcher.data
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Generic sealed UI state wrapper — Suggestion #103.
@@ -6,7 +7,7 @@ package com.ciyato.launcher.data
  *
  * Usage:
  *   val appsState: StateFlow<UiState<List<InstalledApp>>> = ...
- *   when (val s = appsState.collectAsState().value) {
+ *   when (val s = appsState.collectAsStateWithLifecycle().value) {
  *     is UiState.Loading -> ...
  *     is UiState.Success -> s.data
  *     is UiState.Error   -> s.message

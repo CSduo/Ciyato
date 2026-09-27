@@ -47,6 +47,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,8 +56,8 @@ fun CategoryDetailScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
 ) {
-    val allApps by viewModel.apps.collectAsState()
-    val categoryRenames by viewModel.categoryRenames.collectAsState()
+    val allApps by viewModel.apps.collectAsStateWithLifecycle()
+    val categoryRenames by viewModel.categoryRenames.collectAsStateWithLifecycle()
     var searchQuery by remember { mutableStateOf("") }
     var contextMenuApp by remember { mutableStateOf<InstalledApp?>(null) }
     var showManageDialog by remember { mutableStateOf(false) }

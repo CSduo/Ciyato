@@ -27,6 +27,7 @@ import com.ciyato.launcher.data.SearchRankingEngine
 import com.ciyato.launcher.ui.components.*
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * SearchScreen — fully enhanced.
@@ -42,11 +43,11 @@ fun SearchScreen(
     onBack: () -> Unit,
     onCategoryFilter: ((AppCategory) -> Unit)? = null,
 ) {
-    val searchQuery     by viewModel.searchQuery.collectAsState()
-    val isLoading       by viewModel.isLoading.collectAsState()
-    val apps            by viewModel.apps.collectAsState()
-    val recentSearches  by viewModel.recentSearches.collectAsState()
-    val nlpResult       by viewModel.nlpSearchResult.collectAsState()
+    val searchQuery     by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val isLoading       by viewModel.isLoading.collectAsStateWithLifecycle()
+    val apps            by viewModel.apps.collectAsStateWithLifecycle()
+    val recentSearches  by viewModel.recentSearches.collectAsStateWithLifecycle()
+    val nlpResult       by viewModel.nlpSearchResult.collectAsStateWithLifecycle()
 
     val suggestionChips = remember {
         listOf(

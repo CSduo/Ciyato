@@ -26,13 +26,14 @@ import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.components.RealAppIcon
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun DuplicateShortcutsScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
 ) {
-    val allApps by viewModel.apps.collectAsState()
+    val allApps by viewModel.apps.collectAsStateWithLifecycle()
     val multiCatApps = remember(allApps) { viewModel.multiCategoryApps() }
 
     Scaffold(

@@ -212,6 +212,7 @@ class LauncherSettingsRepository(private val context: Context) {
 
         // ── Widget host (placed AppWidgetHost widget IDs) ─────────────────────
         val KEY_PLACED_WIDGET_IDS      = stringPreferencesKey("placed_widget_ids") // JSON array of ints
+        val KEY_APPLIED_GRADIENT_ID    = stringPreferencesKey("applied_gradient_id")
     }
 
     // ── Flows ─────────────────────────────────────────────────────────────────
@@ -336,6 +337,7 @@ class LauncherSettingsRepository(private val context: Context) {
     val photoBackupLastCount:   Flow<Int>     = pref(KEY_PHOTO_BACKUP_LAST_COUNT,   0)
 
     val placedWidgetIds:        Flow<String>  = pref(KEY_PLACED_WIDGET_IDS,         "[]")
+    val appliedGradientId:      Flow<String>  = pref(KEY_APPLIED_GRADIENT_ID,        "")
 
     // ── Setters ───────────────────────────────────────────────────────────────
 
@@ -466,6 +468,7 @@ class LauncherSettingsRepository(private val context: Context) {
     }
 
     suspend fun setPlacedWidgetIds(v: String)          = set(KEY_PLACED_WIDGET_IDS,       v)
+    suspend fun setAppliedGradientId(v: String)        = set(KEY_APPLIED_GRADIENT_ID,     v)
 
     suspend fun resetLayout() {
         context.dataStore.edit { p ->

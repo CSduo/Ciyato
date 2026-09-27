@@ -44,7 +44,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -98,6 +97,7 @@ import java.util.Date
 import java.util.UUID
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private const val FILE_SCAN_LIMIT = 2_000
 
@@ -143,7 +143,7 @@ private data class FilesCategory(
 @Composable
 fun FilesScreen(viewModel: LauncherViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
-    val storedRoot by viewModel.filesRootUri.collectAsState()
+    val storedRoot by viewModel.filesRootUri.collectAsStateWithLifecycle()
     val rootUri = remember(storedRoot) { storedRoot.takeIf(String::isNotBlank)?.let(Uri::parse) }
     // All-files access is granted in system settings, not by a runtime dialog,
     // so the answer changes while Ciyato is in the background. Re-check on

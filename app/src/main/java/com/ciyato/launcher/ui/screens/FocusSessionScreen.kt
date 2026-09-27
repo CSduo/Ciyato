@@ -30,6 +30,7 @@ import com.ciyato.launcher.data.FocusSessionManager
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.ui.components.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Focus Session Screen — Suggestion #75.
@@ -58,9 +59,9 @@ fun FocusSessionScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
 ) {
-    val activeSession   by viewModel.focusSession.collectAsState()
-    val focusDuration   by viewModel.focusDurationMin.collectAsState()
-    val focusBlockedCsv by viewModel.focusBlockedCats.collectAsState()
+    val activeSession   by viewModel.focusSession.collectAsStateWithLifecycle()
+    val focusDuration   by viewModel.focusDurationMin.collectAsStateWithLifecycle()
+    val focusBlockedCsv by viewModel.focusBlockedCats.collectAsStateWithLifecycle()
 
     val blockedCats: List<AppCategory> = remember(focusBlockedCsv) {
         focusBlockedCsv.split(",").mapNotNull { runCatching { AppCategory.valueOf(it.trim()) }.getOrNull() }

@@ -37,6 +37,7 @@ import com.ciyato.launcher.ui.components.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * SettingsScreen — fully expanded with all configurable options.
@@ -58,25 +59,25 @@ fun SettingsScreen(
     val view    = LocalView.current
 
     // Collect all settings
-    val denseLayout        by viewModel.denseLayout.collectAsState()
-    val smartCategories    by viewModel.smartCategories.collectAsState()
-    val tempUnit           by viewModel.tempUnit.collectAsState()
-    val timeAwareLayout    by viewModel.timeAwareLayout.collectAsState()
-    val bedtimeMode        by viewModel.bedtimeMode.collectAsState()
-    val bedtimeHour        by viewModel.bedtimeHour.collectAsState()
-    val hapticFeedback     by viewModel.hapticFeedback.collectAsState()
-    val reduceMotion       by viewModel.reduceMotion.collectAsState()
-    val privacyMode        by viewModel.privacyMode.collectAsState()
-    val screenshotBlocked  by viewModel.screenshotBlocked.collectAsState()
-    val crashReporting     by viewModel.crashReporting.collectAsState()
-    val showRecentLaunched by viewModel.showRecentlyLaunched.collectAsState()
-    val filesRootUri       by viewModel.filesRootUri.collectAsState()
-    val photoMediaUris     by viewModel.photoMediaUris.collectAsState()
-    val hiddenAppsCsv      by viewModel.hiddenApps.collectAsState()
-    val lockedAppsCsv      by viewModel.lockedApps.collectAsState()
-    val removedAppsCsv     by viewModel.removedApps.collectAsState()
+    val denseLayout        by viewModel.denseLayout.collectAsStateWithLifecycle()
+    val smartCategories    by viewModel.smartCategories.collectAsStateWithLifecycle()
+    val tempUnit           by viewModel.tempUnit.collectAsStateWithLifecycle()
+    val timeAwareLayout    by viewModel.timeAwareLayout.collectAsStateWithLifecycle()
+    val bedtimeMode        by viewModel.bedtimeMode.collectAsStateWithLifecycle()
+    val bedtimeHour        by viewModel.bedtimeHour.collectAsStateWithLifecycle()
+    val hapticFeedback     by viewModel.hapticFeedback.collectAsStateWithLifecycle()
+    val reduceMotion       by viewModel.reduceMotion.collectAsStateWithLifecycle()
+    val privacyMode        by viewModel.privacyMode.collectAsStateWithLifecycle()
+    val screenshotBlocked  by viewModel.screenshotBlocked.collectAsStateWithLifecycle()
+    val crashReporting     by viewModel.crashReporting.collectAsStateWithLifecycle()
+    val showRecentLaunched by viewModel.showRecentlyLaunched.collectAsStateWithLifecycle()
+    val filesRootUri       by viewModel.filesRootUri.collectAsStateWithLifecycle()
+    val photoMediaUris     by viewModel.photoMediaUris.collectAsStateWithLifecycle()
+    val hiddenAppsCsv      by viewModel.hiddenApps.collectAsStateWithLifecycle()
+    val lockedAppsCsv      by viewModel.lockedApps.collectAsStateWithLifecycle()
+    val removedAppsCsv     by viewModel.removedApps.collectAsStateWithLifecycle()
     val locationGranted    = LocationHelper.hasPermission(context)
-    val notificationBadges by viewModel.notificationBadges.collectAsState()
+    val notificationBadges by viewModel.notificationBadges.collectAsStateWithLifecycle()
     // Notification access is granted in system settings, so the answer changes
     // while Ciyato is in the background - the same reason the Insights screen
     // re-checks Usage access on resume rather than once at composition.

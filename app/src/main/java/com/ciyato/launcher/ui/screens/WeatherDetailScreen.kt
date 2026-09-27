@@ -41,6 +41,7 @@ import com.ciyato.launcher.ui.components.resolveSeasonTheme
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import com.ciyato.launcher.ui.theme.decorativePulse
 import com.ciyato.launcher.ui.theme.decorativeSweep
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * WeatherDetailScreen — Live weather powered by Open-Meteo (no API key).
@@ -63,10 +64,10 @@ fun WeatherDetailScreen(
     }
 
     val vmState by (viewModel?.weatherState
-        ?: kotlinx.coroutines.flow.MutableStateFlow(localState)).collectAsState()
+        ?: kotlinx.coroutines.flow.MutableStateFlow(localState)).collectAsStateWithLifecycle()
 
     val weatherState  = if (viewModel != null) vmState else localState
-    val tempUnit      by (viewModel?.tempUnit     ?: kotlinx.coroutines.flow.MutableStateFlow("C")).collectAsState()
+    val tempUnit      by (viewModel?.tempUnit     ?: kotlinx.coroutines.flow.MutableStateFlow("C")).collectAsStateWithLifecycle()
     val useFahrenheit = tempUnit == "F"
 
     val permLauncher = rememberLauncherForActivityResult(

@@ -648,7 +648,22 @@ private suspend fun scanTrash(context: Context): CategoryResult {
             uri = image.uri,
         )
     }
-    return CategoryResult(CleanupCategory.TRASH, items.sumOf { it.sizeBytes }, items.size, items)
+    // Totals queried separately from the review list, which every other category
+    // already did. Summing the capped list meant a gallery with 3,000 trashed
+    // photos reported the newest 1,000 as the whole of its trash (F-117) - an
+    // under-report, in the screen whose only job is saying how much you could
+    // reclaim. The "Showing largest N of M" header already existed and could
+    // never fire here, because totalCount was set from items.size.
+    val (totalCount, totalBytes) = PhotoDeviceLibrary.trashedTotals(context)
+    return CategoryResult(
+        category = CleanupCategory.TRASH,
+        // A totals query that returns nothing while the list has content means
+        // the query failed rather than the trash being empty; fall back to the
+        // list so the category is never reported as 0 bytes while showing items.
+        totalBytes = if (totalCount > 0) totalBytes else items.sumOf { it.sizeBytes },
+        totalCount = maxOf(totalCount, items.size),
+        items = items,
+    )
 }
 
 private fun scanLargeFiles(context: Context): CategoryResult {

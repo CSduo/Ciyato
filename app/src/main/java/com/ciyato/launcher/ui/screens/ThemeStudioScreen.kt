@@ -14,7 +14,6 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +29,7 @@ import com.ciyato.launcher.ui.components.CiyatoListCard
 import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,10 +38,10 @@ fun ThemeStudioScreen(
     onBack: () -> Unit,
     onOpenWallpaper: () -> Unit,
 ) {
-    val homeLayoutMode by viewModel.homeLayoutMode.collectAsState()
+    val homeLayoutMode by viewModel.homeLayoutMode.collectAsStateWithLifecycle()
     val denseLayout = homeLayoutMode == "dense"
-    val gridSize by viewModel.gridSize.collectAsState()
-    val font by viewModel.font.collectAsState()
+    val gridSize by viewModel.gridSize.collectAsStateWithLifecycle()
+    val font by viewModel.font.collectAsStateWithLifecycle()
     val fontOption = if (font in setOf("sans", "serif", "mono")) font else "sans"
     val accent = CiyatoGold
 

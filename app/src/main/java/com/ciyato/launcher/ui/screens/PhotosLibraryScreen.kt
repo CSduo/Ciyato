@@ -112,7 +112,7 @@ import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
 import android.net.Uri
 import com.ciyato.launcher.data.PhotoAiCollectionStore
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private enum class LibraryTab(val label: String) {
     COLLECTIONS("Collections"), GRID("Grid"), TIMELINE("Timeline"), TRASH("Trash")
@@ -356,7 +356,7 @@ fun PhotosLibraryScreen(
     // away, and had to run again from scratch. That makes the feature feel like
     // a demo rather than an organizer: the organisation did not survive leaving
     // the screen (F-105).
-    val storedAiCollections by viewModel.photoAiCollections.collectAsState()
+    val storedAiCollections by viewModel.photoAiCollections.collectAsStateWithLifecycle()
     var aiResult by remember { mutableStateOf<PhotoAiLabeler.AiScanResult?>(null) }
     LaunchedEffect(storedAiCollections, images) {
         if (aiResult == null && storedAiCollections.isNotBlank()) {

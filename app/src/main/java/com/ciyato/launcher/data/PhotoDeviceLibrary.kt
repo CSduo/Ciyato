@@ -166,7 +166,39 @@ object PhotoDeviceLibrary {
     }.flowOn(Dispatchers.IO)
 
     /** Photos sitting in the system trash, newest first. Empty below API 30. */
-    suspend fun loadTrashedImages(context: Context, limit: Int = 1_000): List<DeviceImage> =
+    /**
+     * How many trashed images there are in total, and how many bytes they hold.
+     *
+     * Separate from [loadTrashedImages] on purpose. That returns a capped list for
+     * review, and Storage Cleanup used to compute the trash headline by summing
+     * it - so a gallery with 3,000 trashed photos reported the size of the newest
+     * 1,000 and called it the trash total (F-117). Every other cleanup category
+     * already queried its real totals separately; trash was the one exception,
+     * and it under-reported in a screen whose entire purpose is telling you how
+     * much you could reclaim.
+     *
+     * Walking the whole cursor is cheap: three columns, no bitmaps, no file I/O.
+     */
+    suspend fun trashedTotals(context: Context): Pair<Int, Long> =
+        withContext(Dispatchers.IO) {
+            var count = 0
+            var bytes = 0L
+            runCatching {
+                queryImages(context, trashedOnly = true)?.use { cursor ->
+                    val sizeCol = cursor.getColumnIndex(MediaStore.Images.Media.SIZE)
+                    while (cursor.moveToNext()) {
+                        count++
+                        if (sizeCol >= 0) bytes += cursor.getLong(sizeCol).coerceAtLeast(0L)
+                    }
+                }
+            }
+            count to bytes
+        }
+
+    /** How many trashed items the review list shows at once. */
+    const val TRASH_REVIEW_LIMIT = 1_000
+
+    suspend fun loadTrashedImages(context: Context, limit: Int = TRASH_REVIEW_LIMIT): List<DeviceImage> =
         withContext(Dispatchers.IO) {
             buildList {
                 runCatching {

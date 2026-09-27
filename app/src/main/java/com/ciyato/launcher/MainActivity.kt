@@ -42,6 +42,7 @@ import com.ciyato.launcher.ui.theme.CiyatoBg
 import com.ciyato.launcher.ui.theme.CiyatoTheme
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * MainActivity — dashboard/settings entry point.
@@ -141,17 +142,17 @@ class MainActivity : FragmentActivity() {
         )
 
         setContent {
-            val font by viewModel.font.collectAsState()
+            val font by viewModel.font.collectAsStateWithLifecycle()
             // Provided once here so every decorative animation can consult
             // Reduce Motion without a parameter threaded through the composables
             // in between — the reason seven of nine ignored it (F-167).
-            val reduceMotionPref by viewModel.reduceMotion.collectAsState()
+            val reduceMotionPref by viewModel.reduceMotion.collectAsStateWithLifecycle()
             androidx.compose.runtime.CompositionLocalProvider(
                 com.ciyato.launcher.ui.theme.LocalReduceMotion provides reduceMotionPref,
             ) {
             CiyatoTheme(font = font) {
                 val context           = LocalContext.current
-                val onboardingDone by viewModel.onboardingDone.collectAsState()
+                val onboardingDone by viewModel.onboardingDone.collectAsStateWithLifecycle()
                 val navController     = rememberNavController()
                 val requestedDestination = intent.getStringExtra(EXTRA_START_DESTINATION)
                 // An explicit destination (app shortcut, Settings deep link) never
@@ -183,7 +184,7 @@ class MainActivity : FragmentActivity() {
 
                 // Apply the "Block screenshots" setting on the organizer surface
                 // too — previously it only took effect once Settings was opened.
-                val screenshotBlocked by viewModel.screenshotBlocked.collectAsState()
+                val screenshotBlocked by viewModel.screenshotBlocked.collectAsStateWithLifecycle()
                 LaunchedEffect(screenshotBlocked) {
                     viewModel.applyScreenshotFlag(this@MainActivity.window)
                 }

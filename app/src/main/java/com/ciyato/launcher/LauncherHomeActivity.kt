@@ -24,6 +24,7 @@ import com.ciyato.launcher.ui.theme.CiyatoBg
 import com.ciyato.launcher.ui.theme.CiyatoTheme
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * LauncherHomeActivity — the REAL home screen.
@@ -73,11 +74,11 @@ class LauncherHomeActivity : FragmentActivity() {
         })
 
         setContent {
-            val font by viewModel.font.collectAsState()
+            val font by viewModel.font.collectAsStateWithLifecycle()
             // Provided once here so every decorative animation can consult
             // Reduce Motion without a parameter threaded through the composables
             // in between — the reason seven of nine ignored it (F-167).
-            val reduceMotionPref by viewModel.reduceMotion.collectAsState()
+            val reduceMotionPref by viewModel.reduceMotion.collectAsStateWithLifecycle()
             // Ciyato V2 is intentionally a consistent black launcher surface.
             // Do not expose a partial light/dynamic theme over hard-coded dark UI.
             androidx.compose.runtime.CompositionLocalProvider(
@@ -244,7 +245,7 @@ private fun LauncherRoot(
             restore = { key: String -> launcherDestFromKey(key) },
         ),
     ) { mutableStateOf<LauncherDest>(LauncherDest.Home) }
-    val useSystemWallpaper by viewModel.useSystemWallpaper.collectAsState()
+    val useSystemWallpaper by viewModel.useSystemWallpaper.collectAsStateWithLifecycle()
 
     LaunchedEffect(shortcutRequest.sequence) {
         dest = when (shortcutRequest.action) {
@@ -293,7 +294,7 @@ private fun LauncherRoot(
     }
 
     // Re-apply screenshot flag whenever the setting changes
-    val screenshotBlocked by viewModel.screenshotBlocked.collectAsState()
+    val screenshotBlocked by viewModel.screenshotBlocked.collectAsStateWithLifecycle()
     LaunchedEffect(screenshotBlocked) {
         viewModel.applyScreenshotFlag(activity.window)
     }

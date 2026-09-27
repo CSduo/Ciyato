@@ -109,7 +109,9 @@ object FileAccess {
      * overclaiming.
      */
     fun secondaryVolumeLabels(context: Context): List<String> = runCatching {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return emptyList()
+        // No SDK_INT guard: StorageManager.getStorageVolumes() arrived in API 24
+        // and this app's minSdk is 26, so a check would be dead code that reads
+        // like a real constraint.
         val manager = context.getSystemService(android.os.storage.StorageManager::class.java)
             ?: return emptyList()
         manager.storageVolumes

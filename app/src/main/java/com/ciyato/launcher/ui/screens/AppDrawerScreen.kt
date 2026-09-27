@@ -29,7 +29,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +60,7 @@ import com.ciyato.launcher.ui.theme.CiyatoWhite
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private data class AppLibraryGroup(
     val category: AppCategory,
@@ -97,13 +97,13 @@ fun AppDrawerScreen(
     viewModel: LauncherViewModel,
     onBack: () -> Unit,
 ) {
-    val apps by viewModel.apps.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val query by viewModel.searchQuery.collectAsState()
-    val searchResults by viewModel.searchResults.collectAsState()
+    val apps by viewModel.apps.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val query by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     // Gated on the setting here, so a surface cannot forget to check it.
-    val badgesEnabled by viewModel.notificationBadges.collectAsState()
-    val allBadgeCounts by viewModel.badgeCounts.collectAsState()
+    val badgesEnabled by viewModel.notificationBadges.collectAsStateWithLifecycle()
+    val allBadgeCounts by viewModel.badgeCounts.collectAsStateWithLifecycle()
     val badgeCounts = remember(badgesEnabled, allBadgeCounts) {
         if (badgesEnabled) allBadgeCounts else emptyMap()
     }

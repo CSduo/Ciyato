@@ -104,6 +104,7 @@ import com.ciyato.launcher.data.WidgetPlacement
 import com.ciyato.launcher.data.LauncherWidgetHost
 import android.appwidget.AppWidgetProviderInfo
 import android.appwidget.AppWidgetManager
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 // Automatic Home content is limited to the approved six. The remaining
 // classifications are available in the App Library or through manual placement.
@@ -147,43 +148,43 @@ fun HomeScreen(
     onWeatherTap: () -> Unit = {},
     onAgendaTap: () -> Unit = {},
 ) {
-    val apps              by viewModel.apps.collectAsState()
-    val isLoading         by viewModel.isLoading.collectAsState()
-    val denseLayout       by viewModel.denseLayout.collectAsState()
-    val homeLayoutMode    by viewModel.homeLayoutMode.collectAsState()
-    val showSmartCategories by viewModel.smartCategories.collectAsState()
-    val goldAccentEnabled by viewModel.goldAccent.collectAsState()
-    val homeTipDismissed by viewModel.homeTipDismissed.collectAsState()
-    val dockPackages by viewModel.dockPackages.collectAsState()
-    val dockInitialized by viewModel.dockInitialized.collectAsState()
-    val gridSizePref by viewModel.gridSize.collectAsState()
+    val apps              by viewModel.apps.collectAsStateWithLifecycle()
+    val isLoading         by viewModel.isLoading.collectAsStateWithLifecycle()
+    val denseLayout       by viewModel.denseLayout.collectAsStateWithLifecycle()
+    val homeLayoutMode    by viewModel.homeLayoutMode.collectAsStateWithLifecycle()
+    val showSmartCategories by viewModel.smartCategories.collectAsStateWithLifecycle()
+    val goldAccentEnabled by viewModel.goldAccent.collectAsStateWithLifecycle()
+    val homeTipDismissed by viewModel.homeTipDismissed.collectAsStateWithLifecycle()
+    val dockPackages by viewModel.dockPackages.collectAsStateWithLifecycle()
+    val dockInitialized by viewModel.dockInitialized.collectAsStateWithLifecycle()
+    val gridSizePref by viewModel.gridSize.collectAsStateWithLifecycle()
     val (gridCols, gridRows) = remember(gridSizePref) { viewModel.gridColsRows() }
-    val workspaceCount by viewModel.workspaceCount.collectAsState()
-    val workspaceLayoutV2 by viewModel.workspaceLayoutV2.collectAsState()
+    val workspaceCount by viewModel.workspaceCount.collectAsStateWithLifecycle()
+    val workspaceLayoutV2 by viewModel.workspaceLayoutV2.collectAsStateWithLifecycle()
     // Home's canvas-object state: which ids are free-positioned (else they
     // keep flowing in visibleHomeSections order) and which have no dedicated
     // global setting of their own so rely on WorkspaceStore.hiddenObjects
     // (currently just "datetime" — see ObjectMenuTarget / CanvasObject).
     val homeObjectPositions = remember(workspaceLayoutV2) { viewModel.objectPositionsForPage(1) }
     val homeHiddenObjects = remember(workspaceLayoutV2) { viewModel.hiddenObjectsForPage(1) }
-    val toastEvent        by viewModel.toastEvent.collectAsState()
-    val weatherState      by viewModel.weatherState.collectAsState()
-    val tempUnitPref      by viewModel.tempUnit.collectAsState()
-    val timeAwareLayout   by viewModel.timeAwareLayout.collectAsState()
-    val hapticEnabled     by viewModel.hapticFeedback.collectAsState()
-    val reduceMotion      by viewModel.reduceMotion.collectAsState()
-    val showRecentLaunched by viewModel.showRecentlyLaunched.collectAsState()
-    val showHomeGreeting by viewModel.showHomeGreeting.collectAsState()
-    val showHomeSearch by viewModel.showHomeSearch.collectAsState()
-    val showHomeWeather by viewModel.showHomeWeather.collectAsState()
-    val showHomeAgenda by viewModel.showHomeAgenda.collectAsState()
-    val showHomeDock by viewModel.showHomeDock.collectAsState()
-    val showAppDrawer by viewModel.showAppDrawer.collectAsState()
-    val workspaceTransition by viewModel.workspaceTransition.collectAsState()
-    val hiddenHomeCategories by viewModel.hiddenHomeCategories.collectAsState()
-    val privacyMode       by viewModel.privacyMode.collectAsState()
-    val screenshotBlocked by viewModel.screenshotBlocked.collectAsState()
-    val focusSession      by viewModel.focusSession.collectAsState()
+    val toastEvent        by viewModel.toastEvent.collectAsStateWithLifecycle()
+    val weatherState      by viewModel.weatherState.collectAsStateWithLifecycle()
+    val tempUnitPref      by viewModel.tempUnit.collectAsStateWithLifecycle()
+    val timeAwareLayout   by viewModel.timeAwareLayout.collectAsStateWithLifecycle()
+    val hapticEnabled     by viewModel.hapticFeedback.collectAsStateWithLifecycle()
+    val reduceMotion      by viewModel.reduceMotion.collectAsStateWithLifecycle()
+    val showRecentLaunched by viewModel.showRecentlyLaunched.collectAsStateWithLifecycle()
+    val showHomeGreeting by viewModel.showHomeGreeting.collectAsStateWithLifecycle()
+    val showHomeSearch by viewModel.showHomeSearch.collectAsStateWithLifecycle()
+    val showHomeWeather by viewModel.showHomeWeather.collectAsStateWithLifecycle()
+    val showHomeAgenda by viewModel.showHomeAgenda.collectAsStateWithLifecycle()
+    val showHomeDock by viewModel.showHomeDock.collectAsStateWithLifecycle()
+    val showAppDrawer by viewModel.showAppDrawer.collectAsStateWithLifecycle()
+    val workspaceTransition by viewModel.workspaceTransition.collectAsStateWithLifecycle()
+    val hiddenHomeCategories by viewModel.hiddenHomeCategories.collectAsStateWithLifecycle()
+    val privacyMode       by viewModel.privacyMode.collectAsStateWithLifecycle()
+    val screenshotBlocked by viewModel.screenshotBlocked.collectAsStateWithLifecycle()
+    val focusSession      by viewModel.focusSession.collectAsStateWithLifecycle()
     val activeAccent = if (goldAccentEnabled) CiyatoGold else CiyatoBlue
 
     val haptic = LocalHapticFeedback.current
@@ -207,12 +208,12 @@ fun HomeScreen(
     // Collected once here rather than per tile: the counts are one map and the
     // setting is one boolean, and reading them inside each tile would mean every
     // tile subscribing to the same two flows.
-    val badgesEnabled by viewModel.notificationBadges.collectAsState()
-    val allBadgeCounts by viewModel.badgeCounts.collectAsState()
+    val badgesEnabled by viewModel.notificationBadges.collectAsStateWithLifecycle()
+    val allBadgeCounts by viewModel.badgeCounts.collectAsStateWithLifecycle()
     val badgeCounts = remember(badgesEnabled, allBadgeCounts) {
         if (badgesEnabled) allBadgeCounts else emptyMap()
     }
-    val placedWidgetsRaw by viewModel.placedWidgets.collectAsState()
+    val placedWidgetsRaw by viewModel.placedWidgets.collectAsStateWithLifecycle()
     var homeWidgets by remember {
         mutableStateOf<List<Pair<WidgetPlacement, AppWidgetProviderInfo>>>(emptyList())
     }
@@ -308,19 +309,19 @@ fun HomeScreen(
     }
 
     // Custom categories & order
-    val customCats by viewModel.customCategories.collectAsState()
-    val customCategoryIcons by viewModel.customCategoryIcons.collectAsState()
-    val customCategoryPresentations by viewModel.customCategoryPresentations.collectAsState()
-    val appCategoryOverrides by viewModel.appCategoryOverrides.collectAsState()
+    val customCats by viewModel.customCategories.collectAsStateWithLifecycle()
+    val customCategoryIcons by viewModel.customCategoryIcons.collectAsStateWithLifecycle()
+    val customCategoryPresentations by viewModel.customCategoryPresentations.collectAsStateWithLifecycle()
+    val appCategoryOverrides by viewModel.appCategoryOverrides.collectAsStateWithLifecycle()
     val customCatsList = remember(customCats) {
         customCats.split(",").map(String::trim).filter(String::isNotEmpty)
     }
 
-    val categoryOrderVal by viewModel.categoryOrder.collectAsState()
-    val homeSectionOrderVal by viewModel.homeSectionOrder.collectAsState()
-    val categoryTilesSizesVal by viewModel.categoryTilesSizes.collectAsState()
-    val categoryRenamesVal by viewModel.categoryRenames.collectAsState()
-    val expandedAppsVal by viewModel.expandedApps.collectAsState()
+    val categoryOrderVal by viewModel.categoryOrder.collectAsStateWithLifecycle()
+    val homeSectionOrderVal by viewModel.homeSectionOrder.collectAsStateWithLifecycle()
+    val categoryTilesSizesVal by viewModel.categoryTilesSizes.collectAsStateWithLifecycle()
+    val categoryRenamesVal by viewModel.categoryRenames.collectAsStateWithLifecycle()
+    val expandedAppsVal by viewModel.expandedApps.collectAsStateWithLifecycle()
     val expandedAppsSet = remember(expandedAppsVal) {
         viewModel.parsePackageCsv(expandedAppsVal).toSet()
     }
@@ -675,13 +676,13 @@ fun HomeScreen(
     }
 
     // ── Wallpaper & Background mode ───────────────────────────────────────────
-    val useSystemWallpaper by viewModel.useSystemWallpaper.collectAsState()
-    val ciyatoVideoWallpaper by viewModel.ciyatoVideoWallpaper.collectAsState()
-    val ciyatoImageWallpaper by viewModel.ciyatoImageWallpaper.collectAsState()
-    val wallpaperDim by viewModel.wallpaperDim.collectAsState()
-    val wallpaperBlur by viewModel.wallpaperBlur.collectAsState()
-    val wallpaperImageScale by viewModel.wallpaperImageScale.collectAsState()
-    val wallpaperImageOffset by viewModel.wallpaperImageOffset.collectAsState()
+    val useSystemWallpaper by viewModel.useSystemWallpaper.collectAsStateWithLifecycle()
+    val ciyatoVideoWallpaper by viewModel.ciyatoVideoWallpaper.collectAsStateWithLifecycle()
+    val ciyatoImageWallpaper by viewModel.ciyatoImageWallpaper.collectAsStateWithLifecycle()
+    val wallpaperDim by viewModel.wallpaperDim.collectAsStateWithLifecycle()
+    val wallpaperBlur by viewModel.wallpaperBlur.collectAsStateWithLifecycle()
+    val wallpaperImageScale by viewModel.wallpaperImageScale.collectAsStateWithLifecycle()
+    val wallpaperImageOffset by viewModel.wallpaperImageOffset.collectAsStateWithLifecycle()
     val hasCiyatoBackground = !useSystemWallpaper &&
         (ciyatoImageWallpaper.isNotBlank() || (ciyatoVideoWallpaper.isNotBlank() && !reduceMotion))
     val backgroundModifier = if (!hasCiyatoBackground) {
@@ -2322,7 +2323,7 @@ fun HomeScreen(
         }
 
         if (showCategoryAppPicker) {
-            val allInstalledApps by viewModel.allApps.collectAsState()
+            val allInstalledApps by viewModel.allApps.collectAsStateWithLifecycle()
             val categoryName = selectedCustomCategory
             val selected = categoryName?.let(viewModel::byCustomCategory).orEmpty().mapTo(mutableSetOf()) { it.packageName }
             val matches = remember(allInstalledApps, categoryAppPickerQuery, selected) {
@@ -2531,7 +2532,7 @@ fun HomeScreen(
 
         // Custom Category Dialog
         if (showCreateCategoryDialog) {
-            val allInstalledApps by viewModel.allApps.collectAsState()
+            val allInstalledApps by viewModel.allApps.collectAsStateWithLifecycle()
             val categoryMatches = remember(allInstalledApps, newCategoryAppQuery) {
                 SearchRankingEngine.rankAppsByLabel(allInstalledApps, newCategoryAppQuery)
             }
@@ -2718,7 +2719,7 @@ fun HomeScreen(
 
         // Custom Page App Picker
         if (showPageAppPicker) {
-            val allInstalledApps by viewModel.allApps.collectAsState()
+            val allInstalledApps by viewModel.allApps.collectAsStateWithLifecycle()
             val existingPackages = remember(pickerPageIndex, workspaceLayoutV2) {
                 viewModel.cellAppsForPage(pickerPageIndex).values.map { it.packageName }.toSet()
             }
