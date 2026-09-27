@@ -42,25 +42,30 @@ than the inconvenience of naming the flag.
 Verified locally before being committed: the release bundle assembles at 48.2 MB
 with R8 and resource shrinking both running.
 
-## To apply it
+## Applied
 
-From a shell that has a token with `workflow` scope (or from the GitHub web UI):
+The workflow now lives at [`.github/workflows/android-ci.yml`](../.github/workflows/android-ci.yml)
+and the broken `android-debug.yml` is gone. It needed a token with `workflow` scope,
+which is why it sat here for a while.
 
-```bash
-git rm .github/workflows/android-debug.yml
-git mv ci/android-ci.yml .github/workflows/android-ci.yml
-git rm ci/README.md
-git commit -m "Repair CI: run from the repo root and gate on the release bundle"
-git push
-```
+What it gates, in order, so a failure points at the smallest thing:
 
-The old `android-debug.yml` is deliberately left in place until then. Removing it
-here would have needed the same `workflow` scope, and leaving the repository with
-no CI definition at all would be a worse state than leaving the broken one
-visible next to its replacement.
+1. `testDebugUnitTest` — a failing assertion is a more useful first signal than a
+   style violation.
+2. `lintDebug` — configured to fail on errors, not just report them.
+3. `:macrobenchmark:compileBenchmarkKotlin` — nothing else builds that module, and
+   a performance suite that stops compiling is one nobody runs.
+4. `assembleDebug`.
+5. `bundleRelease` — release-only breakage (R8, resource shrinking, manifest
+   merging) that a debug build never exercises. This also runs
+   `verifyReleaseManifest`, which diffs the merged release manifest against
+   `app/release-manifest-allowlist.txt` **in both directions**: an addition is a
+   capability nobody reviewed, a removal is a feature gone silently inert.
 
-To grant the scope instead: GitHub → Settings → Developer settings → Personal
-access tokens → edit the token → tick **workflow**.
+Unsigned on CI by design. The upload keystore is not available to the workflow and
+must not be; `build.gradle.kts` refuses to emit an unsigned release locally, so the
+explicit `-PciyatoAllowUnsignedRelease=true` marks this as an assembly check rather
+than a publishable artifact.
 
 ---
 

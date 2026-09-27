@@ -62,6 +62,12 @@ jobs:
       - name: Android lint
         run: ./gradlew --no-daemon lintDebug
 
+      # The benchmark module is not built by any other gate, so nothing else
+      # would notice it breaking - and a performance suite that stops compiling
+      # is a performance suite nobody runs.
+      - name: Compile macrobenchmarks
+        run: ./gradlew --no-daemon :macrobenchmark:compileBenchmarkKotlin
+
       - name: Assemble debug APK
         run: ./gradlew --no-daemon assembleDebug
 
@@ -74,6 +80,12 @@ jobs:
       # only when credentials are present, and fails the build if a release task
       # runs without them locally, so this verifies assembly rather than
       # producing a publishable artifact.
+      #
+      # This step also runs verifyReleaseManifest, which bundleRelease depends
+      # on: it diffs the MERGED release manifest against
+      # app/release-manifest-allowlist.txt in both directions and fails on any
+      # difference. An addition is a capability nobody reviewed; a removal is a
+      # feature gone silently inert, which this project has produced three times.
       - name: Assemble release bundle (unsigned, verification only)
         run: ./gradlew --no-daemon bundleRelease -PciyatoAllowUnsignedRelease=true
 
@@ -86,6 +98,7 @@ jobs:
           path: |
             app/build/reports/tests/
             app/build/reports/lint-results-debug.html
+            app/build/reports/merged-manifest/release-inventory.txt
           if-no-files-found: warn
           retention-days: 14
 
