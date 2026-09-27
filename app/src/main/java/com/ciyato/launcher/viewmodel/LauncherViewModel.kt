@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.ciyato.launcher.BuildConfig
 import com.ciyato.launcher.data.*
 import com.ciyato.launcher.data.WidgetPlacementStore
+import com.ciyato.launcher.services.CiyatoNotificationListenerService
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -400,6 +401,36 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun setPlacedWidgets(v: String) = viewModelScope.launch {
         settings.setPlacedWidgetIds(v)
     }
+
+    /**
+     * Notification counts per package, from the listener service.
+     *
+     * Everything needed for badges existed and nothing was connected: the
+     * service computed these counts, NotificationBadge and BadgedAppIcon were
+     * written, a `notification_badges` preference existed with a default of
+     * true, and no screen read any of it. The service could not even be bound
+     * until its manifest entry was corrected. So the permission was declared,
+     * the code was present, and the feature did not exist - which is the state
+     * FEATURE_MATRIX.md now fails the build over.
+     */
+    val badgeCounts = CiyatoNotificationListenerService.badgeCounts
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    val notificationBadges = settings.notificationBadges
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setNotificationBadges(v: Boolean) = viewModelScope.launch {
+        settings.setNotificationBadges(v)
+    }
+
+    /**
+     * The count to draw on one app, or 0.
+     *
+     * Gated on the setting here rather than at every call site, so turning
+     * badges off cannot be forgotten by one surface.
+     */
+    fun badgeCountFor(packageName: String): Int =
+        if (notificationBadges.value) badgeCounts.value[packageName] ?: 0 else 0
 
     /**
      * Takes a widget off Home.

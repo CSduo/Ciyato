@@ -94,6 +94,13 @@ fun WorkspaceGrid(
     // missing here is treated as 1x1, so a caller that never resizes anything
     // can leave this at its default and behaviour is unchanged.
     cellSpans: Map<Int, Pair<Int, Int>> = emptyMap(),
+    /**
+     * Notification count per package, already gated on the badges setting.
+     *
+     * Empty by default so a caller that has not wired it draws no badges rather
+     * than drawing wrong ones.
+     */
+    badgeCounts: Map<String, Int> = emptyMap(),
     onResize: (packageName: String, spanX: Int, spanY: Int) -> Unit = { _, _, _ -> },
     /**
      * Move a tile to an explicit cell, without dragging it there.
@@ -206,6 +213,7 @@ fun WorkspaceGrid(
                             modifier = Modifier.layoutId(GridSlot(cellIndex, spanX, spanY)),
                             cell = cellIndex,
                             app = app,
+                            badgeCount = badgeCounts[app.packageName] ?: 0,
                             spanX = spanX,
                             spanY = spanY,
                             columns = cols,
@@ -284,6 +292,7 @@ fun WorkspaceGrid(
                                 .onGloballyPositioned { onFreeAppBounds(app.packageName, it.boundsInRoot()) },
                             cell = cellIndex,
                             app = app,
+                            badgeCount = badgeCounts[app.packageName] ?: 0,
                             spanX = spanX,
                             spanY = spanY,
                             columns = cols,
@@ -406,6 +415,7 @@ private fun WorkspaceCellZone(
 private fun ResizableWorkspaceTile(
     cell: Int,
     app: InstalledApp,
+    badgeCount: Int,
     spanX: Int,
     spanY: Int,
     columns: Int,
@@ -523,27 +533,46 @@ private fun ResizableWorkspaceTile(
                 scaleY = scale
             }
             .then(if (isTargeted) Modifier.border(2.dp, CiyatoGold, RoundedCornerShape(16.dp)) else Modifier)
-            .semantics {
-                // Published in every mode, not just edit: long-press is a raw
-                // pointer detector, so without this the context menu — rename,
-                // hide, change category, app info — has no non-touch route.
-                onLongClick("Show options") { onShowOptions(app); true }
-                // Position is visible to sighted users and invisible otherwise,
-                // so it is stated. Without it, "Move left" gives no feedback a
-                // screen-reader user can act on.
-                stateDescription = if (isEditMode) {
+            // One merged node with a name, a role and its actions.
+            //
+            // This block already published onLongClick, the move/resize actions
+            // and the grid position, and it was still missing the three things
+            // F-047 is about: a contentDescription, Role.Button, and
+            // mergeDescendants. Without the merge the label Text inside the tile
+            // announced separately, so a tile read as its state and then, as a
+            // second item, its name.
+            //
+            // Position is stated because it is visible to sighted users and
+            // invisible otherwise: without it, "Move left" gives no feedback a
+            // screen-reader user can act on.
+            .appTileSemantics(
+                label = app.label,
+                badgeCount = badgeCount,
+                positionNote = if (isEditMode) {
                     "Editing. Row ${cell / columns + 1}, column ${cell % columns + 1}" +
                         if (spanX > 1 || spanY > 1) ", $spanX by $spanY" else ""
                 } else {
                     ""
-                }
-                if (moveActions.isNotEmpty()) customActions = moveActions
-            }
+                },
+                // Published in every mode, not just edit: long-press is a raw
+                // pointer detector, so without this the context menu — rename,
+                // hide, change category, app info — has no non-touch route.
+                onShowOptions = { onShowOptions(app) },
+                extraActions = moveActions,
+            )
             .onGloballyPositioned {
                 onCellSizeMeasured(IntSize(it.size.width / spanX, it.size.height / spanY))
             },
         contentAlignment = Alignment.Center,
     ) {
+        // The badge is drawn AND announced. Announcing a count nobody can see
+        // would be as wrong as the reverse - appTileSemantics above carries the
+        // same number.
+        if (badgeCount > 0) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
+                NotificationBadge(count = badgeCount)
+            }
+        }
         WorkspaceAppTile(
             cell = cell,
             app = app,

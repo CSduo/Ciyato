@@ -76,6 +76,21 @@ fun SettingsScreen(
     val lockedAppsCsv      by viewModel.lockedApps.collectAsState()
     val removedAppsCsv     by viewModel.removedApps.collectAsState()
     val locationGranted    = LocationHelper.hasPermission(context)
+    val notificationBadges by viewModel.notificationBadges.collectAsState()
+    // Notification access is granted in system settings, so the answer changes
+    // while Ciyato is in the background - the same reason the Insights screen
+    // re-checks Usage access on resume rather than once at composition.
+    var notificationAccessGranted by remember { mutableStateOf(isNotificationListenerEnabled(context)) }
+    val settingsLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(settingsLifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                notificationAccessGranted = isNotificationListenerEnabled(context)
+            }
+        }
+        settingsLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { settingsLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // Screenshot FLAG_SECURE (Suggestion 145)
     val activity = (context as? android.app.Activity)
@@ -150,6 +165,41 @@ fun SettingsScreen(
                     icon = Icons.Default.Palette,
                     iconColor = CiyatoGold,
                     onClick = { destinations.openTheme() }
+                )
+            }
+            item {
+                // The row that made a declared permission into a feature.
+                //
+                // The listener service computed per-app counts, NotificationBadge
+                // and BadgedAppIcon were written, and a notification_badges
+                // preference existed with a default of true - and nothing read
+                // any of it, no screen drew a badge, and no setting turned it on
+                // or off. The permission was declared and disclosed while the
+                // feature did not exist.
+                CiyatoSettingSwitch(
+                    title = "Notification badges",
+                    subtitle = if (notificationAccessGranted) {
+                        "Show a count on app icons that have notifications waiting"
+                    } else {
+                        "Needs notification access. Tap to grant it in Android Settings."
+                    },
+                    icon = Icons.Default.Notifications,
+                    checked = notificationBadges && notificationAccessGranted,
+                    onCheckedChange = { wanted ->
+                        // Turning it on without the grant would show a switch in
+                        // the on position and no badges anywhere, which is the
+                        // shape of defect this audit kept finding. Send the
+                        // person where the decision actually lives.
+                        if (wanted && !notificationAccessGranted) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"),
+                                )
+                            }
+                        } else {
+                            viewModel.setNotificationBadges(wanted)
+                        }
+                    },
                 )
             }
             item {

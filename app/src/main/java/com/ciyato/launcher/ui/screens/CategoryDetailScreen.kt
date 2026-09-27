@@ -415,8 +415,14 @@ private fun AppTile(
         modifier = modifier
             .combinedClickable(
                 onClick = onTap,
-                onLongClick = onLongTap
+                onLongClickLabel = if (onLongTap != null) "Show options" else null,
+                onLongClick = onLongTap,
             )
+            // Same contract as every other app tile (F-047). This is a local
+            // copy of AppIconTile rather than a use of it, which is why it had
+            // to be fixed separately - noted as duplication rather than merged
+            // here, because the two have drifted in layout.
+            .appTileSemantics(label = app.label)
             .padding(vertical = 10.dp, horizontal = 4.dp),
     ) {
         RealAppIcon(drawable = app.icon, size = 54.dp, cornerRadius = 14.dp, scale = app.iconScale, rotation = app.iconRotation, accentHex = app.iconAccent)

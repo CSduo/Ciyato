@@ -101,6 +101,12 @@ fun AppDrawerScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val query by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
+    // Gated on the setting here, so a surface cannot forget to check it.
+    val badgesEnabled by viewModel.notificationBadges.collectAsState()
+    val allBadgeCounts by viewModel.badgeCounts.collectAsState()
+    val badgeCounts = remember(badgesEnabled, allBadgeCounts) {
+        if (badgesEnabled) allBadgeCounts else emptyMap()
+    }
     var expandedGroup by remember { mutableStateOf<AppLibraryGroup?>(null) }
     var contextMenuApp by remember { mutableStateOf<InstalledApp?>(null) }
 
@@ -156,6 +162,7 @@ fun AppDrawerScreen(
                 results = searchResults,
                 onAppTap = viewModel::launchApp,
                 onAppLongTap = { contextMenuApp = it },
+                badgeCounts = badgeCounts,
             )
             groups.isEmpty() && standaloneApps.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CiyatoEmptyState(
@@ -319,6 +326,7 @@ private fun SearchResultsGrid(
     results: List<InstalledApp>,
     onAppTap: (InstalledApp) -> Unit,
     onAppLongTap: (InstalledApp) -> Unit,
+    badgeCounts: Map<String, Int> = emptyMap(),
 ) {
     if (results.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -343,6 +351,7 @@ private fun SearchResultsGrid(
                 app = app,
                 iconSize = 52.dp,
                 labelColor = CiyatoSec,
+                badgeCount = badgeCounts[app.packageName] ?: 0,
                 onClick = { onAppTap(app) },
                 onLongClick = { onAppLongTap(app) },
                 modifier = Modifier.fillMaxWidth(),

@@ -193,6 +193,11 @@ private fun VisibilityAppRow(app: InstalledApp, onRestore: () -> Unit) {
             .clip(RoundedCornerShape(16.dp))
             .background(CiyatoBgEl)
             .border(1.dp, CiyatoSubtleBorder, RoundedCornerShape(16.dp))
+            // Hidden is the entire reason this row exists, and it was the one
+            // thing TalkBack could not tell you about it (F-047). The row is not
+            // itself clickable - Restore is a button inside it - so this names
+            // the row without claiming an activation it does not have.
+            .appTileSemantics(label = app.label, isHidden = true)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

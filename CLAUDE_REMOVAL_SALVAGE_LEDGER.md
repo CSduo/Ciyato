@@ -144,6 +144,12 @@ wire it, which is how a deliberately-dropped feature comes back.
 
 Restoring any of these means re-deciding the product question, not just reverting a commit.
 
+## Accessibility helper, superseded (F-047)
+
+| Component | Disposition | Reachability proof | Reasoning |
+|---|---|---|---|
+| `Modifier.appItemSemantics` | **DELETED** | Zero call sites anywhere in the tree — the only occurrence was its own declaration. | Not merely unused, wrong in two ways, which is worse: it appended "Double-tap to open. Long-press for options." to the content description, duplicating what TalkBack already announces for a Button role while leaving the long-press unreachable by switch access; and it did not merge descendants, so a tile's label `Text` announced a second time after the description. A dead helper with a wrong contract is a trap — the next person needing app-tile semantics would have found it, used it, and shipped both defects. Replaced by `appTileSemantics` / `AccessibleAppTile`, which is adopted at all five interactive surfaces. |
+
 ## Preserved infrastructure (do not delete while refactoring)
 
 The audit is explicit that these are good decisions to keep: SAF-first storage, system-owned

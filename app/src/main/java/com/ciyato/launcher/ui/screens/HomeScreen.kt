@@ -202,6 +202,16 @@ fun HomeScreen(
     // Home is in front of you. The host used to belong to the manager screen
     // and stopped listening on the way out of it (F-138).
     rememberLauncherWidgetHost()
+    // Notification counts, gated on the badges setting.
+    //
+    // Collected once here rather than per tile: the counts are one map and the
+    // setting is one boolean, and reading them inside each tile would mean every
+    // tile subscribing to the same two flows.
+    val badgesEnabled by viewModel.notificationBadges.collectAsState()
+    val allBadgeCounts by viewModel.badgeCounts.collectAsState()
+    val badgeCounts = remember(badgesEnabled, allBadgeCounts) {
+        if (badgesEnabled) allBadgeCounts else emptyMap()
+    }
     val placedWidgetsRaw by viewModel.placedWidgets.collectAsState()
     var homeWidgets by remember {
         mutableStateOf<List<Pair<WidgetPlacement, AppWidgetProviderInfo>>>(emptyList())
@@ -1568,6 +1578,7 @@ fun HomeScreen(
                                                 minRows = 2,
                                                 cellApps = cellApps1,
                                                 cellSpans = cellSpans1,
+                                                badgeCounts = badgeCounts,
                                                 canvasPositions = canvasPos1,
                                                 settlingPackage = settlingPackage.takeIf { pagerState.currentPage == 1 },
                                                 expandedPackages = expandedAppsSet,
@@ -1833,6 +1844,7 @@ fun HomeScreen(
                                         minRows = gridRows,
                                         cellApps = cellApps,
                                         cellSpans = cellSpans,
+                                        badgeCounts = badgeCounts,
                                         canvasPositions = canvasPos,
                                         settlingPackage = settlingPackage.takeIf { pageIndex == pagerState.currentPage },
                                         isEditMode = isEditMode,

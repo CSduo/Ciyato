@@ -25,6 +25,12 @@ fails the build on any third state, and on any route missing from this file.
 `PLAY_POSITIONING.md` decides which features may justify a restricted permission. This file
 records what exists. They must agree.
 
+**The Tests column is checked against the test directory by `FeatureReachabilityTest`.** The
+first version of this table named eleven tests that did not exist — written from what the
+code looked like it should have rather than from the directory — which is precisely the
+defect this file is supposed to catch elsewhere. A matrix that cites imaginary coverage is
+worse than one that admits a gap, so an em dash means genuinely untested.
+
 ---
 
 ## Core — the launcher
@@ -32,8 +38,8 @@ records what exists. They must agree.
 | Feature | Route / destination | Permissions | Tests | Source |
 |---|---|---|---|---|
 | Home canvas | `LauncherDest.Home` (HOME activity) | `QUERY_ALL_PACKAGES` | `WorkspaceStoreTest`, `CategoryMutationsTest`, `WorkspacePagingTest`, `TimeAwareLayoutTest` | `ui/screens/HomeScreen.kt` + `HomeCanvas/Backgrounds/Dialogs/Controls/Chrome/Types.kt` |
-| App drawer | `LauncherDest.Drawer` | `QUERY_ALL_PACKAGES` | `AppCategorizerTest` | `ui/screens/AppDrawerScreen.kt` |
-| Search | `search`, `LauncherDest.Search` | `QUERY_ALL_PACKAGES` | `SearchRankingEngineTest` | `ui/screens/SearchScreen.kt` |
+| App drawer | `LauncherDest.Drawer` | `QUERY_ALL_PACKAGES` | `AppCategorizerTest`, `AppClassificationTest` | `ui/screens/AppDrawerScreen.kt` |
+| Search | `search`, `LauncherDest.Search` | `QUERY_ALL_PACKAGES` | `AppClassificationTest` | `ui/screens/SearchScreen.kt` |
 | Overview / dashboard | `overview` | `QUERY_ALL_PACKAGES` | — | `ui/screens/DashboardScreen.kt` |
 | Category detail | `LauncherDest.CategoryDetail` | `QUERY_ALL_PACKAGES` | `CategoryMutationsTest` | `ui/screens/CategoryDetailScreen.kt` |
 | Widgets on Home | `widget_host`, `LauncherDest.WidgetHost` | — | `WidgetPlacementStoreTest` | `ui/screens/WidgetHostScreen.kt`, `data/WidgetPlacementStore.kt`, `data/LauncherWidgetHost.kt`, `ui/components/HostedWidget.kt` |
@@ -47,26 +53,26 @@ records what exists. They must agree.
 
 | Feature | Route / destination | Permissions | Tests | Source |
 |---|---|---|---|---|
-| Files | `files` | `MANAGE_EXTERNAL_STORAGE` (SAF fallback) | `FileAccessTest`, `FileTagStoreTest` | `ui/screens/FilesScreen.kt`, `data/FileAccess.kt` |
+| Files | `files` | `MANAGE_EXTERNAL_STORAGE` (SAF fallback) | `FileCleanupModelsTest`, `CleanupTierTest` | `ui/screens/FilesScreen.kt`, `data/FileAccess.kt` |
 | File category browse | `photo_duplicates` group, in-Files | as above | — | `ui/screens/FileCategoryScreen.kt`, `FileCollectionDetailScreen.kt` |
-| File search | `search_history` entry + in-Files | as above | `FileSearchIndexStoreTest`, `NlQueryTest` | `ui/screens/NlFileSearchScreen.kt` |
+| File search | `search_history` entry + in-Files | as above | `NlFileSearchExamplesTest`, `FileSearchIndexStoreTest`, `FileSearchDateRangeTest` | `ui/screens/NlFileSearchScreen.kt` |
 | Recent files | `recent_files`, `LauncherDest.RecentFiles` | as above | — | `ui/screens/RecentFilesScreen.kt` |
-| Storage cleanup | `storage_cleanup`, `LauncherDest.StorageCleanup` | as above | `ByteFormatTest` | `ui/screens/StorageCleanupScreen.kt` |
-| Photos library | `photos` | `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_VISUAL_USER_SELECTED` | `MediaAccessTest`, `PhotoAiCollectionStoreTest` | `ui/screens/PhotosLibraryScreen.kt`, `PhotosScreen.kt` |
-| Duplicate photo cleanup | `photo_duplicates` | as above | `DuplicatePhotoDetectorTest` | `ui/screens/DuplicatePhotoCleanupScreen.kt` |
+| Storage cleanup | `storage_cleanup`, `LauncherDest.StorageCleanup` | as above | `CleanupCheckpointTest`, `CleanupTierTest` | `ui/screens/StorageCleanupScreen.kt` |
+| Photos library | `photos` | `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_VISUAL_USER_SELECTED` | `PhotoAiCollectionStoreTest`, `PhotoLibraryStoreTest`, `PhotoMonthBucketTest` | `ui/screens/PhotosLibraryScreen.kt`, `PhotosScreen.kt` |
+| Duplicate photo cleanup | `photo_duplicates` | as above | `PhotoMonthBucketTest` | `ui/screens/DuplicatePhotoCleanupScreen.kt` |
 | Photos to PDF | `photos_to_pdf`, `LauncherDest.PhotosToPdf` | as above | `PdfPageLayoutTest` | `ui/screens/PhotosToPdfScreen.kt` |
-| Photo backup | `auto_backup`, `LauncherDest.AutoBackup` | as above | `BackupConstraintsTest` | `ui/screens/AutoBackupScreen.kt`, `data/PhotoBackupWorker.kt` |
+| Photo backup | `auto_backup`, `LauncherDest.AutoBackup` | as above | `BackupConstraintsTest`, `PhotoBackupResultTest` | `ui/screens/AutoBackupScreen.kt`, `data/PhotoBackupWorker.kt` |
 | Settings | `settings`, `LauncherDest.Settings` | — | `SettingsNavigationTest` | `ui/screens/SettingsScreen.kt`, `SettingsDestinations.kt` |
 
 ## Supported
 
 | Feature | Route / destination | Permissions | Tests | Source |
 |---|---|---|---|---|
-| Weather | `weather_detail`, `LauncherDest.WeatherDetail` | `ACCESS_COARSE_LOCATION`, `INTERNET` | `ForecastClockTest`, `LocationFreshnessTest`, `WeatherRepositoryTest` | `ui/screens/WeatherDetailScreen.kt`, `data/WeatherRepository.kt` |
-| Agenda | `agenda`, `LauncherDest.Agenda` | `READ_CALENDAR` | `AgendaEventStyleTest` | `ui/screens/CalendarAgendaScreen.kt` |
+| Weather | `weather_detail`, `LauncherDest.WeatherDetail` | `ACCESS_COARSE_LOCATION`, `INTERNET` | `ForecastClockTest`, `LocationFreshnessTest` | `ui/screens/WeatherDetailScreen.kt`, `data/WeatherRepository.kt` |
+| Agenda | `agenda`, `LauncherDest.Agenda` | `READ_CALENDAR` | — | `ui/screens/CalendarAgendaScreen.kt` |
 | Focus session | `focus`, `LauncherDest.FocusSession` | — | `FocusSessionManagerTest` | `ui/screens/FocusSessionScreen.kt`, `data/FocusSessionManager.kt` |
 | App lock | `locked_apps`, `LauncherDest.LockedApps` | biometric | — | `ui/screens/LockedAppsScreen.kt`, `AppLockScreen.kt` |
-| Secure vault | `secure_vault`, `LauncherDest.SecureVault` | biometric | `VaultCryptoTest` | `ui/screens/SecureFileVaultScreen.kt`, `data/VaultCrypto.kt` |
+| Secure vault | `secure_vault`, `LauncherDest.SecureVault` | biometric | `VaultKeyVersionTest`, `VaultFileNamingTest`, `VaultRejectionTest` | `ui/screens/SecureFileVaultScreen.kt`, `data/VaultCrypto.kt` |
 | Permission review | `permission_audit`, `LauncherDest.PermissionAudit` | `QUERY_ALL_PACKAGES` | — | `ui/screens/PermissionAuditScreen.kt` |
 | Insights (hub) | `insights`, `LauncherDest.Insights` | `PACKAGE_USAGE_STATS` | `UsageAveragesTest` | `ui/screens/InsightsScreen.kt` |
 | — Screen time | `app_usage`, `LauncherDest.AppUsage` | `PACKAGE_USAGE_STATS` | — | `ui/screens/AppUsageStatsScreen.kt` |
@@ -74,7 +80,8 @@ records what exists. They must agree.
 | — Frequent apps | `contextual_suggestions`, `LauncherDest.ContextualSuggestions` | `PACKAGE_USAGE_STATS` | — | `ui/screens/ContextualSuggestionsScreen.kt` |
 | — Unusual usage | `anomaly_detection`, `LauncherDest.AnomalyDetection` | `PACKAGE_USAGE_STATS` | `UsageAnomaliesTest` | `ui/screens/AnomalyDetectionScreen.kt` |
 | — Data usage | `network_usage`, `LauncherDest.NetworkUsage` | `PACKAGE_USAGE_STATS` | — | `ui/screens/NetworkUsageScreen.kt` |
-| Sticky notes | `sticky_notes`, `LauncherDest.StickyNotes` | — | `StickyNoteStoreTest` | `ui/screens/StickyNotesScreen.kt` |
+| Notification badges | Settings toggle; drawn by Home and the drawer | `BIND_NOTIFICATION_LISTENER_SERVICE` | `AppTileDescriptionTest` | `services/CiyatoNotificationListenerService.kt`, `ui/components/NotificationBadge.kt` |
+| Sticky notes | `sticky_notes`, `LauncherDest.StickyNotes` | — | — | `ui/screens/StickyNotesScreen.kt` |
 | Search history | `search_history`, `LauncherDest.SearchHistory` | — | `FileSearchHistoryStoreTest` | `ui/screens/SearchHistoryScreen.kt` |
 | Duplicate shortcuts | `duplicate_shortcuts`, `LauncherDest.DuplicateShortcuts` | `QUERY_ALL_PACKAGES` | — | `ui/screens/DuplicateShortcutsScreen.kt` |
 

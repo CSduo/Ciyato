@@ -12,23 +12,19 @@ import androidx.compose.ui.semantics.*
  * Utility modifiers and helpers for TalkBack support and content descriptions.
  */
 
-/**
- * Adds a semantic role and content description for TalkBack.
- */
-fun Modifier.appItemSemantics(
-    appLabel: String,
-    isPinned: Boolean = false,
-    isHidden: Boolean = false,
-    badgeCount: Int = 0,
-): Modifier = this.semantics {
-    val extras = buildString {
-        if (isPinned) append(", pinned")
-        if (isHidden) append(", hidden")
-        if (badgeCount > 0) append(", $badgeCount notification${if (badgeCount > 1) "s" else ""}")
-    }
-    contentDescription = "$appLabel app$extras. Double-tap to open. Long-press for options."
-    role = Role.Button
-}
+// appItemSemantics lived here with ZERO call sites and two defects, and is now
+// AccessibleAppTile.appTileSemantics instead (F-047).
+//
+// It appended "Double-tap to open. Long-press for options." to the description.
+// TalkBack announces the activation gesture for a Button role itself, so that
+// duplicated the instruction - and a long-press described in prose is still not
+// REACHABLE by switch access or a keyboard, which is the thing that actually
+// matters. It also did not merge descendants, so the label Text inside a tile
+// announced separately: "Gmail app, 3 notifications" and then, as a second item,
+// "Gmail".
+//
+// A dead helper is not harmless. The next person to need app-tile semantics
+// would have found it, used it, and shipped both defects.
 
 /**
  * Makes an action button announce itself meaningfully to TalkBack.

@@ -134,4 +134,35 @@ class FeatureReachabilityTest {
             undocumented.isEmpty(),
         )
     }
+
+    @Test
+    fun `every test the feature matrix cites actually exists`() {
+        // The first version of that table named ELEVEN tests that did not exist,
+        // written from what the code looked like it should have rather than from
+        // the directory. A matrix citing imaginary coverage is worse than one
+        // admitting a gap: it is the exact defect the matrix exists to catch,
+        // inside the matrix. An em dash means genuinely untested.
+        val matrix = File("../docs/FEATURE_MATRIX.md")
+        assertTrue("docs/FEATURE_MATRIX.md is missing", matrix.exists())
+
+        val testDir = File("src/test/java/com/ciyato/launcher")
+        assertTrue("test sources not found at ${testDir.absolutePath}", testDir.isDirectory)
+        val existing = testDir.listFiles()
+            .orEmpty()
+            .filter { it.isFile && it.extension == "kt" }
+            .map { it.nameWithoutExtension }
+            .toSet()
+        assertTrue("expected to find test classes", existing.size > 20)
+
+        val cited = Regex("""`(\w+Test)`""").findAll(matrix.readText())
+            .map { it.groupValues[1] }
+            .toSortedSet()
+        assertTrue("expected the matrix to cite tests", cited.size >= 10)
+
+        val imaginary = (cited - existing).sorted()
+        assertTrue(
+            "docs/FEATURE_MATRIX.md cites tests that do not exist: $imaginary",
+            imaginary.isEmpty(),
+        )
+    }
 }

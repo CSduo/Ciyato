@@ -124,7 +124,15 @@ fun BottomDock(
                             // detector. A combinedClickable(onLongClick) here as
                             // well meant two long-press detectors raced on every
                             // dock icon, so drags were routinely hijacked.
-                            modifier = gestured.clickable { onAppTap(app) }
+                            //
+                            // The dock had no per-app semantics of any kind, so
+                            // TalkBack reached five unnamed buttons in a row
+                            // (F-047). Pinned is stated because a dock icon is
+                            // pinned by definition and that is information a
+                            // sighted person gets from where it is drawn.
+                            modifier = gestured
+                                .clickable { onAppTap(app) }
+                                .appTileSemantics(label = app.label, isPinned = true)
                         ) {
                             RealAppIcon(
                                 drawable = app.icon,

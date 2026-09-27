@@ -102,6 +102,10 @@ fun AppIconTile(
     iconSize: Dp = 52.dp,
     showLabel: Boolean = true,
     labelColor: Color = CiyatoSec,
+    badgeCount: Int = 0,
+    isPinned: Boolean = false,
+    isHidden: Boolean = false,
+    isLocked: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
@@ -110,7 +114,21 @@ fun AppIconTile(
         modifier = modifier
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = onLongClick
+                // Named, so the long-press action announces what it does rather
+                // than arriving as an unlabelled second gesture (F-047).
+                onLongClickLabel = if (onLongClick != null) "Show options" else null,
+                onLongClick = onLongClick,
+            )
+            // One merged node carrying the label AND the state. The icon inside
+            // is deliberately contentDescription = null, which is only safe when
+            // a parent supplies the name - and for this tile nothing did, so a
+            // locked or badged app announced exactly like an ordinary one.
+            .appTileSemantics(
+                label = app.label,
+                badgeCount = badgeCount,
+                isPinned = isPinned,
+                isHidden = isHidden,
+                isLocked = isLocked,
             )
             .padding(horizontal = 2.dp, vertical = 4.dp),
     ) {
