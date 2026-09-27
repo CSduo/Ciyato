@@ -24,7 +24,7 @@ import com.ciyato.launcher.ui.theme.CiyatoRed
 import com.ciyato.launcher.ui.theme.labelXS
 
 /**
- * NotificationBadge — Suggestion #20
+ * NotificationBadge
  * Shows notification count badge over an app icon.
  * Requires NotificationListenerService permission.
  */

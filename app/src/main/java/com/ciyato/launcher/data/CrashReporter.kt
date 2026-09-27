@@ -10,7 +10,7 @@ import java.util.*
 import com.ciyato.launcher.BuildConfig
 
 /**
- * Local crash reporter — Suggestion #144.
+ * Local crash reporter.
  * Writes crash logs to app-private storage. User can share via email or any
  * app with ACTION_SEND. Never sends data automatically.
  *

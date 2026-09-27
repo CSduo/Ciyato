@@ -29,7 +29,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * ClockWidgetStylePicker — Suggestion #99
+ * ClockWidgetStylePicker
  * Provides 4 clock styles: Analog, Digital, Minimal, Binary.
  * Each style renders live time and can be selected as the home widget.
  */

@@ -18,7 +18,7 @@ import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.ui.theme.decorativeSweep
 
 /**
- * Shimmer skeleton loading components — Suggestion #132.
+ * Shimmer skeleton loading components.
  * Uses an infinite animation to create a moving highlight band.
  * All composables in this file are pure UI — no state, no side-effects.
  */

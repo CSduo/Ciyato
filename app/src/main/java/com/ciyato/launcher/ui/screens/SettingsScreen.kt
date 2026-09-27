@@ -93,7 +93,7 @@ fun SettingsScreen(
         onDispose { settingsLifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Screenshot FLAG_SECURE (Suggestion 145)
+    // Screenshot FLAG_SECURE
     val activity = (context as? android.app.Activity)
     LaunchedEffect(screenshotBlocked) {
         activity?.window?.let { window ->
@@ -170,7 +170,6 @@ fun SettingsScreen(
             }
             item {
                 // The row that made a declared permission into a feature.
-                //
                 // The listener service computed per-app counts, NotificationBadge
                 // and BadgedAppIcon were written, and a notification_badges
                 // preference existed with a default of true - and nothing read
@@ -463,14 +462,12 @@ fun SettingsScreen(
             item { SectionHeader("Privacy & Security") }
             item {
                 // Layered, not blanket.
-                //
                 // This said "Local Only" / "Nothing is uploaded", at the head of
                 // a section that contains the breach checker — which sends part
                 // of a password hash — and a few rows from Weather, which sends
                 // a rounded location (F-196). The first sentence was scoped and
                 // true; "Nothing is uploaded" generalised past its own scope and
                 // was contradicted two screens away.
-                //
                 // Naming the two exceptions costs one line and is the stronger
                 // claim: precise privacy is believable, absolute privacy invites
                 // someone to go looking for the exception.

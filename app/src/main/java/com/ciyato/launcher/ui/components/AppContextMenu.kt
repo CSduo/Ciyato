@@ -41,7 +41,7 @@ import com.ciyato.launcher.viewmodel.unhideApp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
- * AppContextMenu — Suggestion #16
+ * AppContextMenu
  * Long-press context menu for app icons: uninstall, hide, info, add shortcut.
  */
 

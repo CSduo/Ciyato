@@ -8,7 +8,7 @@ import android.os.Process
 import androidx.annotation.RequiresApi
 
 /**
- * AppShortcutsManager — Suggestion #21
+ * AppShortcutsManager
  * Queries and launches Android Shortcuts API (dynamic + static shortcuts)
  * for a given package. Called from AppContextMenu on long-press.
  */

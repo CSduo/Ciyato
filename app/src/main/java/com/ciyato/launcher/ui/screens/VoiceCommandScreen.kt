@@ -36,7 +36,7 @@ import java.util.Locale
 import androidx.compose.runtime.DisposableEffect
 
 /**
- * VoiceCommandScreen — Suggestion #39
+ * VoiceCommandScreen
  * Voice command integration using Android's SpeechRecognizer.
  * Recognized intents: "open [app]", "open my [category] apps", "search [query]",
  * "focus mode", "show photos", "dark mode on/off".
@@ -93,13 +93,11 @@ fun VoiceCommandScreen(
             lower.startsWith("open ") -> {
                 val appName = lower.removePrefix("open ").trim()
                 // Matched against the INSTALLED apps, not searchResults.
-                //
                 // searchResults holds whatever the person last typed into the
                 // search screen. So "open Gmail" worked only if Gmail happened
                 // to be sitting in a stale result set, and otherwise fell
                 // through to "Searching for 'gmail'…" — which looks like the
                 // voice command is unsupported rather than mis-wired (F-141).
-                //
                 // Exact label first, then prefix, then substring: "open maps"
                 // should reach Maps rather than whichever installed app merely
                 // contains "maps" somewhere in its name.
@@ -292,7 +290,6 @@ fun VoiceCommandScreen(
             )
             Spacer(Modifier.height(10.dp))
             // Where the audio actually goes.
-            //
             // Ciyato does not do speech recognition and does not record, store
             // or send audio. It hands the microphone to Android's
             // SpeechRecognizer, which is implemented by whichever speech service

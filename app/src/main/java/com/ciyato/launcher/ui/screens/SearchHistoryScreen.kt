@@ -22,7 +22,7 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
- * SearchHistoryScreen — Suggestion #108
+ * SearchHistoryScreen
  * Shows search history with the ability to tap a query, clear individual entries, or clear all.
  *
  * Backed by [LauncherViewModel.recentSearches] — the same DataStore-persisted

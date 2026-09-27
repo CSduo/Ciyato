@@ -37,7 +37,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 /**
- * CalendarAgendaScreen — Suggestion #51
+ * CalendarAgendaScreen
  * Shows today's and upcoming calendar events from the device ContentProvider.
  */
 

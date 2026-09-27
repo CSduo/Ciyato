@@ -10,7 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * DuplicatePhotoDetector — Suggestion #31
+ * DuplicatePhotoDetector
  * Detects visually similar photos using an average hash (aHash) — see
  * [averageHash] for why that is weaker than the name this once carried.
  * Groups photos with Hamming distance ≤ threshold as duplicates.

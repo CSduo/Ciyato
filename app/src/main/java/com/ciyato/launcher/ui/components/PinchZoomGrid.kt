@@ -6,7 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 
 /**
- * PinchZoomGrid — Suggestion #23
+ * PinchZoomGrid
  * Detects pinch gestures to cycle home screen grid density:
  *   pinch-in  → denser grid (more apps visible)
  *   pinch-out → sparser grid (larger icons)

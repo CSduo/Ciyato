@@ -1212,14 +1212,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             .distinct()
             .joinToString(",")
 
-    // ── Screenshot blocking (Suggestion 145) ──────────────────────────────────
+    // ── Screenshot blocking ──────────────────────────────────
 
     fun applyScreenshotFlag(window: Window) {
         val flag = android.view.WindowManager.LayoutParams.FLAG_SECURE
         if (screenshotBlocked.value) window.addFlags(flag) else window.clearFlags(flag)
     }
 
-    // ── Hidden apps (Suggestion 23) ───────────────────────────────────────────
+    // ── Hidden apps ───────────────────────────────────────────
 
     fun hideApp(pkg: String) = viewModelScope.launch {
         val hidden = parsePackageCsv(settings.hiddenApps.first()).toMutableSet().apply { add(pkg) }
@@ -1387,7 +1387,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ── Category renames (Suggestion 24) ──────────────────────────────────────
+    // ── Category renames ──────────────────────────────────────
 
     fun setCategoryRename(cat: AppCategory, newName: String) = viewModelScope.launch {
         val map = try { JSONObject(categoryRenames.value) } catch (_: Exception) { JSONObject() }
@@ -1413,7 +1413,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         } catch (_: Exception) { category.displayName }
     }
 
-    // ── Recently launched (Suggestion 25) ────────────────────────────────────
+    // ── Recently launched ────────────────────────────────────
 
     val recentlyLaunchedPackages = settings.recentlyLaunched
         .stateIn(viewModelScope, SharingStarted.Eagerly, "[]")
@@ -1439,7 +1439,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         settings.setRecentlyLaunched(arr.toString())
     }
 
-    // ── Recent searches (Suggestion 36) ───────────────────────────────────────
+    // ── Recent searches ───────────────────────────────────────
 
     val recentSearches = settings.recentSearches
         .map { json ->
@@ -1479,7 +1479,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun byUsageFrequency()                 = repo.byUsageFrequency()
     fun launchCount(pkg: String)           = repo.launchCount(pkg)
 
-    // ── Time-aware layout helpers (Suggestion 72) ─────────────────────────────
+    // ── Time-aware layout helpers ─────────────────────────────
 
     val currentHour: Int get() = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val currentDayOfWeek: Int get() = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
@@ -1498,7 +1498,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun isBedtimeNow(): Boolean =
         TimeAwareLayout.isBedtime(currentHour, bedtimeHour.value, bedtimeMode.value)
 
-    // ── Focus sessions (Suggestion 75) ────────────────────────────────────────
+    // ── Focus sessions ────────────────────────────────────────
 
     /**
      * The running session, derived from the persisted end instant.

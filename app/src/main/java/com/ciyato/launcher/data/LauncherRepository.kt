@@ -45,13 +45,13 @@ class LauncherRepository(private val context: Context) {
     private val inventoryMutex = Mutex()
     private var lastInventoryScanElapsedMs = 0L
 
-    // ── Icon LRU cache (Suggestion 17) ────────────────────────────────────────
+    // ── Icon LRU cache ────────────────────────────────────────
     private val iconCache = LruCache<String, Drawable>(128)
 
-    // ── Launch frequency (Suggestion 37) ──────────────────────────────────────
+    // ── Launch frequency ──────────────────────────────────────
     private val launchCounts = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
-    // ── Hidden apps (Suggestion 23) ───────────────────────────────────────────
+    // ── Hidden apps ───────────────────────────────────────────
     private val hiddenPackages = java.util.concurrent.CopyOnWriteArraySet<String>()
     private val removedPackages = java.util.concurrent.CopyOnWriteArraySet<String>()
 
@@ -117,7 +117,7 @@ class LauncherRepository(private val context: Context) {
                     val label = labelOverrides[pkg]?.takeIf { it.isNotBlank() } ?: originalLabel
                     val visual = visualOverrides.optJSONObject(pkg)
 
-                    // LRU-cached icon load (Suggestion 17)
+                    // LRU-cached icon load
                     val icon = iconCache.get(pkg) ?: ri.loadIcon(pm).also { iconCache.put(pkg, it) }
 
                     val appInfo  = pm.getApplicationInfo(pkg, PackageManager.GET_META_DATA)
@@ -191,7 +191,7 @@ class LauncherRepository(private val context: Context) {
         if (_allApps.value.isEmpty() || elapsed >= maxAgeMs) loadApps()
     }
 
-    // ── Launch (with frequency tracking, Suggestion 37) ──────────────────────
+    // ── Launch (with frequency tracking) ──────────────────────
 
     fun launchApp(context: Context, app: InstalledApp): Boolean {
         return try {
@@ -232,7 +232,7 @@ class LauncherRepository(private val context: Context) {
     }
 
     /**
-     * Fuzzy search — Levenshtein distance fallback (Suggestion 38).
+     * Fuzzy search — Levenshtein distance fallback.
      * Returns apps whose label edit-distance from the query is ≤ threshold.
      */
     fun fuzzySearch(query: String, threshold: Int = 3): List<InstalledApp> {
@@ -244,7 +244,7 @@ class LauncherRepository(private val context: Context) {
     }
 
     /**
-     * NLP query search — detects category intent and filters (Suggestion 40).
+     * NLP query search — detects category intent and filters.
      * "open a music app" → filters ENTERTAINMENT category.
      */
     fun nlpSearch(query: String): Pair<AppCategory?, List<InstalledApp>> {
@@ -253,7 +253,7 @@ class LauncherRepository(private val context: Context) {
     }
 
     /**
-     * Grouped search results by category (Suggestion 42).
+     * Grouped search results by category.
      * Returns a map from category to matching apps.
      */
     fun groupedSearch(query: String): Map<String, List<InstalledApp>> {
@@ -268,7 +268,7 @@ class LauncherRepository(private val context: Context) {
         }
     }
 
-    /** Apps sorted by launch frequency descending (Suggestion 37). */
+    /** Apps sorted by launch frequency descending. */
     fun byUsageFrequency(): List<InstalledApp> =
         _apps.value.sortedByDescending { launchCounts[it.packageName] ?: 0 }
 

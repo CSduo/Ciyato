@@ -8,7 +8,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 
 /**
- * AdaptiveIconLoader — Suggestion #25
+ * AdaptiveIconLoader
  * Loads AdaptiveIconDrawable with foreground + background layers,
  * and supports swapping icon packs by resolving themed icon packs
  * that declare "org.adw.launcher.THEMES" or "com.novalauncher.THEME".

@@ -14,7 +14,7 @@ import androidx.compose.ui.zIndex
 import com.ciyato.launcher.data.InstalledApp
 
 /**
- * DragDropAppGrid — Suggestion #17
+ * DragDropAppGrid
  * Drag-and-drop app rearrangement using Compose's detectDragGesturesAfterLongPress.
  * Long-press an icon to lift it, then drag to reorder.
  */

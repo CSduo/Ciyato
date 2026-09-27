@@ -36,7 +36,7 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 
 /**
- * AiChangelogScreen — Suggestion #45
+ * AiChangelogScreen
  * AI-generated summary of "what changed on your phone today":
  * new installs, significant usage changes, updates.
  */
@@ -233,7 +233,6 @@ private fun buildChangelog(context: Context): List<PhoneChangeEntry> {
         val weekStats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, weekAgo, todayStart)
 
         // The baseline, and the number of days it is actually built from.
-        //
         // Two separate bugs lived in this expression (F-124). associate{} kept
         // one arbitrary bucket per package and discarded the rest, so a "weekly
         // average" was a single day divided by seven. Summing fixed that and

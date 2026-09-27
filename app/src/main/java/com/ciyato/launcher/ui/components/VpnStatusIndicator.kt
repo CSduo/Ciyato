@@ -27,7 +27,7 @@ import com.ciyato.launcher.ui.theme.*
 import kotlinx.coroutines.delay
 
 /**
- * VpnStatusIndicator — Suggestion #81
+ * VpnStatusIndicator
  * Shows a VPN shield badge on the home screen when a VPN is active.
  */
 

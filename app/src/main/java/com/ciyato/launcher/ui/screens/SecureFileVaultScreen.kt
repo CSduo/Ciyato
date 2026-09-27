@@ -38,7 +38,7 @@ import java.io.File
 import androidx.compose.runtime.DisposableEffect
 
 /**
- * SecureFileVaultScreen — Suggestion #68
+ * SecureFileVaultScreen
  * Biometric-gated file vault using AES-256-GCM (Android Keystore) encryption.
  * Files are encrypted on import, and can be decrypted and opened again — the
  * screen previously offered no way out at all, which made "vault" the wrong word
@@ -109,7 +109,6 @@ fun SecureFileVaultScreen(
                 // "Could not be decrypted" used to cover three completely
                 // different events, and the person could not act on any of them
                 // because they all read the same (F-015).
-                //
                 // An expired grace period needs a re-prompt and nothing else.
                 // An invalidated key is unrecoverable and the person deserves to
                 // know it was the screen lock, not a corrupt file. Everything
@@ -158,7 +157,6 @@ fun SecureFileVaultScreen(
         scope.launch {
             val failed = withContext(Dispatchers.IO) {
                 // Interrupted writes are deleted by directory, not by name.
-                //
                 // The name-based form deleted real vault files outright, with
                 // none of the confirmation the ordinary delete path requires,
                 // whenever an imported filename contained the temp marker.
@@ -286,12 +284,10 @@ fun SecureFileVaultScreen(
     LaunchedEffect(Unit) { authenticate() }
 
     // Re-lock when the vault leaves the screen.
-    //
     // isUnlocked survived for the lifetime of the composable, so a vault opened
     // once stayed open: press Home, hand the phone to someone, and returning
     // through Recents showed the decrypted file list with no prompt (F-018).
     // Authentication is a moment, not a mode.
-    //
     // ON_STOP rather than ON_PAUSE deliberately — pause fires for a transient
     // system dialog, including the biometric prompt itself, which would re-lock
     // the screen in the middle of unlocking it.
@@ -383,7 +379,6 @@ fun SecureFileVaultScreen(
                     item {
                         // What is actually protecting these files, and the one
                         // thing that can take them away.
-                        //
                         // The key is now bound in the Keystore to a recent device
                         // authentication (F-015), which is a real strengthening
                         // and carries a real cost: Android permanently

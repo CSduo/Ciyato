@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
- * ContextualSuggestionsScreen — Suggestion #30
+ * ContextualSuggestionsScreen
  * Shows app suggestions based on time-of-day usage patterns.
  */
 
@@ -221,7 +221,6 @@ private fun SuggestionCard(suggestion: AppSuggestion, viewModel: LauncherViewMod
                 Text(suggestion.reason, color = CiyatoMuted, fontSize = 12.sp)
             }
             // Shows the evidence, not a manufactured probability.
-            //
             // This was a percentage derived from (usageHours / 2) clamped to
             // 0.4..0.95 - a rescaled duration wearing the costume of a
             // confidence score. A percentage implies uncertainty was measured,

@@ -37,7 +37,7 @@ import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
 
 /**
- * AppUsageStatsScreen — Suggestion #19
+ * AppUsageStatsScreen
  * Shows per-app screen time using Android UsageStatsManager.
  */
 

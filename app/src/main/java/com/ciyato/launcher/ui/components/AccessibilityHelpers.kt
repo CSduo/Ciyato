@@ -8,13 +8,12 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.semantics.*
 
 /**
- * AccessibilityHelpers — Suggestion #109
+ * AccessibilityHelpers
  * Utility modifiers and helpers for TalkBack support and content descriptions.
  */
 
 // appItemSemantics lived here with ZERO call sites and two defects, and is now
 // AccessibleAppTile.appTileSemantics instead (F-047).
-//
 // It appended "Double-tap to open. Long-press for options." to the description.
 // TalkBack announces the activation gesture for a Button role itself, so that
 // duplicated the instruction - and a long-press described in prose is still not
@@ -22,7 +21,6 @@ import androidx.compose.ui.semantics.*
 // matters. It also did not merge descendants, so the label Text inside a tile
 // announced separately: "Gmail app, 3 notifications" and then, as a second item,
 // "Gmail".
-//
 // A dead helper is not harmless. The next person to need app-tile semantics
 // would have found it, used it, and shipped both defects.
 

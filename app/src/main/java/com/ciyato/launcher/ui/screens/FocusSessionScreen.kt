@@ -33,7 +33,7 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
- * Focus Session Screen — Suggestion #75.
+ * Focus Session Screen.
  *
  * Allows the user to:
  *  - Set a focus duration (5–120 min, Pomodoro presets)
@@ -325,7 +325,6 @@ private fun FocusInfoCard() {
             // a blocked category regardless of where the tap came from, and the
             // drawer uses that same function (F-174). Someone relying on the
             // drawer as an escape hatch found it closed.
-            //
             // The behaviour is the better one - an escape hatch one tap away is
             // not much of a focus mode - so the copy is what changes, and it
             // names the real way out.

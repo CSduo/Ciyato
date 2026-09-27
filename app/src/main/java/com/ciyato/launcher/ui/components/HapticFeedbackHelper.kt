@@ -11,7 +11,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 
 /**
- * Haptic feedback helpers — Suggestion #1.
+ * Haptic feedback helpers.
  *
  * Provides two levels of haptic feedback:
  *  - Light: `LongPress` — for card taps, selection changes

@@ -1,7 +1,7 @@
 package com.ciyato.launcher.data
 
 /**
- * SearchRankingEngine — Suggestion #32
+ * SearchRankingEngine
  * Smart search history ranking using TF-IDF weighted by usage frequency.
  * Ranks search suggestions by relevance: recency + launch frequency + query match.
  */

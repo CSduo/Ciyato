@@ -9,7 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * VideoThumbnailHelper — Suggestion #74
+ * VideoThumbnailHelper
  * Extracts video thumbnails using MediaMetadataRetriever.
  * Returns a Bitmap frame at the specified time (default: 1 second in).
  */

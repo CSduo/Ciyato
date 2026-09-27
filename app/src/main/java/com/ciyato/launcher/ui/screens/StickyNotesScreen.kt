@@ -40,7 +40,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 /**
- * StickyNotesScreen — Suggestion #52
+ * StickyNotesScreen
  * Quick memos with color coding, staggered grid, and inline editing.
  * Notes are persisted through [LauncherSettingsRepository] (DataStore) via
  * [StickyNoteStore], so they survive an app restart.

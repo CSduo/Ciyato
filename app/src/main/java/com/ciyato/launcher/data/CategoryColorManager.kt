@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.map
 import org.json.JSONObject
 
 /**
- * CategoryColorManager — Suggestion #96
+ * CategoryColorManager
  * Persists per-category color overrides using DataStore.
  * Each category maps to a hex color string (e.g. "#FFD700").
  * Default colors reflect category intent (Work=blue, Social=purple, etc.)

@@ -50,7 +50,7 @@ import java.io.File
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
- * WallpaperPickerScreen - Suggestion #93
+ * WallpaperPickerScreen
  * Browse gradient wallpapers or open system wallpaper picker.
  */
 
@@ -90,7 +90,6 @@ fun WallpaperPickerScreen(
     val wallpaperImageOffset by viewModel.wallpaperImageOffset.collectAsStateWithLifecycle()
     val wallpaperBlur by viewModel.wallpaperBlur.collectAsStateWithLifecycle()
     // Persisted, and honest about what it means.
-    //
     // This was `remember`, so re-entering the screen lost which preset was ticked
     // even though the wallpaper was still applied - the tick was decoration that
     // could not be trusted (F-162). It now survives, and the label below says
@@ -338,7 +337,6 @@ fun WallpaperPickerScreen(
             Text("Minimal system wallpapers", color = CiyatoWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
             // What the tick means, said once.
-            //
             // It marks the preset applied FROM HERE, not the wallpaper currently
             // on the device. Ciyato sets these as the Android system wallpaper and
             // then cannot read it back to identify which one it is, so changing the

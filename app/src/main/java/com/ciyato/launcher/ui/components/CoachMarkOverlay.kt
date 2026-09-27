@@ -22,7 +22,7 @@ import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.ui.theme.decorativePulse
 
 /**
- * CoachMarkOverlay — Suggestion #105
+ * CoachMarkOverlay
  * Contextual tooltips / coach marks for new or changed features.
  */
 

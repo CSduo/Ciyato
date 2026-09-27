@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.ui.theme.*
 
 /**
- * WhatsNewSheet — Suggestion #106
+ * WhatsNewSheet
  * Bottom sheet changelog shown on first launch after an app update.
  * Version check is done via BuildConfig.VERSION_CODE stored in SharedPreferences.
  */

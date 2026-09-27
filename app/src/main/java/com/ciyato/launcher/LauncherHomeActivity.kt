@@ -45,7 +45,7 @@ class LauncherHomeActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         shortcutRequest = LauncherShortcutRequest(sequence = 1L, action = intent?.action)
 
-        // Crash reporter install (Suggestion 144)
+        // Crash reporter install
         CrashReporter.install(this)
         lifecycleScope.launch {
             viewModel.crashReporting.collect { enabled ->
@@ -154,21 +154,21 @@ private sealed class LauncherDest {
     data class CategoryDetail(val category: AppCategory) : LauncherDest()
     object WeatherDetail      : LauncherDest()
     object Agenda             : LauncherDest()
-    object FocusSession       : LauncherDest()   // Suggestion 75
-    object PermissionAudit    : LauncherDest()   // Suggestion 139
-    object StorageCleanup     : LauncherDest()   // Suggestion 26
+    object FocusSession       : LauncherDest()
+    object PermissionAudit    : LauncherDest()
+    object StorageCleanup     : LauncherDest()
     object RecentFiles        : LauncherDest()   // Recent files browser + file tagging
-    object ContextualSuggestions : LauncherDest()  // Suggestion 30
-    object VoiceCommands      : LauncherDest()   // Suggestion 39
-    object AnomalyDetection   : LauncherDest()   // Suggestion 37
-    object AiChangelog        : LauncherDest()   // Suggestion 45
-    object DataBreachChecker  : LauncherDest()   // Suggestion 85
-    object SafeBrowsing       : LauncherDest()   // Suggestion 83
-    object SearchHistory      : LauncherDest()   // Suggestion 108
+    object ContextualSuggestions : LauncherDest()
+    object VoiceCommands      : LauncherDest()
+    object AnomalyDetection   : LauncherDest()
+    object AiChangelog        : LauncherDest()
+    object DataBreachChecker  : LauncherDest()
+    object SafeBrowsing       : LauncherDest()
+    object SearchHistory      : LauncherDest()
     object StickyNotes        : LauncherDest()   // DataStore-backed quick notes
-    object AutoBackup         : LauncherDest()   // Suggestion 67 — photo backup, manual + WorkManager schedule
+    object AutoBackup         : LauncherDest()   // — photo backup, manual + WorkManager schedule
     object DuplicateShortcuts : LauncherDest()   // Apps placed in more than one smart category
-    object WidgetHost         : LauncherDest()   // Suggestion 15 — AppWidgetHost placement
+    object WidgetHost         : LauncherDest()   // — AppWidgetHost placement
     object Insights           : LauncherDest()   // One entry for everything built on Usage Access
     object AppUsage           : LauncherDest()   // Screen Time — was an orphan (F-154)
     object NetworkUsage       : LauncherDest()   // Data Usage — was an orphan (F-170)
@@ -232,7 +232,6 @@ private fun LauncherRoot(
 ) {
     val context = LocalContext.current
     // Survives activity recreation.
-    //
     // This was a plain `remember`, so any configuration change — rotation, font
     // scale, theme, unfolding a device, or the system recreating the launcher
     // after reclaiming memory — silently threw the person back to Home from
@@ -289,7 +288,7 @@ private fun LauncherRoot(
         if (LocationHelper.hasPermission(context)) {
             viewModel.fetchWeather(context)
         }
-        // Apply screenshot block setting (Suggestion 145)
+        // Apply screenshot block setting
         viewModel.applyScreenshotFlag(activity.window)
     }
 
@@ -446,17 +445,17 @@ private fun LauncherRoot(
             onBack = { dest = LauncherDest.Home },
         )
 
-        is LauncherDest.FocusSession -> FocusSessionScreen(  // Suggestion 75
+        is LauncherDest.FocusSession -> FocusSessionScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Home },
         )
 
-        is LauncherDest.PermissionAudit -> PermissionAuditScreen( // Suggestion 139
+        is LauncherDest.PermissionAudit -> PermissionAuditScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Home },
         )
 
-        is LauncherDest.StorageCleanup -> StorageCleanupScreen( // Suggestion 26
+        is LauncherDest.StorageCleanup -> StorageCleanupScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )
@@ -480,12 +479,12 @@ private fun LauncherRoot(
             onBack    = { dest = LauncherDest.Settings },
         )
 
-        is LauncherDest.ContextualSuggestions -> ContextualSuggestionsScreen( // Suggestion 30
+        is LauncherDest.ContextualSuggestions -> ContextualSuggestionsScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )
 
-        is LauncherDest.VoiceCommands -> VoiceCommandScreen( // Suggestion 39
+        is LauncherDest.VoiceCommands -> VoiceCommandScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
             onOpenCategory = { category -> dest = LauncherDest.CategoryDetail(category) },
@@ -500,22 +499,22 @@ private fun LauncherRoot(
             },
         )
 
-        is LauncherDest.AnomalyDetection -> AnomalyDetectionScreen( // Suggestion 37
+        is LauncherDest.AnomalyDetection -> AnomalyDetectionScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )
 
-        is LauncherDest.AiChangelog -> AiChangelogScreen( // Suggestion 45
+        is LauncherDest.AiChangelog -> AiChangelogScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )
 
-        is LauncherDest.DataBreachChecker -> DataBreachCheckerScreen( // Suggestion 85
+        is LauncherDest.DataBreachChecker -> DataBreachCheckerScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )
 
-        is LauncherDest.SafeBrowsing -> SafeBrowsingHelperScreen( // Suggestion 83
+        is LauncherDest.SafeBrowsing -> SafeBrowsingHelperScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )
@@ -525,7 +524,7 @@ private fun LauncherRoot(
             onBack    = { dest = LauncherDest.Settings },
         )
 
-        is LauncherDest.SearchHistory -> SearchHistoryScreen( // Suggestion 108
+        is LauncherDest.SearchHistory -> SearchHistoryScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
             onQuerySelected = {
@@ -534,7 +533,7 @@ private fun LauncherRoot(
             },
         )
 
-        is LauncherDest.AutoBackup -> AutoBackupScreen( // Suggestion 67
+        is LauncherDest.AutoBackup -> AutoBackupScreen(
             viewModel = viewModel,
             onBack    = { dest = LauncherDest.Settings },
         )
@@ -544,7 +543,7 @@ private fun LauncherRoot(
             onBack    = { dest = LauncherDest.Settings },
         )
 
-        is LauncherDest.WidgetHost -> WidgetHostScreen( // Suggestion 15
+        is LauncherDest.WidgetHost -> WidgetHostScreen(
             onBack    = { dest = LauncherDest.Settings },
         )
 

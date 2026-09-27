@@ -35,7 +35,7 @@ import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
 
 /**
- * AutoBackupScreen — Suggestion #67
+ * AutoBackupScreen
  *
  * Real, on-device photo backup: SAF folder picker with persisted URI
  * permission, MediaStore query, and a real file copy via ContentResolver

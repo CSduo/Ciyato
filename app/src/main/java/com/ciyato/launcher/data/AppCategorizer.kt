@@ -436,7 +436,7 @@ object AppCategorizer {
     }
 
     /**
-     * NLP-style query intent detection (Suggestion #40).
+     * NLP-style query intent detection.
      * Returns the best AppCategory match for a free-text query, or null if unrecognized.
      *
      * Examples:

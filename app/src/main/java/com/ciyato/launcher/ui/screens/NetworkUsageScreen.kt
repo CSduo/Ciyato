@@ -34,7 +34,7 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.util.concurrent.TimeUnit
 
 /**
- * NetworkUsageScreen — Suggestion #80
+ * NetworkUsageScreen
  * Shows per-app mobile-data usage over the last 30 days.
  *
  * Deliberately NOT "the current billing cycle" — the query is a rolling 30-day

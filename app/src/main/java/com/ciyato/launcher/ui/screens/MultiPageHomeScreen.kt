@@ -20,7 +20,7 @@ import com.ciyato.launcher.ui.theme.CiyatoGold
 import com.ciyato.launcher.ui.theme.CiyatoMuted
 
 /**
- * MultiPageHomeScreen — Suggestion #22
+ * MultiPageHomeScreen
  * Scrollable home screen pages using HorizontalPager (Compose Foundation).
  * Each page shows a different app group (All, Work, Social, Entertainment, etc.).
  */

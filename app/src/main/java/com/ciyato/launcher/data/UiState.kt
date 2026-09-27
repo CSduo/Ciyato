@@ -2,7 +2,7 @@ package com.ciyato.launcher.data
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
- * Generic sealed UI state wrapper — Suggestion #103.
+ * Generic sealed UI state wrapper.
  * Replaces ad-hoc isLoading/error booleans across all screens.
  *
  * Usage:
@@ -45,7 +45,7 @@ sealed class UiState<out T> {
     }
 }
 
-/** One-shot event wrapper to prevent re-consumption from StateFlow (Suggestion #104). */
+/** One-shot event wrapper to prevent re-consumption from StateFlow. */
 class Event<out T>(private val content: T) {
     private var consumed = false
     fun consume(): T? = if (!consumed) { consumed = true; content } else null

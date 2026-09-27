@@ -28,7 +28,7 @@ import java.security.MessageDigest
 import androidx.compose.ui.semantics.semantics
 
 /**
- * DataBreachCheckerScreen — Suggestion #85
+ * DataBreachCheckerScreen
  * Checks if a password has appeared in known data breaches
  * using the HaveIBeenPwned k-anonymity API (only first 5 chars of SHA-1 sent).
  *

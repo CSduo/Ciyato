@@ -39,7 +39,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import com.ciyato.launcher.data.UsageAnomalies
 
 /**
- * AnomalyDetectionScreen — Suggestion #37
+ * AnomalyDetectionScreen
  * App usage pattern anomaly detection using z-score on daily usage data.
  * Highlights apps whose usage today deviates significantly from the 7-day mean.
  */

@@ -47,7 +47,7 @@ import com.ciyato.launcher.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
- * NlFileSearchScreen — Suggestion #27
+ * NlFileSearchScreen
  * File search over the name, type, date and size of indexed files.
  *
  * It was called "Smart File Search" and it advertised "payment screenshot from
@@ -162,7 +162,6 @@ fun NlFileSearchScreen(
             if (selectedRoot == null) {
                 // All-files mode: the index Files built over internal storage is
                 // the only source — there is no SAF tree to walk as a fallback.
-                //
                 // An unbuilt index used to produce an empty result set, which
                 // renders as "No files found — try a different query". That is a
                 // hidden prerequisite across two screens presented as a failed
@@ -530,7 +529,6 @@ internal fun parseNlQuery(query: String): ParsedQuery {
     val now = System.currentTimeMillis()
 
     // Tokens, not substrings.
-    //
     // Every test here used to be `"may" in lower`, which is true of "maybe" and
     // of any filename containing those three letters; "march" matched
     // "marching", "doc" matched "dockyard". Matching whole words removes a
@@ -540,7 +538,6 @@ internal fun parseNlQuery(query: String): ParsedQuery {
 
     val dateRange: Pair<Long, Long>? = when {
         // Calendar days, not rolling windows.
-        //
         // "today" was `now - 24h .. now`, so a search at 9am returned files from
         // 3pm YESTERDAY and called them today's (F-095). Nobody means "the last
         // 24 hours" when they say today — they mean since midnight. "yesterday"

@@ -10,7 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * UndoSnackbar — Suggestion #107
+ * UndoSnackbar
  * Generic undo mechanism for destructive operations (hide app, delete, move).
  *
  * Usage:

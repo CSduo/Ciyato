@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
- * SwipeableHomeDrawer — Suggestion #13
+ * SwipeableHomeDrawer
  * Horizontal swipe gesture to transition between Home screen and App Drawer.
  *
  * Swipe LEFT → reveal App Drawer

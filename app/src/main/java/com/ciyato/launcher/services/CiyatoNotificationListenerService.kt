@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import com.ciyato.launcher.data.BadgeTally
 
 /**
- * Notification Listener Service — Suggestion #81.
+ * Notification Listener Service.
  *
  * Reads the count of active notifications per package so Home can badge app
  * icons.

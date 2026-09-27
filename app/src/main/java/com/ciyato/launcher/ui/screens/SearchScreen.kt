@@ -105,7 +105,7 @@ fun SearchScreen(
             // ── Empty state: recent searches + suggestion chips ───────────────
             if (searchQuery.isBlank()) {
 
-                // Recent searches (Suggestion 36)
+                // Recent searches
                 if (recentSearches.isNotEmpty()) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -141,7 +141,7 @@ fun SearchScreen(
                     }
                 }
 
-                // Suggestion chips (Suggestion 45)
+                // Suggestion chips
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Try searching for", color = CiyatoSec, fontSize = 13.sp)
@@ -157,7 +157,7 @@ fun SearchScreen(
                     }
                 }
 
-                // Most-used apps (Suggestion 37)
+                // Most-used apps
                 if (frequentApps.isNotEmpty()) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -173,7 +173,7 @@ fun SearchScreen(
                 }
             } else {
 
-                // ── NLP intent detected (Suggestion 40) ──────────────────────
+                // ── NLP intent detected ──────────────────────
                 nlpResult?.let { (detectedCat, _) ->
                     if (detectedCat != null) {
                         item {
@@ -204,7 +204,7 @@ fun SearchScreen(
                         }
                     }
                 } else if (searchResults.isEmpty()) {
-                    // No results — fuzzy fallback + Play Store suggestion (Suggestion 44)
+                    // No results — fuzzy fallback + Play Store suggestion
                     item {
                         NoResultsCard(query = searchQuery, onPlayStore = {
                             val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
@@ -235,7 +235,7 @@ fun SearchScreen(
                         }
                     }
 
-                    // ── Category grouping (Suggestion 42) ────────────────────
+                    // ── Category grouping ────────────────────
                     if (groups.isNotEmpty()) {
                         item { Text("By category", color = CiyatoSec, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
                         groups.entries.take(4).forEach { (cat, apps) ->
