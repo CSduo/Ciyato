@@ -50,6 +50,7 @@ import com.ciyato.launcher.ui.theme.CiyatoGold
 import com.ciyato.launcher.ui.theme.CiyatoMuted
 import com.ciyato.launcher.ui.theme.CiyatoSubtleBorder
 import com.ciyato.launcher.ui.theme.CiyatoWhite
+import androidx.compose.material.icons.automirrored.filled.*
 
 /**
  * One entry point for everything built on Usage Access (F-130).
@@ -185,7 +186,7 @@ fun InsightsScreen(
             }
             item {
                 InsightEntry(
-                    icon = Icons.Default.TrendingUp,
+                    icon = Icons.AutoMirrored.Filled.TrendingUp,
                     title = "Unusual Usage",
                     description = "Apps well above or below their own recent daily average.",
                     onClick = onOpenAnomalies,

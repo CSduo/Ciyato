@@ -38,6 +38,7 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.material.icons.automirrored.filled.*
 
 /**
  * StickyNotesScreen
@@ -121,7 +122,7 @@ fun StickyNotesScreen(
         if (notes.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CiyatoEmptyState(
-                    icon = Icons.Default.StickyNote2,
+                    icon = Icons.AutoMirrored.Filled.StickyNote2,
                     title = "No notes yet",
                     subtitle = "Tap + to add a quick memo",
                     actionLabel = "Add Note",

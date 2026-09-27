@@ -98,6 +98,7 @@ import java.util.UUID
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material.icons.automirrored.filled.*
 
 private const val FILE_SCAN_LIMIT = 2_000
 
@@ -1040,13 +1041,13 @@ private fun buildCategories(scan: FileScopeScan): List<FilesCategory> {
         category("Screenshots", Icons.Default.Screenshot, CiyatoPurple) { isScreenshot(it) },
         // APKs are excluded here because they are also application/* and were
         // therefore counted under BOTH Documents and APKs (F-092).
-        category("Documents", Icons.Default.Article, CiyatoBlue) { isDocument(it) && !isApk(it) },
+        category("Documents", Icons.AutoMirrored.Filled.Article, CiyatoBlue) { isDocument(it) && !isApk(it) },
         category("Photos", Icons.Default.Image, CiyatoGreen) {
             it.mimeType.startsWith("image/") && !isScreenshot(it)
         },
         category("Videos", Icons.Default.Movie, CiyatoRed) { it.mimeType.startsWith("video/") },
-        category("APKs", Icons.Default.InsertDriveFile, CiyatoGold) { isApk(it) },
-        category("Other files", Icons.Default.InsertDriveFile, CiyatoSec) {
+        category("APKs", Icons.AutoMirrored.Filled.InsertDriveFile, CiyatoGold) { isApk(it) },
+        category("Other files", Icons.AutoMirrored.Filled.InsertDriveFile, CiyatoSec) {
             !isDocument(it) && !it.mimeType.startsWith("image/") &&
                 !it.mimeType.startsWith("video/") && !isApk(it)
         },
@@ -1056,9 +1057,9 @@ private fun buildCategories(scan: FileScopeScan): List<FilesCategory> {
 private fun fileIcon(file: AccessibleFile): ImageVector = when {
     file.mimeType.startsWith("image/") -> Icons.Default.Image
     file.mimeType.startsWith("video/") -> Icons.Default.Movie
-    file.name.endsWith(".apk", true) -> Icons.Default.InsertDriveFile
-    isDocument(file) -> Icons.Default.Article
-    else -> Icons.Default.InsertDriveFile
+    file.name.endsWith(".apk", true) -> Icons.AutoMirrored.Filled.InsertDriveFile
+    isDocument(file) -> Icons.AutoMirrored.Filled.Article
+    else -> Icons.AutoMirrored.Filled.InsertDriveFile
 }
 
 private fun fileColor(file: AccessibleFile): Color = when {

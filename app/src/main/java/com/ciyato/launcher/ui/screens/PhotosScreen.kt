@@ -97,6 +97,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ciyato.launcher.ui.theme.adaptiveStaggeredGrid
 import com.ciyato.launcher.ui.theme.adaptiveGrid
 import com.ciyato.launcher.ui.theme.TileSize
+import androidx.compose.material.icons.automirrored.filled.*
 
 private enum class PhotosMode(val label: String) {
     GRID("Grid"),
@@ -732,7 +733,7 @@ private fun MediaDetailsDialog(
                         modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(8.dp)),
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        MediaHandOffButton(Icons.Default.OpenInNew, "Open") { onHandOff(Intent.ACTION_VIEW) }
+                        MediaHandOffButton(Icons.AutoMirrored.Filled.OpenInNew, "Open") { onHandOff(Intent.ACTION_VIEW) }
                         MediaHandOffButton(Icons.Default.Edit, "Edit") { onHandOff(Intent.ACTION_EDIT) }
                         MediaHandOffButton(Icons.Default.Share, "Share") { onHandOff(Intent.ACTION_SEND) }
                     }

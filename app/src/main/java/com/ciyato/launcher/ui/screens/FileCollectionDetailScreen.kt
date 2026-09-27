@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -606,7 +607,7 @@ private fun FileRow(
 
 private fun fileIcon(mimeType: String?): ImageVector {
     return when {
-        mimeType == null -> Icons.Default.InsertDriveFile
+        mimeType == null -> Icons.AutoMirrored.Filled.InsertDriveFile
         mimeType.startsWith("image/") -> Icons.Default.Image
         mimeType.startsWith("video/") -> Icons.Default.VideoFile
         mimeType.startsWith("audio/") -> Icons.Default.AudioFile
@@ -615,7 +616,7 @@ private fun fileIcon(mimeType: String?): ImageVector {
         mimeType.contains("document") || mimeType.contains("word") -> Icons.Default.Description
         mimeType.contains("zip") || mimeType.contains("archive") -> Icons.Default.Archive
         mimeType == "application/vnd.android.package-archive" -> Icons.Default.Android
-        else -> Icons.Default.InsertDriveFile
+        else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 }
 

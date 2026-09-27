@@ -39,15 +39,27 @@ object CategoryColorManager {
         context.dataStore.data.map { prefs ->
             val json = prefs[KEY] ?: return@map DEFAULT_COLORS
             val result = DEFAULT_COLORS.toMutableMap()
-            try {
-                val obj = JSONObject(json)
+            // Per-entry, not per-map. This used to parse inside one try around the
+            // whole loop while mutating `result` in place, so a single malformed
+            // value threw partway through and the categories after it kept their
+            // defaults while the ones before it kept the person's colours. Which
+            // ones survived depended on the declaration order of AppCategory - a
+            // half-applied theme, silently, and differently if the enum were ever
+            // reordered.
+            val obj = runCatching { JSONObject(json) }.getOrNull()
+            if (obj != null) {
                 AppCategory.entries.forEach { cat ->
                     val colorStr = obj.optString(cat.name)
                     if (colorStr.isNotBlank()) {
-                        result[cat] = android.graphics.Color.parseColor(colorStr)
+                        // parseColor throws on anything it does not recognise. One
+                        // unreadable value costs that one category its colour and
+                        // nothing else.
+                        runCatching { android.graphics.Color.parseColor(colorStr) }
+                            .getOrNull()
+                            ?.let { result[cat] = it }
                     }
                 }
-            } catch (_: Exception) {}
+            }
             result
         }
 

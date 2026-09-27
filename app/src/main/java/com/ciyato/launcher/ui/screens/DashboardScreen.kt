@@ -77,6 +77,7 @@ import com.ciyato.launcher.ui.theme.currentWidth
 import com.ciyato.launcher.ui.theme.CiyatoWidth
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.automirrored.filled.*
 
 /**
  * Organizer home — a real file/storage dashboard.
@@ -384,7 +385,7 @@ private data class CategoryTileSpec(
 
 private val CATEGORY_TILES = listOf(
     CategoryTileSpec(CategoryKey.SCREENSHOTS, "Screenshots", Icons.Default.Screenshot, CiyatoBlue),
-    CategoryTileSpec(CategoryKey.DOCUMENTS, "Documents", Icons.Default.Article, CiyatoGreen),
+    CategoryTileSpec(CategoryKey.DOCUMENTS, "Documents", Icons.AutoMirrored.Filled.Article, CiyatoGreen),
     CategoryTileSpec(CategoryKey.DOWNLOADS, "Downloads", Icons.Default.Download, CiyatoGold),
     CategoryTileSpec(CategoryKey.PHOTOS, "Photos", Icons.Default.Image, CiyatoPurple),
     CategoryTileSpec(CategoryKey.VIDEOS, "Videos", Icons.Default.Movie, CiyatoRed),
@@ -512,7 +513,7 @@ private fun RecentFileChip(file: MediaLibraryRepository.LibraryFile) {
             .padding(12.dp),
     ) {
         Icon(
-            Icons.Default.InsertDriveFile,
+            Icons.AutoMirrored.Filled.InsertDriveFile,
             contentDescription = null,
             tint = CiyatoSec,
             modifier = Modifier.size(20.dp),

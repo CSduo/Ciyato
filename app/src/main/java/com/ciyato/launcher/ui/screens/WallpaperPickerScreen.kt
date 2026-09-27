@@ -48,6 +48,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material.icons.automirrored.filled.*
 
 /**
  * WallpaperPickerScreen
@@ -234,7 +235,7 @@ fun WallpaperPickerScreen(
             CiyatoListCard(
                 title = "Open system wallpaper picker",
                 subtitle = "Hands off to Android's own picker, including live wallpapers and other apps' wallpaper options.",
-                icon = Icons.Default.OpenInNew,
+                icon = Icons.AutoMirrored.Filled.OpenInNew,
                 iconColor = CiyatoMuted,
                 onClick = {
                     runCatching {

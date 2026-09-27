@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Launch
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -380,7 +381,12 @@ fun SettingsScreen(
                     iconColor = CiyatoGold,
                     onClick = {
                         if (filesRootUri.isBlank()) {
-                            destinations.openFiles() ?: openAppSettings(context)
+                            // No elvis fallback here: openFiles is () -> Unit, so the
+                            // `?: openAppSettings(context)` that used to sit on this
+                            // line could never run. I removed that same dead
+                            // fallback from the Photos row and documented it there,
+                            // then left it in this row and the Calendar one below.
+                            destinations.openFiles()
                         } else {
                             showForgetFilesDialog = true
                         }
@@ -456,7 +462,8 @@ fun SettingsScreen(
                     subtitle = "Connect only when you want Ciyato to show real upcoming events.",
                     icon = Icons.Default.CalendarToday,
                     iconColor = CiyatoSec,
-                    onClick = { destinations.openAgenda() ?: openAppSettings(context) }
+                    // Same dead elvis as the Files row above; openAgenda returns Unit.
+                    onClick = destinations.openAgenda
                 )
             }
             item {
@@ -547,7 +554,7 @@ fun SettingsScreen(
                 CiyatoListCard(
                     title = "Sticky Notes",
                     subtitle = "Quick notes kept on this device",
-                    icon = Icons.Default.StickyNote2,
+                    icon = Icons.AutoMirrored.Filled.StickyNote2,
                     iconColor = CiyatoAmber,
                     onClick = { destinations.openStickyNotes() }
                 )
@@ -1117,12 +1124,30 @@ private fun InfoCard(icon: ImageVector, title: String, body: String) {
 private fun countCsv(csv: String): Int =
     csv.split(",").count { it.trim().isNotEmpty() }
 
+/**
+ * Opens Ciyato's entry in system settings, and says so if it cannot.
+ *
+ * ACTION_APPLICATION_DETAILS_SETTINGS is present on essentially every phone,
+ * which is exactly why the failure was swallowed - and also why swallowing it was
+ * wrong. On the images where it is blocked (some enterprise profiles, a few
+ * stripped OEM builds) the person taps a row that offers to open their
+ * permissions and gets nothing whatsoever, on the screen they went to
+ * specifically because a permission was not working. A rare failure in the one
+ * place someone is already troubleshooting is worse than a common one.
+ */
 private fun openAppSettings(context: Context) {
-    try {
+    val opened = runCatching {
         context.startActivity(
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                 data = android.net.Uri.fromParts("package", context.packageName, null)
             }
         )
-    } catch (_: Exception) {}
+    }.isSuccess
+    if (!opened) {
+        android.widget.Toast.makeText(
+            context,
+            "This phone will not open app settings from here \u2014 find Ciyato in Settings > Apps",
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+    }
 }

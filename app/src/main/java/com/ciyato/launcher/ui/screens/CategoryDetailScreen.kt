@@ -50,6 +50,7 @@ import com.ciyato.launcher.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ciyato.launcher.ui.theme.currentWidth
 import com.ciyato.launcher.ui.theme.CiyatoWidth
+import androidx.compose.material.icons.automirrored.filled.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -375,7 +376,7 @@ private fun CategoryHeroBadge(category: AppCategory, displayName: String, onMana
     val categoryIcon = when (category) {
         AppCategory.FINANCE -> Icons.Default.AccountBalanceWallet
         AppCategory.WORK -> Icons.Default.Work
-        AppCategory.COMMUNICATION, AppCategory.SOCIAL -> Icons.Default.Chat
+        AppCategory.COMMUNICATION, AppCategory.SOCIAL -> Icons.AutoMirrored.Filled.Chat
         AppCategory.DAILY -> Icons.Default.WbSunny
         AppCategory.UTILITIES -> Icons.Default.Build
         AppCategory.CREATIVITY -> Icons.Default.Palette

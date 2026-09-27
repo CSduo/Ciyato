@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -39,11 +40,31 @@ import com.ciyato.launcher.viewmodel.unpinApp
 import com.ciyato.launcher.viewmodel.hideApp
 import com.ciyato.launcher.viewmodel.unhideApp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.ciyato.launcher.data.AppShortcutsManager
+import android.content.pm.ShortcutInfo
 
 /**
  * AppContextMenu
- * Long-press context menu for app icons: uninstall, hide, info, add shortcut.
+ * Long-press context menu for app icons: the app's own shortcuts, then open,
+ * pin, hide, lock, categorise, resize, customise, info and uninstall.
+ *
+ * "add shortcut" was in this list before any shortcut code was reachable -
+ * AppShortcutsManager existed, compiled, and was called from nowhere, while its
+ * own KDoc claimed this file called it. The shortcuts are real now.
  */
+
+/**
+ * Most rows the shortcut section will add.
+ *
+ * Android's own cap is higher and an app may publish more. This menu already has
+ * ten fixed rows in a scrolling dialog, so an app with eight shortcuts would push
+ * Uninstall off the bottom on a short screen - the rows most people came for
+ * burying the ones they rely on. Four covers what apps actually publish as their
+ * primary actions.
+ */
+private const val MAX_SHORTCUTS = 4
 
 sealed class ContextAction {
     object OpenApp : ContextAction()
@@ -74,6 +95,16 @@ fun AppContextMenu(
     // StateFlow, and reading .value inside derivedStateOf does not subscribe to
     // it, so the label would not update when the set changes.
     val lockedCsv by viewModel.lockedApps.collectAsStateWithLifecycle()
+    // The app's own published shortcuts. getShortcuts is a binder call into
+    // system_server, so it goes to the IO dispatcher rather than blocking the
+    // frame that is animating this dialog in. Empty until it answers, which is
+    // why the section is built conditionally instead of reserving space for it.
+    var shortcuts by remember(app.packageName) { mutableStateOf<List<ShortcutInfo>>(emptyList()) }
+    LaunchedEffect(app.packageName) {
+        shortcuts = withContext(Dispatchers.IO) {
+            AppShortcutsManager.getShortcuts(context, app.packageName)
+        }.take(MAX_SHORTCUTS)
+    }
     val isLocked = app.packageName in viewModel.parsePackageCsv(lockedCsv)
 
     Dialog(
@@ -123,8 +154,31 @@ fun AppContextMenu(
 
                 // Action items
                 val actions = buildList {
+                    // The app's own shortcuts come first, because that is what the
+                    // person long-pressed for on every other launcher, and they are
+                    // the only rows here that vary by app.
+                    shortcuts.forEach { shortcut ->
+                        add(ContextMenuItem(
+                            icon = Icons.Default.Bolt,
+                            label = AppShortcutsManager.labelOf(shortcut),
+                            color = CiyatoWhite,
+                            action = {
+                                // A ShortcutInfo is a snapshot; the app can retire it
+                                // between building this menu and the tap. Say so
+                                // rather than closing silently on nothing.
+                                if (!AppShortcutsManager.launchShortcut(context, shortcut)) {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "${app.label} no longer offers that shortcut",
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                                onDismiss()
+                            },
+                        ))
+                    }
                     add(ContextMenuItem(
-                        icon = Icons.Default.OpenInNew,
+                        icon = Icons.AutoMirrored.Filled.OpenInNew,
                         label = "Open",
                         color = CiyatoWhite,
                         action = {
