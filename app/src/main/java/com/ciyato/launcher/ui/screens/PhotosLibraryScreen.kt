@@ -331,7 +331,10 @@ fun PhotosLibraryScreen(
     var pendingLegacyDelete by remember { mutableStateOf<List<Uri>?>(null) }
     // What MediaStore actually holds, so a capped list is never described as the
     // whole library (F-107).
-    var libraryTotal by remember { mutableIntStateOf(0) }
+    // Null means MediaStore would not say how many there are. Distinct from 0,
+    // which means there are none - and distinct from "as many as we loaded",
+    // which is what a failed count used to collapse into.
+    var libraryTotal by remember { mutableStateOf<Int?>(null) }
     var loaded by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf(LibraryTab.COLLECTIONS) }
     var openCollection by remember { mutableStateOf<String?>(null) }
@@ -526,9 +529,14 @@ fun PhotosLibraryScreen(
                             // "items", not "photos": the library holds videos
                             // too now, and counting both under a photo label
                             // would misreport it the moment a video exists.
-                            libraryTotal > images.size ->
+                            // Unknown total: say what is shown without inventing a
+                            // denominator, rather than implying it is everything.
+                            libraryTotal == null ->
+                                pluralStringResource(R.plurals.count_items, images.size, images.size) +
+                                    " loaded"
+                            (libraryTotal ?: 0) > images.size ->
                                 "Newest ${images.size} of " +
-                                    pluralStringResource(R.plurals.count_items, libraryTotal, libraryTotal)
+                                    pluralStringResource(R.plurals.count_items, libraryTotal ?: 0, libraryTotal ?: 0)
                             else ->
                                 pluralStringResource(R.plurals.count_items, images.size, images.size) +
                                     " on this device"
@@ -857,7 +865,7 @@ private fun AiScanBanner(
     progress: Pair<Int, Int>?,
     result: PhotoAiLabeler.AiScanResult?,
     /** Photos MediaStore can see, so the coverage limit can be stated in context. */
-    libraryTotal: Int,
+    libraryTotal: Int?,
     onScan: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -903,7 +911,11 @@ private fun AiScanBanner(
                     // expect all 8,000 labelled, then conclude the model failed
                     // or that their older pets and documents do not exist -
                     // when those images were simply never looked at.
-                    libraryTotal > PhotoAiLabeler.DEFAULT_MAX_IMAGES ->
+                    // Only claims a cap when the library size is actually known.
+                    // An unknown total used to read as 0 and skip this entirely,
+                    // so the coverage limit went unstated for the very people
+                    // whose libraries were too big to count.
+                    (libraryTotal ?: 0) > PhotoAiLabeler.DEFAULT_MAX_IMAGES ->
                         "Groups your newest ${PhotoAiLabeler.DEFAULT_MAX_IMAGES} photos by what's " +
                             "in them, out of ${libraryTotal} on this device. Free, on-device, private."
                     else -> "Groups your photos by what's in them — free, on-device, private."

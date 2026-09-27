@@ -123,7 +123,11 @@ class FileCleanupWorker(
                     rootUri = rootRaw,
                     inspectedEntries = discovery.inspectedEntries,
                     hashedFiles = verified.size,
-                    wasBounded = discovery.reachedEntryLimit || skippedForBudget,
+                    // An unreadable folder bounds the scan exactly as surely as
+                    // a cap does: it is tree that was not looked at.
+                    wasBounded = discovery.reachedEntryLimit ||
+                        skippedForBudget ||
+                        discovery.unreadableFolders > 0,
                     groups = groups,
                     completedAt = System.currentTimeMillis(),
                 ),
@@ -166,14 +170,21 @@ class FileCleanupWorker(
         val folders = ArrayDeque<DocumentFile>().apply { add(root) }
         val files = mutableListOf<CleanupDocument>()
         var inspected = 0
+        var unreadable = 0
         while (folders.isNotEmpty() && inspected < MAX_DISCOVERED_ENTRIES) {
             val folder = folders.removeFirst()
-            val children = runCatching { folder.listFiles().sortedBy { it.uri.toString() } }.getOrDefault(emptyList())
+            val listing = runCatching { folder.listFiles().sortedBy { it.uri.toString() } }
+            if (listing.isFailure) unreadable += 1
+            val children = listing.getOrDefault(emptyList())
             for (document in children) {
                 if (inspected >= MAX_DISCOVERED_ENTRIES) break
                 inspected += 1
                 when {
                     document.isDirectory && document.canRead() -> folders.add(document)
+                    // A folder Android will not let us open is a part of the tree
+                    // that was never examined, and has to be reported as such
+                    // rather than dropped.
+                    document.isDirectory -> unreadable += 1
                     document.isFile && document.canRead() -> {
                         val size = document.length().coerceAtLeast(0L)
                         if (size in 1..MAX_BYTES_PER_FILE) {
@@ -202,6 +213,7 @@ class FileCleanupWorker(
             inspectedEntries = inspected,
             reachedEntryLimit = folders.isNotEmpty() || inspected >= MAX_DISCOVERED_ENTRIES,
             skippedForBudget = sameSizeOnly.size > selected.size,
+            unreadableFolders = unreadable,
         )
     }
 
@@ -219,6 +231,20 @@ class FileCleanupWorker(
         val inspectedEntries: Int,
         val reachedEntryLimit: Boolean,
         val skippedForBudget: Boolean,
+        /**
+         * Folders the scan could not open, so never looked inside.
+         *
+         * `listFiles()` on a SAF tree can throw, and a directory can report
+         * `canRead() == false`; both were silently dropped. Neither is
+         * reachedEntryLimit and neither is skippedForBudget, so a scan that could
+         * not read half the tree reported COMPLETE coverage - and the screen then
+         * told the person "no duplicates" about a folder it had not examined.
+         *
+         * That direction is safe for deletion (fewer candidates means nothing
+         * wrongly deleted) and wrong for the claim, which is the half that
+         * matters on a screen whose whole job is deciding what to remove.
+         */
+        val unreadableFolders: Int,
     )
     private data class VerifiedCleanupFile(val file: CleanupDocument, val hash: String)
 

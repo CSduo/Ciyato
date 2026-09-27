@@ -751,7 +751,8 @@ private fun CleanupReviewCard(
                             "Partial scan — ${cleanupResult.inspectedEntries} entries inspected, " +
                                 "${cleanupResult.hashedFiles} compared byte for byte. The scan stops " +
                                 "at a size and entry cap so it cannot run the battery down on a deep " +
-                                "tree, so there may be more duplicates it never reached.",
+                                "tree, and it skips folders Android will not let it open — so there " +
+                                "may be more duplicates it never reached.",
                             color = CiyatoMuted,
                             fontSize = 12.sp,
                             lineHeight = 17.sp,
@@ -768,8 +769,8 @@ private fun CleanupReviewCard(
                         "Partial scan: no duplicates among the " +
                             "${cleanupResult.hashedFiles} candidates compared, out of " +
                             "${cleanupResult.inspectedEntries} entries inspected. The scan stops at " +
-                            "a size and entry cap, so this does not clear the whole folder — " +
-                            "run it on a smaller folder to check the rest."
+                            "a size and entry cap and skips folders it cannot open, so this does " +
+                            "not clear the whole folder — run it on a smaller folder to check the rest."
                     } else {
                         "No duplicates found. All ${cleanupResult.hashedFiles} same-size " +
                             "candidates in this folder were compared byte for byte, and no files " +

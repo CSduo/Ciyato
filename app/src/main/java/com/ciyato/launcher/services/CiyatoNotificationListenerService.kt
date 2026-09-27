@@ -94,15 +94,23 @@ class CiyatoNotificationListenerService : NotificationListenerService() {
      * badges is a cosmetic failure; a launcher crashing is not.
      */
     private fun reconcileFromSystem() {
-        val active = runCatching {
-            activeNotifications
-                ?.mapNotNull { sbn ->
-                    val key = sbn.key ?: return@mapNotNull null
-                    val pkg = sbn.packageName ?: return@mapNotNull null
-                    Triple(key, pkg, sbn.isOngoing)
-                }
-                .orEmpty()
-        }.getOrDefault(emptyList())
+        // A failure must not look like "nothing is posted".
+        //
+        // This was getOrDefault(emptyList()), and `?.…orEmpty()` mapped a null
+        // return to empty as well - so a throw during binding teardown, or a null
+        // from a listener that is not connected yet, reconciled the tally to EMPTY
+        // and wiped every badge on Home until the next post or removal happened to
+        // rebuild it. My own code from earlier today, and the same
+        // failure-as-fact pattern I have been removing everywhere else.
+        //
+        // An empty ARRAY is different and is honoured: that genuinely means
+        // nothing is posted, and the badges should clear.
+        val posted = runCatching { activeNotifications }.getOrNull() ?: return
+        val active = posted.mapNotNull { sbn ->
+            val key = sbn.key ?: return@mapNotNull null
+            val pkg = sbn.packageName ?: return@mapNotNull null
+            Triple(key, pkg, sbn.isOngoing)
+        }
         if (tally.reconcile(active)) publish()
     }
 

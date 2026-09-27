@@ -113,15 +113,25 @@ object PhotoDeviceLibrary {
      */
     const val DEFAULT_IMAGE_LIMIT = 3_000
 
-    /** Total images MediaStore can see, for honest coverage reporting. */
-    suspend fun libraryCount(context: Context): Int = withContext(Dispatchers.IO) {
+    /**
+     * Total images MediaStore can see, or null when it would not say.
+     *
+     * Null rather than 0, and the distinction is the whole point of a function
+     * whose stated purpose is honest coverage reporting. Callers compare this
+     * against how many they loaded to decide between "newest N of M" and "N on
+     * this device" - so a failed query returning 0 made `0 > loaded` false and
+     * turned a capped list into a claim about the entire device. A failure
+     * rendered as completeness, in the one number that exists to prevent exactly
+     * that.
+     */
+    suspend fun libraryCount(context: Context): Int? = withContext(Dispatchers.IO) {
         runCatching {
             context.contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 arrayOf(MediaStore.Images.Media._ID),
                 null, null, null,
-            )?.use { it.count } ?: 0
-        }.getOrDefault(0)
+            )?.use { it.count }
+        }.getOrNull()
     }
 
     suspend fun loadImages(context: Context, limit: Int = DEFAULT_IMAGE_LIMIT): List<DeviceImage> =
@@ -401,13 +411,17 @@ object PhotoDeviceLibrary {
      * only the image count would under-state the library the moment a video
      * exists, which is the same class of dishonesty as F-107.
      */
-    suspend fun mediaCount(context: Context): Int = withContext(Dispatchers.IO) {
-        fun countOf(collection: Uri): Int = runCatching {
+    suspend fun mediaCount(context: Context): Int? = withContext(Dispatchers.IO) {
+        fun countOf(collection: Uri): Int? = runCatching {
             context.contentResolver.query(collection, arrayOf(MediaStore.MediaColumns._ID), null, null, null)
-                ?.use { it.count } ?: 0
-        }.getOrDefault(0)
-        countOf(MediaStore.Images.Media.EXTERNAL_CONTENT_URI) +
-            countOf(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+                ?.use { it.count }
+        }.getOrNull()
+        val images = countOf(MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        val videos = countOf(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+        // If EITHER table would not answer, the total is unknown. Summing a real
+        // count with a silent zero produces a number that looks authoritative and
+        // under-states the library - worse than admitting ignorance.
+        if (images == null || videos == null) null else images + videos
     }
 
     /**
