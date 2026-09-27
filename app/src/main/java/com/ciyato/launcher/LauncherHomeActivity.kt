@@ -18,6 +18,7 @@ import androidx.fragment.app.FragmentActivity
 import com.ciyato.launcher.data.AppCategory
 import com.ciyato.launcher.data.CrashReporter
 import com.ciyato.launcher.data.LocationHelper
+import com.ciyato.launcher.data.OrganizerEntry
 import com.ciyato.launcher.ui.screens.*
 import com.ciyato.launcher.ui.theme.CiyatoBg
 import com.ciyato.launcher.ui.theme.CiyatoTheme
@@ -308,9 +309,7 @@ private fun LauncherRoot(
             },
             onOpenOrganizerSettings = {
                 context.startActivity(
-                    Intent(context, MainActivity::class.java).apply {
-                        putExtra(MainActivity.EXTRA_START_DESTINATION, "settings")
-                    }
+                    MainActivity.intentFor(context, OrganizerEntry.Settings)
                 )
             },
             onCategoryTap   = { category -> dest = LauncherDest.CategoryDetail(category) },
@@ -344,23 +343,17 @@ private fun LauncherRoot(
                 openFocus = { dest = LauncherDest.FocusSession },
                 openFiles = {
                     context.startActivity(
-                        Intent(context, MainActivity::class.java).apply {
-                            putExtra(MainActivity.EXTRA_START_DESTINATION, "files")
-                        },
+                        MainActivity.intentFor(context, OrganizerEntry.Files),
                     )
                 },
                 openPhotos = {
                     context.startActivity(
-                        Intent(context, MainActivity::class.java).apply {
-                            putExtra(MainActivity.EXTRA_START_DESTINATION, "photos")
-                        },
+                        MainActivity.intentFor(context, OrganizerEntry.Photos),
                     )
                 },
                 openAgenda = {
                     context.startActivity(
-                        Intent(context, MainActivity::class.java).apply {
-                            putExtra(MainActivity.EXTRA_START_DESTINATION, "agenda")
-                        },
+                        MainActivity.intentFor(context, OrganizerEntry.Agenda),
                     )
                 },
                 openTheme = { dest = LauncherDest.ThemeStudio },
@@ -501,9 +494,7 @@ private fun LauncherRoot(
             },
             onOpenPhotos   = {
                 context.startActivity(
-                    Intent(context, MainActivity::class.java).apply {
-                        putExtra(MainActivity.EXTRA_START_DESTINATION, "photos")
-                    },
+                    MainActivity.intentFor(context, OrganizerEntry.Photos),
                 )
             },
         )

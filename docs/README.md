@@ -20,7 +20,7 @@ the document.
 |---|---|
 | [`README.md`](../README.md) | What Ciyato is, and how to build it |
 | [`docs/FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | **Every user-facing feature: owner route, maturity, permissions, tests, source.** The answer to "is this shipped, or just compiled?" |
-| [`CLAUDE_ARCHITECTURE_MAP.md`](../CLAUDE_ARCHITECTURE_MAP.md) | Who owns which surface, and which of the two activities it belongs to |
+| [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | **Why there are two activities, who owns what, and what the build enforces.** The ownership contract F-173 asks for |
 | [`DATA_INVENTORY.md`](../DATA_INVENTORY.md) | Every piece of data the app touches and where it goes. The Data Safety form is built from this |
 | [`PLAY_POSITIONING.md`](../PLAY_POSITIONING.md) | Core purpose, and the reasoning behind each restricted permission |
 | [`STORE_READINESS.md`](../STORE_READINESS.md) | Permission-by-permission release checklist |

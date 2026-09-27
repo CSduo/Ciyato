@@ -177,12 +177,35 @@
             </intent-filter>
         </service>
 
-        <!-- LauncherHomeActivity is the actual Android HOME screen. -->
+        <!--
+          LauncherHomeActivity is the actual Android HOME screen.
+
+          android:stateNotNeeded="true" was here, and it quietly cancelled the fix
+          that saves which launcher destination you were on. The attribute tells
+          Android the activity can be killed and restarted WITHOUT its state, so
+          the system stops retaining the saved-instance bundle across process
+          death - and the destination is held in rememberSaveable, which
+          round-trips through exactly that bundle.
+
+          The result was the defect F-079 describes surviving its own fix: a
+          rotation kept your place, but the system reclaiming memory while you
+          were three levels into Settings, the vault or storage cleanup put you
+          back on Home. The comment on `dest` claimed it survived "the system
+          recreating the launcher after reclaiming memory". It did not.
+
+          Dropping the attribute costs a launcher almost nothing - a home screen
+          restores from a handful of preferences either way - and buys back the
+          only case the saved destination existed for.
+
+          What is deliberately NOT restored: any in-progress dialog or selection.
+          Only the destination key is saved, so a half-finished delete or a
+          pending confirmation cannot be resumed; the person lands on the screen
+          with nothing selected, which is the contract F-079 asks for.
+        -->
         <activity
             android:name=".LauncherHomeActivity"
             android:exported="true"
-            android:launchMode="singleTask"
-            android:stateNotNeeded="true">
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />

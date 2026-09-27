@@ -1,5 +1,6 @@
 package com.ciyato.launcher
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
@@ -33,6 +34,7 @@ import androidx.navigation.navArgument
 import com.ciyato.launcher.data.AppCategory
 import com.ciyato.launcher.data.CrashReporter
 import com.ciyato.launcher.data.LocationHelper
+import com.ciyato.launcher.data.OrganizerEntry
 import com.ciyato.launcher.ui.components.CiyatoBottomNavBar
 import com.ciyato.launcher.ui.components.CiyatoNavItem
 import com.ciyato.launcher.ui.screens.*
@@ -62,25 +64,45 @@ import kotlinx.coroutines.launch
 class MainActivity : FragmentActivity() {
 
     companion object {
+        /**
+         * Still public because an app shortcut or an external deep link builds
+         * this extra by name. In-app callers must use [intentFor] instead: a
+         * string here is unchecked, and that is what F-074 was about.
+         */
         const val EXTRA_START_DESTINATION = "start_destination"
+
+        /**
+         * The typed way for the launcher layer to open the organizer layer.
+         *
+         * Home used to build these intents by hand with a raw string extra, and
+         * the organizer resolved them through a `when` that recognised six
+         * values and silently returned null for everything else. Passing
+         * "insights" — a real route — landed the person on Overview. So did a
+         * typo. Neither told anybody (F-044, F-074).
+         *
+         * singleTop is deliberate and depends on onNewIntent below: the
+         * organizer is one instance, so a second tap hands the destination to
+         * the running one rather than stacking a duplicate (F-182).
+         */
+        fun intentFor(context: Context, entry: OrganizerEntry): Intent =
+            Intent(context, MainActivity::class.java).apply {
+                putExtra(EXTRA_START_DESTINATION, entry.route)
+            }
 
         /**
          * The one place an incoming destination string becomes a route.
          *
          * onCreate and onNewIntent both resolve through this, so a deep link
          * cannot mean one thing on a cold start and another on a warm one —
-         * the "share one route contract" half of F-071.
+         * the "share one route contract" half of F-071. The vocabulary itself
+         * lives in [OrganizerEntry], which is also what the build checks
+         * against the NavHost.
          *
-         * Returns null when the caller named nothing, which is the signal to
-         * fall back to onboarding state rather than to a route.
+         * Returns null when the caller named nothing recognisable, which is the
+         * signal to fall back to onboarding state rather than to a route.
          */
-        fun routeForDestination(destination: String?): String? = when (destination) {
-            "overview", "files", "photos", "search", "settings", "agenda" -> destination
-            // Aliases kept for intents created before the rename.
-            "home", "dashboard" -> "overview"
-            "shared" -> "photos"
-            else -> null
-        }
+        fun routeForDestination(destination: String?): String? =
+            OrganizerEntry.fromExtra(destination)?.route
     }
 
     private val viewModel: LauncherViewModel by viewModels()
