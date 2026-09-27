@@ -9,6 +9,10 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)                // KSP for Room (#111)
+    // Consumer side of the baseline profile the :macrobenchmark module
+    // generates. Without this the generated profile is produced and then not
+    // packaged, which is a slower app and a green build (F-166).
+    id("androidx.baselineprofile")
 }
 
 // Fails the build with an explanation the moment a release assembly is requested
@@ -196,6 +200,34 @@ android {
             isDebuggable = true
             buildConfigField("boolean", "IS_INTERNAL",         "true")
         }
+        /**
+         * Release-shaped, measurable, and not publishable.
+         *
+         * Benchmarks have to measure something a user would actually run: R8
+         * and resource shrinking change what code exists, and a debuggable
+         * build is slower in ways that have nothing to do with the code being
+         * measured. So this inherits release.
+         *
+         * It is signed with the DEBUG key on purpose. The release signing
+         * config is deliberately null without real credentials so Gradle
+         * refuses to emit an unsigned release; a benchmark build needs neither
+         * the upload key nor the guard, and its APK must never be mistaken for
+         * a shippable one.
+         */
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            // Profileable, NOT debuggable. Making it debuggable disables R8
+            // and resource shrinking outright - Gradle says so - which would
+            // have measured a build that does not exist and called it release
+            // performance. Profileable lets macrobenchmark attach from API 29
+            // up; on 26-28 these benchmarks cannot run, which is a stated limit
+            // rather than a silently wrong number.
+            isDebuggable = false
+            isProfileable = true
+            buildConfigField("boolean", "IS_INTERNAL",         "true")
+        }
     }
 
     compileOptions {
@@ -273,6 +305,11 @@ dependencies {
 
     // ML Kit image labeling — bundled on-device model, free, no network needed.
     implementation("com.google.mlkit:image-labeling:17.0.9")
+
+    // Installs the baseline profile at first run. Already present transitively,
+    // declared explicitly because the profile is useless without it and a
+    // transitive dependency can disappear in an upgrade (F-166, F-184).
+    implementation(libs.androidx.profileinstaller)
 
     // Testing
     testImplementation(libs.junit)

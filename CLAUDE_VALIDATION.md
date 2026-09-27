@@ -224,6 +224,25 @@ removing the lock screen destroys access to files written under it. That is inhe
 mechanism, not a defect, and the vault now warns about it in the file list rather than
 explaining it afterwards.
 
+## Performance gates (F-166) - configured here, measured on hardware
+
+| What | Status |
+|---|---|
+| `:macrobenchmark` module, `benchmark` build type, baseline-profile plugin on both sides | **configured and compiling.** `./gradlew :macrobenchmark:compileBenchmarkKotlin` passes |
+| Cold / warm / hot start of `LauncherHomeActivity`, cold start of `MainActivity` | **written, never run.** Needs a device on API 29+ |
+| Frame timing: swipe-up to drawer, workspace page swipe, drawer scroll | **written, never run** |
+| Baseline profile | **not generated.** `./gradlew :app:generateBaselineProfile` needs a device, and the output has to be committed |
+| A release AAB containing `assets/dexopt/baseline.prof` | **not verified** |
+
+Two things are deliberate and worth knowing before the first run. The benchmark
+build type is **profileable, not debuggable** - making it debuggable disables R8 and
+resource shrinking outright, which would have measured a build that does not exist
+and called it release performance. And `profileable` needs API 29, above the app's
+own minSdk 26, so these benchmarks cannot run on 26-28 at all; that is a stated
+limit rather than a silently wrong number.
+
+Commands are in `ci/README.md`.
+
 ## Remaining device- and account-only gaps
 
 Recorded so they are never mistaken for completed code work: real-device gesture and OEM storage
