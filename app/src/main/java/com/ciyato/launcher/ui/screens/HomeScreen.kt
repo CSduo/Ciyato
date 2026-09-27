@@ -645,15 +645,17 @@ fun HomeScreen(
     }
 
     // ── Layout variables ───────────────────────────────────────────────────────
-    val columns = when (homeLayoutMode) {
-        "dense", "smart" -> 3
-        else -> 2
-    }
-    val cardHeight: Dp = when (homeLayoutMode) {
-        "dense" -> 108.dp
-        "smart" -> 126.dp
-        else -> 142.dp
-    }
+    // One source for the three density modes, shared with Theme Studio's preview.
+    //
+    // These were two inline `when` blocks over a preference string, and the
+    // preview drew a fixed 52dp sketch tile with no relationship to either - so
+    // it could not show what density actually does while sitting under a label
+    // claiming to reflect spacing (F-069). A preview that reimplements rather
+    // than renders can look right while production ignores the setting, and
+    // nothing catches it because the two share nothing.
+    val homeDensity = remember(homeLayoutMode) { HomeDensity.fromKey(homeLayoutMode) }
+    val columns = homeDensity.columns
+    val cardHeight: Dp = homeDensity.cardHeight
     val density = LocalDensity.current
     val categoryMoveThresholdPx = with(density) { cardHeight.toPx() * 0.52f }
     // Shared threshold for every swipe-up-to-open-drawer path (nested-scroll

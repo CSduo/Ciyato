@@ -30,6 +30,8 @@ import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.unit.Dp
+import com.ciyato.launcher.ui.theme.HomeDensity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -137,6 +139,17 @@ private fun ThemePreviewCard(
     denseLayout: Boolean,
     accent: Color,
 ) {
+    // Proportions from the same source Home uses, scaled to thumbnail size.
+    //
+    // The tiles were a hard-coded 52dp regardless of the selected density, so the
+    // sketch was the same picture either way while its caption claimed to show
+    // spacing (F-069). Now a density change visibly moves the preview, and a
+    // change to Home's own card height moves it too - which is the only kind of
+    // preview that stays true without somebody remembering to update two places.
+    val density = if (denseLayout) HomeDensity.Compact else HomeDensity.Spacious
+    val previewScale = 0.42f
+    val tileHeight = density.cardHeight * previewScale
+    val tileGap = density.spacing * previewScale
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -144,7 +157,9 @@ private fun ThemePreviewCard(
             .background(CiyatoBgEl)
             .border(1.dp, CiyatoSubtleBorder, RoundedCornerShape(22.dp))
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        // Gap follows the selected density too, so the sketch is denser as
+        // well as shorter - which is what changing density actually does.
+        verticalArrangement = Arrangement.spacedBy(tileGap.coerceAtLeast(6.dp))
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
@@ -161,8 +176,8 @@ private fun ThemePreviewCard(
                 // be live.
                 Text("Layout sketch", color = CiyatoWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(
-                    "${if (denseLayout) "Compact" else "Spacious"} spacing and accent only — " +
-                        "not wallpaper, icon shape or grid size",
+                    "${density.name} spacing, ${density.columns} across, and accent — " +
+                        "drawn at Home's real proportions. Not wallpaper, icon shape or font.",
                     color = CiyatoMuted,
                     fontSize = 12.sp,
                     maxLines = 2,
@@ -197,8 +212,13 @@ private fun ThemePreviewCard(
                 )
                 repeat(if (denseLayout) 3 else 2) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        PreviewTile(accent = accent, modifier = Modifier.weight(1f))
-                        PreviewTile(accent = accent, modifier = Modifier.weight(1f))
+                        repeat(density.columns.coerceAtMost(3)) {
+                            PreviewTile(
+                                accent = accent,
+                                height = tileHeight,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.weight(1f))
@@ -227,10 +247,10 @@ private fun ThemePreviewCard(
 }
 
 @Composable
-private fun PreviewTile(accent: Color, modifier: Modifier = Modifier) {
+private fun PreviewTile(accent: Color, height: Dp, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
-            .height(52.dp)
+            .height(height)
             .clip(RoundedCornerShape(14.dp))
             .background(CiyatoBgEl)
             .padding(10.dp),
