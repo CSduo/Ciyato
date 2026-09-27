@@ -55,6 +55,15 @@ fun SecureFileVaultScreen(
     val scope = rememberCoroutineScope()
     var isUnlocked by remember { mutableStateOf(false) }
     var authError by remember { mutableStateOf<String?>(null) }
+    // Read once, off the main thread: resolving the policy may have to create a
+    // Keystore key, and that is a binder round trip. The lesson of F-157 is that
+    // the main thread is the one place this must not happen.
+    var keyPolicy by remember {
+        mutableStateOf<VaultCrypto.KeyPolicy>(VaultCrypto.KeyPolicy.AuthBound(VaultCrypto.AUTH_VALIDITY_SECONDS))
+    }
+    LaunchedEffect(Unit) {
+        keyPolicy = withContext(Dispatchers.IO) { VaultCrypto.keyPolicy() }
+    }
     var vaultError by remember { mutableStateOf<String?>(null) }
     var vaultFiles by remember { mutableStateOf<List<String>>(emptyList()) }
 
@@ -97,7 +106,31 @@ fun SecureFileVaultScreen(
                     val reason = FileAccess.openExternally(context, Uri.fromFile(file))
                     if (reason != null) vaultMessage = reason
                 },
-                onFailure = { vaultMessage = "That file could not be decrypted." },
+                // "Could not be decrypted" used to cover three completely
+                // different events, and the person could not act on any of them
+                // because they all read the same (F-015).
+                //
+                // An expired grace period needs a re-prompt and nothing else.
+                // An invalidated key is unrecoverable and the person deserves to
+                // know it was the screen lock, not a corrupt file. Everything
+                // else is a genuine failure.
+                onFailure = { cause ->
+                    vaultMessage = when (cause) {
+                        is VaultCrypto.AuthenticationExpired -> {
+                            // Drop back to the lock screen rather than calling
+                            // authenticate() from here: that is the same state
+                            // the vault reaches on every re-lock, so it already
+                            // has a working Unlock button and an explanation
+                            // slot. A second prompt path would be a second
+                            // thing to keep correct.
+                            isUnlocked = false
+                            "The vault key needs a fresh unlock. Tap Unlock to open that file."
+                        }
+                        is VaultCrypto.KeyInvalidated -> cause.message
+                            ?: "That file's key was invalidated by a screen-lock change."
+                        else -> "That file could not be decrypted."
+                    }
+                },
             )
         }
     }
@@ -138,13 +171,27 @@ fun SecureFileVaultScreen(
                 // Decrypted copies from a previous session's "open" do not
                 // outlive that session.
                 File(context.cacheDir, "vault_open").listFiles()?.forEach { it.delete() }
-                files.count { file ->
-                    runCatching { VaultCrypto.verifyAndMigrate(file, context.packageName) }.isFailure
+                var invalidated = 0
+                val failures = files.count { file ->
+                    val outcome = runCatching { VaultCrypto.verifyAndMigrate(file, context.packageName) }
+                    if (outcome.exceptionOrNull() is VaultCrypto.KeyInvalidated) invalidated++
+                    outcome.isFailure
                 }
+                failures to invalidated
             }
-            vaultError = if (failed > 0) {
-                "$failed file${if (failed != 1) "s" else ""} could not be verified and were left unchanged."
-            } else null
+            val (failedCount, invalidatedCount) = failed
+            vaultError = when {
+                // An invalidated key is not "could not be verified". Reporting
+                // it that way invites the person to retry forever on something
+                // that will never succeed.
+                invalidatedCount > 0 ->
+                    "$invalidatedCount file${if (invalidatedCount != 1) "s" else ""} can no longer be " +
+                        "decrypted: the key was invalidated when the screen lock changed. The " +
+                        "files are still here and untouched, but there is no way to read them."
+                failedCount > 0 ->
+                    "$failedCount file${if (failedCount != 1) "s" else ""} could not be verified and were left unchanged."
+                else -> null
+            }
             refreshVaultFiles()
         }
     }
@@ -332,6 +379,38 @@ fun SecureFileVaultScreen(
                     item {
                         Text("${vaultFiles.size} encrypted file${if (vaultFiles.size != 1) "s" else ""}",
                             color = CiyatoMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
+                    }
+                    item {
+                        // What is actually protecting these files, and the one
+                        // thing that can take them away.
+                        //
+                        // The key is now bound in the Keystore to a recent device
+                        // authentication (F-015), which is a real strengthening
+                        // and carries a real cost: Android permanently
+                        // invalidates such a key if the screen lock is removed.
+                        // Saying so before it happens is the difference between a
+                        // documented trade-off and someone losing files and never
+                        // learning why. The unbound branch is not a warning - it
+                        // is a device that cannot hold that key, said plainly
+                        // rather than claimed either way.
+                        when (val policy = keyPolicy) {
+                            is VaultCrypto.KeyPolicy.AuthBound -> Text(
+                                "Files added now are locked to your device unlock, and stay unlocked " +
+                                    "for ${policy.validitySeconds / 60} minutes after you authenticate. " +
+                                    "Removing your screen lock makes them permanently unreadable.",
+                                color = CiyatoMuted,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                            is VaultCrypto.KeyPolicy.Unbound -> Text(
+                                policy.reason,
+                                color = CiyatoSec,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
                     }
                     vaultError?.let { message ->
                         item {

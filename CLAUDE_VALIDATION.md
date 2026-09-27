@@ -188,6 +188,42 @@ the build if a network host appears in the source without a disclosure row behin
 inverse drift - a new endpoint added with no copy to match - is caught mechanically rather than by
 repeating this audit.
 
+## Vault key policy (F-015) — what is proven and what is not
+
+The vault key is now bound in the Keystore to a recent device authentication. This is the
+change in the project with the worst failure mode, so its verification status is stated
+precisely rather than summarised.
+
+**Proven by unit test** (`VaultKeyVersionTest`): the version byte a file carries selects the
+key it is read with; both eras are recognised; an unknown version is recognised as ours but
+not readable, so it can never be mistaken for a legacy XOR file and destroyed (F-016); a
+header with no body is rejected; the grace period is inside a deliberate range.
+
+**Proven by construction:** no existing file is rewritten. The header already carried a
+version byte, so a v1 file keeps saying 1 and keeps being read with the v1 key. The v1 key is
+never deleted. An AES key in the Keystore is not extractable and not re-derivable, so the
+migration strategy is "do not migrate" — new files get the bound key, old files keep working.
+
+**NOT proven, and cannot be from the JVM:** `AndroidKeyStore` does not exist off-device. Every
+one of these needs the instrumentation run that F-053 covers, and none of it should be
+described as working until then:
+
+| Case | Expected |
+|---|---|
+| Key creation on a device with a secure lock screen | `keyPolicy()` returns `AuthBound` |
+| Key creation on a device with no lock screen | `keyPolicy()` returns `Unbound`, vault still functions, UI says so |
+| Decrypt inside the grace period | succeeds with no prompt |
+| Decrypt after the grace period expires | `AuthenticationExpired` → vault returns to its lock screen |
+| Biometric enrolment changed (new fingerprint added) | key survives — time-bound keys accepting device credential are not invalidated by enrolment |
+| Screen lock removed | `KeyInvalidated`, reported as unrecoverable and naming the cause; files left untouched |
+| Process recreation mid-session | vault re-locks, no decrypted cache survives |
+| A v1 file and a v2 file in the same vault | both open |
+
+**The trade-off, stated because it is real:** binding the key to the lock screen means
+removing the lock screen destroys access to files written under it. That is inherent to the
+mechanism, not a defect, and the vault now warns about it in the file list rather than
+explaining it afterwards.
+
 ## Remaining device- and account-only gaps
 
 Recorded so they are never mistaken for completed code work: real-device gesture and OEM storage

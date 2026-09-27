@@ -10,6 +10,9 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import android.security.keystore.UserNotAuthenticatedException
+import android.security.keystore.KeyPermanentlyInvalidatedException
+import android.os.Build
 
 /**
  * Real authenticated encryption for the Secure File Vault: AES-256-GCM with
@@ -30,13 +33,67 @@ import javax.crypto.spec.GCMParameterSpec
  */
 object VaultCrypto {
     private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
-    private const val KEY_ALIAS = "ciyato_vault_key_v1"
+
+    /**
+     * The original key: AES-256 in the Keystore, usable by this app at any time.
+     *
+     * Kept forever, and never deleted while a v1 file exists. It is the only
+     * thing that can read a file encrypted before the auth-bound key existed,
+     * and an AES key in the Keystore is not extractable and not re-derivable -
+     * losing it means losing the plaintext.
+     */
+    private const val KEY_ALIAS_V1 = "ciyato_vault_key_v1"
+
+    /**
+     * The auth-bound key: the same AES-256, plus "only usable shortly after the
+     * person authenticated to the device".
+     *
+     * The vault's user-facing gate is a BiometricPrompt in Compose, and the key
+     * itself did not care whether that prompt had ever run (F-015). Nothing
+     * outside the app could extract the key, but any code path inside the app
+     * that reached decrypt() bypassed the product's own notion of a fresh
+     * unlock - and "the UI always calls the gate first" is an invariant held by
+     * convention, which is the kind that stops being true during a refactor.
+     *
+     * Binding it in the Keystore moves that invariant somewhere a refactor
+     * cannot reach: with no recent authentication, Cipher.init throws.
+     */
+    private const val KEY_ALIAS_V2 = "ciyato_vault_key_v2"
+
+    /**
+     * How long after a device authentication the auth-bound key stays usable.
+     *
+     * This is the "clearly defined authenticated grace period" F-015 offers as
+     * the alternative to a per-file BiometricPrompt CryptoObject. Two minutes is
+     * chosen against two real failure modes rather than as a round number: much
+     * shorter and unlocking the vault then opening a third file re-prompts in
+     * the middle of a task; much longer and it stops being a binding to a fresh
+     * authentication at all.
+     *
+     * The window counts from any device authentication - the lock screen, or a
+     * BiometricPrompt that included device credential - not from Ciyato's own
+     * gate. In practice the person unlocked their phone to get here.
+     */
+    const val AUTH_VALIDITY_SECONDS = 120
+
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
     private const val GCM_TAG_BITS = 128
     // Byte constants can't be `const` — 0xC7 overflows Byte's literal range, and .toByte() is a
     // function call, which the compiler won't fold into a const initializer. Plain `val` instead.
     private val MAGIC: Byte = 0xC7.toByte()
-    private const val VERSION: Byte = 1
+
+    /**
+     * Which key a file was encrypted under, written into its own header.
+     *
+     * The header already carried a version byte, which is what makes this
+     * change possible without touching a single existing file: a v1 file keeps
+     * saying 1 and keeps being read with the v1 key, forever. Nothing has to be
+     * rewritten for the new policy to take effect on new files, and nothing
+     * that already worked can stop working.
+     */
+    internal const val VERSION_UNBOUND_KEY: Byte = 1
+    internal const val VERSION_AUTH_BOUND_KEY: Byte = 2
+
     private const val HEADER_SIZE = 3 // magic + version + ivLen
     /**
      * In-progress writes live in their own directory, not beside real files.
@@ -56,23 +113,153 @@ object VaultCrypto {
      */
     private const val TEMP_DIR_NAME = ".ciyato-vault-staging"
 
-    private fun getOrCreateKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
-        keyStore.getKey(KEY_ALIAS, null)?.let { return it as SecretKey }
+    /**
+     * What protects the vault right now, in words the UI can show.
+     *
+     * Reported rather than assumed, because the answer depends on the device: an
+     * auth-bound key cannot be created at all without a secure lock screen, and
+     * claiming protection the device is not providing is the exact class of
+     * defect this audit kept finding.
+     */
+    sealed interface KeyPolicy {
+        /** New files are bound to a device authentication within the grace period. */
+        data class AuthBound(val validitySeconds: Int) : KeyPolicy
 
+        /** No secure lock screen, so the Keystore will not hold an auth-bound key. */
+        data class Unbound(val reason: String) : KeyPolicy
+    }
+
+    /** Thrown when the auth-bound key needs a fresh device authentication. */
+    class AuthenticationExpired(cause: Throwable) : IOException(
+        "The vault key needs a fresh unlock before it can be used.",
+        cause,
+    )
+
+    /**
+     * Thrown when the auth-bound key is gone for good.
+     *
+     * This happens when the person removes their screen lock: the Keystore
+     * permanently invalidates every key that required authentication. It is not
+     * recoverable and it is not a bug - it is the cost of binding the key to the
+     * lock screen, and the reason the UI has to warn about it before it happens
+     * rather than explain it afterwards.
+     */
+    class KeyInvalidated(cause: Throwable) : IOException(
+        "This file was encrypted with a key that the device invalidated, which happens " +
+            "when the screen lock is removed. It cannot be decrypted.",
+        cause,
+    )
+
+    private fun keyStore(): KeyStore =
+        KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
+
+    private fun existingKey(alias: String): SecretKey? =
+        runCatching { keyStore().getKey(alias, null) as? SecretKey }.getOrNull()
+
+    /** The original unbound key, created on first use. Never auth-bound - see [KEY_ALIAS_V1]. */
+    private fun unboundKey(): SecretKey {
+        existingKey(KEY_ALIAS_V1)?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
         generator.init(
-            KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS_V1,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)
-                .build()
+                .build(),
         )
         return generator.generateKey()
     }
 
-    private fun isVaultFormat(bytes: ByteArray): Boolean =
-        bytes.size > HEADER_SIZE && bytes[0] == MAGIC && bytes[1] == VERSION
+    /**
+     * The auth-bound key, or null when this device will not hold one.
+     *
+     * Null is returned rather than thrown because a device with no secure lock
+     * screen is an ordinary situation, not an error: the vault still works, at
+     * the strength the device allows, and says so.
+     *
+     * Deliberately NOT invalidated by biometric enrolment. A time-bound key
+     * accepts either biometric or device credential, so adding a fingerprint
+     * does not destroy it - which matters, because the alternative silently
+     * turns "I registered a new finger" into "my files are gone".
+     */
+    private fun authBoundKey(): SecretKey? {
+        existingKey(KEY_ALIAS_V2)?.let { return it }
+        return runCatching {
+            val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
+            val builder = KeyGenParameterSpec.Builder(
+                KEY_ALIAS_V2,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setUserAuthenticationRequired(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                builder.setUserAuthenticationParameters(
+                    AUTH_VALIDITY_SECONDS,
+                    KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL,
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                builder.setUserAuthenticationValidityDurationSeconds(AUTH_VALIDITY_SECONDS)
+            }
+            generator.init(builder.build())
+            generator.generateKey()
+        }.getOrNull()
+    }
+
+    /** What the vault is actually enforcing, for the UI to state. */
+    fun keyPolicy(): KeyPolicy =
+        if (authBoundKey() != null) {
+            KeyPolicy.AuthBound(AUTH_VALIDITY_SECONDS)
+        } else {
+            KeyPolicy.Unbound(
+                "This device has no screen lock, so Android will not hold a key that " +
+                    "requires one. Vault files are still encrypted, but opening them does " +
+                    "not require unlocking the device.",
+            )
+        }
+
+    /** The key a NEW file is encrypted under, and the version byte that records it. */
+    private fun writeKey(): Pair<SecretKey, Byte> =
+        authBoundKey()?.let { it to VERSION_AUTH_BOUND_KEY } ?: (unboundKey() to VERSION_UNBOUND_KEY)
+
+    /** The key a file claiming [version] must be read with. */
+    private fun readKey(version: Byte): SecretKey = when (version) {
+        VERSION_AUTH_BOUND_KEY -> existingKey(KEY_ALIAS_V2)
+            ?: throw KeyInvalidated(IllegalStateException("auth-bound key is absent"))
+        else -> unboundKey()
+    }
+
+    /**
+     * Turns the Keystore's two survivable failures into ones a caller can act on.
+     *
+     * Both used to surface as whatever the platform threw, which the UI could
+     * only render as a generic failure. They are completely different events:
+     * one needs a re-prompt, the other is unrecoverable and the person deserves
+     * to be told why.
+     */
+    private inline fun <T> mappingKeyFailures(block: () -> T): T = try {
+        block()
+    } catch (e: UserNotAuthenticatedException) {
+        throw AuthenticationExpired(e)
+    } catch (e: KeyPermanentlyInvalidatedException) {
+        throw KeyInvalidated(e)
+    }
+
+    /** True for a vault file this build knows how to read. */
+    internal fun isVaultFormat(bytes: ByteArray): Boolean =
+        bytes.size > HEADER_SIZE && bytes[0] == MAGIC && isKnownVersion(bytes[1])
+
+    internal fun isKnownVersion(version: Byte): Boolean =
+        version == VERSION_UNBOUND_KEY || version == VERSION_AUTH_BOUND_KEY
+
+    /** The key version a vault file claims, or null when it is not one. */
+    internal fun versionOf(bytes: ByteArray): Byte? =
+        if (bytes.size > HEADER_SIZE && bytes[0] == MAGIC) bytes[1] else null
 
     /** Legacy scheme: raw bytes XORed against the app's package name. Not encryption — no key secrecy, no integrity. */
     private fun legacyXorDecode(bytes: ByteArray, packageName: String): ByteArray {
@@ -81,13 +268,17 @@ object VaultCrypto {
     }
 
     /** Encrypts [plain] with AES-256-GCM under a fresh random IV and returns the headered vault-file bytes. */
-    fun encrypt(plain: ByteArray): ByteArray {
-        val cipher = Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, getOrCreateKey()) }
+    fun encrypt(plain: ByteArray): ByteArray = mappingKeyFailures {
+        val (key, version) = writeKey()
+        val cipher = Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, key) }
         val iv = cipher.getIV() // keystore-generated random IV; never reused across encrypt calls
         val cipherText = cipher.doFinal(plain)
-        return ByteArray(HEADER_SIZE + iv.size + cipherText.size).also { out ->
+        ByteArray(HEADER_SIZE + iv.size + cipherText.size).also { out ->
             out[0] = MAGIC
-            out[1] = VERSION
+            // The version records WHICH KEY, not which format. Both versions are
+            // the same AES-256-GCM envelope; only the key policy differs, which
+            // is why a v1 file stays readable with nothing rewritten.
+            out[1] = version
             out[2] = iv.size.toByte()
             iv.copyInto(out, HEADER_SIZE)
             cipherText.copyInto(out, HEADER_SIZE + iv.size)
@@ -95,17 +286,19 @@ object VaultCrypto {
     }
 
     /** Decrypts headered vault-file bytes produced by [encrypt]. Throws if the header is missing/corrupt or the auth tag doesn't verify. */
-    fun decrypt(vaultBytes: ByteArray): ByteArray {
+    fun decrypt(vaultBytes: ByteArray): ByteArray = mappingKeyFailures {
         check(isVaultFormat(vaultBytes)) { "Not a recognized vault file" }
         val ivLen = vaultBytes[2].toInt() and 0xFF
         val cipherStart = HEADER_SIZE + ivLen
         check(vaultBytes.size > cipherStart) { "Truncated vault file" }
         val iv = vaultBytes.copyOfRange(HEADER_SIZE, cipherStart)
         val cipherText = vaultBytes.copyOfRange(cipherStart, vaultBytes.size)
+        // The file says which key wrote it, so a mixed vault reads correctly
+        // without anybody tracking which era a file came from.
         val cipher = Cipher.getInstance(TRANSFORMATION).apply {
-            init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
+            init(Cipher.DECRYPT_MODE, readKey(vaultBytes[1]), GCMParameterSpec(GCM_TAG_BITS, iv))
         }
-        return cipher.doFinal(cipherText)
+        cipher.doFinal(cipherText)
     }
 
     /**
@@ -196,7 +389,7 @@ object VaultCrypto {
         // not know, it came from a newer build or it is damaged; either way the
         // answer is to fail loudly and leave it alone, not to run a lossy
         // transform over it.
-        if (raw.isNotEmpty() && raw[0] == MAGIC) {
+        if (raw.isNotEmpty() && raw[0] == MAGIC && !isKnownVersion(if (raw.size > 1) raw[1] else 0)) {
             throw IOException(
                 "${file.name} looks like a Ciyato vault file with an unrecognized version " +
                     "(${if (raw.size > 1) raw[1].toInt() else -1}). Left untouched.",
