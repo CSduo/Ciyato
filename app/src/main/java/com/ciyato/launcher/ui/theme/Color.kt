@@ -151,3 +151,51 @@ val goldShimmerGradient = Brush.linearGradient(
         CiyatoGold.copy(alpha = 0f)
     )
 )
+
+// ─── Semantic roles ──────────────────────────────────────────────────────────
+//
+// CiyatoGold is not gold. It resolves to a silver / off-white accent, and has for
+// a long time, while dozens of call sites and gradient names still say Gold
+// (F-039). Compatibility explains the history and does not fix the hazard: a
+// maintainer reading `CiyatoGold` will eventually introduce actual gold believing
+// the token already is, or build a second "premium" variant rather than reusing
+// the one that exists.
+//
+// These are the names to reach for in new code. They are aliases rather than new
+// values on purpose - renaming the originals would touch several hundred call
+// sites in one commit, which is a large diff that cannot be reviewed for anything
+// except mechanical correctness. Aliasing lets the semantic name be correct
+// immediately and the migration happen where files are already being edited.
+//
+// The rule: new code uses these. Old code keeps working. Nothing changes colour.
+
+/** The primary accent. Silver / off-white, despite what CiyatoGold is called. */
+val AccentPrimary = CiyatoGold
+
+/** The quieter accent, for supporting text and inactive states. */
+val AccentSubtle = CiyatoSec
+
+/** Body and heading text on a dark surface. */
+val TextPrimary = CiyatoWhite
+
+/** Secondary text: captions, metadata, anything deliberately recessive. */
+val TextSecondary = CiyatoMuted
+
+/** The page behind everything. */
+val Surface0 = CiyatoBg
+
+/** A card or sheet lifted off the page. */
+val Surface1 = CiyatoBgEl
+
+/** A control or row lifted off a card. */
+val Surface2 = CiyatoBgEl2
+
+/** The quietest possible separator. */
+val BorderSubtle = CiyatoSubtleBorder
+
+/** A completed or safe state. Used sparingly - see the permission audit for why
+ *  green on something merely unremarkable is a claim nobody earned. */
+val StatusSuccess = CiyatoGreen
+
+/** Destructive and irreversible only. Never decoration, never risk-by-count. */
+val StatusDanger = CiyatoRed

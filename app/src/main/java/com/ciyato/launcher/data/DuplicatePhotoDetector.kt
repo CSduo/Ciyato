@@ -46,7 +46,17 @@ object DuplicatePhotoDetector {
      * grouping is coarse rather than trusting a name that overstated it.
      */
     private fun averageHash(bitmap: Bitmap): Long {
-        val small = Bitmap.createScaledBitmap(bitmap, HASH_SIZE + 1, HASH_SIZE + 1, true)
+        // Exactly HASH_SIZE square.
+        //
+        // This scaled to HASH_SIZE + 1 in both dimensions while the loops below
+        // read only HASH_SIZE rows and columns, so a 9x9 bitmap was allocated and
+        // scaled for every photo and 17 of its 81 pixels were thrown away
+        // (F-014). The +1 is the signature of dHash, which compares each pixel
+        // with its right-hand neighbour and therefore needs the extra column -
+        // but this is an average hash, which does not. The name and the
+        // arithmetic disagreed, and the arithmetic was the one that cost
+        // something on every image in the library.
+        val small = Bitmap.createScaledBitmap(bitmap, HASH_SIZE, HASH_SIZE, true)
         val luma = Array(HASH_SIZE) { row ->
             DoubleArray(HASH_SIZE) { col ->
                 small.getPixel(col, row).let { px ->

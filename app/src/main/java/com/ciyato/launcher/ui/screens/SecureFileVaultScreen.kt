@@ -36,6 +36,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import androidx.compose.runtime.DisposableEffect
+import android.provider.Settings
+import android.content.Intent
 
 /**
  * SecureFileVaultScreen
@@ -345,6 +347,27 @@ fun SecureFileVaultScreen(
                         Text("Authenticate to access encrypted files", color = CiyatoMuted)
                         authError?.let { message ->
                             Text(message, color = CiyatoRed, fontSize = 13.sp)
+                            // Somewhere to go, not just something to read.
+                            //
+                            // The fail-closed behaviour is right and the message
+                            // was accurate, but a screen that says "set a screen
+                            // lock" and offers no way to do it invites the person
+                            // to tap Unlock again and conclude the vault is broken
+                            // (F-019). This is the action that turns a dead end
+                            // into a next step.
+                            if (message.contains("screen lock", ignoreCase = true)) {
+                                TextButton(onClick = {
+                                    runCatching {
+                                        context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+                                    }.onFailure {
+                                        runCatching {
+                                            context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                                        }
+                                    }
+                                }) {
+                                    Text("Open security settings", color = CiyatoGold, fontSize = 13.sp)
+                                }
+                            }
                         }
                         Button(onClick = { authError = null; authenticate() },
                             colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold)) {
