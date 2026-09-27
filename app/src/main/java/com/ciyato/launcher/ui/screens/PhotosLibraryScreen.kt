@@ -51,6 +51,8 @@ import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -160,8 +162,14 @@ private fun mediaAccess(context: Context): MediaAccess {
 }
 
 /**
- * Ciyato Photos — device-wide gallery in smart collections.
- * Falls back to the curated photo-picker flow when media permission is denied.
+ * Ciyato Photos — the device library in collections.
+ *
+ * One shell, three capability states. With full access it groups the whole
+ * library; with Android's partial "Select photos" grant it describes only what
+ * was shared and says so; with no access it keeps its own header and navigation
+ * and states what access would buy, rather than being replaced by a different
+ * product (F-110). The curated picker flow is still reachable from there, as a
+ * choice.
  */
 @Composable
 fun PhotosLibraryScreen(
@@ -172,7 +180,12 @@ fun PhotosLibraryScreen(
     val context = LocalContext.current
 
     var access by remember { mutableStateOf(mediaAccess(context)) }
-    var requestedOnce by remember { mutableStateOf(false) }
+    // Saveable, because what it controls is which of two different actions the
+    // button performs (F-111). Losing it to a rotation puts the person back on
+    // "Allow photo access", which after a permanent denial opens a system dialog
+    // that no longer appears - a button that does nothing, on the screen whose
+    // whole job at that moment is to explain what to do next.
+    var requestedOnce by rememberSaveable { mutableStateOf(false) }
     var reloadToken by remember { mutableIntStateOf(0) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -198,40 +211,110 @@ fun PhotosLibraryScreen(
     }
 
     if (access == MediaAccess.NONE) {
-        // Curated flow remains the no-permission experience, with a one-tap
-        // upgrade to the full library.
-        Box {
-            PhotosScreen(viewModel = viewModel, onBack = onBack)
-            Text(
-                if (requestedOnce) "Enable photo access in Settings" else "Show full gallery",
-                color = CiyatoBg,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp,
+        // The shell stays. Only the capability changes.
+        //
+        // Denying photo access used to replace this screen with a different
+        // product: PhotosScreen, the curated picker flow, with a floating gold
+        // pill overlaid on top of it. Different header, different navigation,
+        // different content model — so the honest reading of what happened was
+        // "I navigated somewhere else", not "this feature has less to work with"
+        // (F-110). A permission decision should reduce what a screen can do, not
+        // swap the screen.
+        //
+        // So: same Scaffold, same title, same back behaviour, and a restricted
+        // state stated inside it. The picker flow is still available and still
+        // useful without permission — it is now something the person chooses
+        // rather than something that happens to them, and its back returns here
+        // instead of out of Photos.
+        var usingPicker by rememberSaveable { mutableStateOf(false) }
+        if (usingPicker) {
+            PhotosScreen(viewModel = viewModel, onBack = { usingPicker = false })
+            return
+        }
+
+        fun requestAccess() {
+            // After a permanent denial the system dialog no longer appears, so
+            // the second attempt has to go to app settings or it does nothing
+            // and looks broken.
+            if (requestedOnce) {
+                runCatching {
+                    context.startActivity(
+                        Intent(
+                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            android.net.Uri.parse("package:${context.packageName}"),
+                        ),
+                    )
+                }.onFailure {
+                    Toast.makeText(context, "Could not open app settings", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                permissionLauncher.launch(mediaPermissions())
+            }
+        }
+
+        Scaffold(
+            containerColor = CiyatoBg,
+            topBar = {
+                CiyatoTopBar(
+                    title = "Ciyato Photos",
+                    subtitle = "No photo access yet",
+                    onBack = onBack,
+                )
+            },
+        ) { padding ->
+            Column(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 24.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(CiyatoGold)
-                    .clickable {
-                        // After a permanent denial the system dialog no longer
-                        // appears, so route the second attempt to app settings.
-                        if (requestedOnce) {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(
-                                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                        android.net.Uri.parse("package:${context.packageName}"),
-                                    ),
-                                )
-                            }.onFailure {
-                                Toast.makeText(context, "Could not open app settings", Toast.LENGTH_SHORT).show()
-                            }
-                        } else {
-                            permissionLauncher.launch(mediaPermissions())
-                        }
-                    }
-                    .padding(horizontal = 18.dp, vertical = 10.dp),
-            )
+                    .fillMaxSize()
+                    .padding(top = padding.calculateTopPadding())
+                    .padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Spacer(Modifier.height(24.dp))
+                Icon(
+                    Icons.Default.PhotoLibrary,
+                    null,
+                    tint = CiyatoMuted,
+                    modifier = Modifier.size(44.dp),
+                )
+                Text(
+                    "Photos needs access to organise your library",
+                    color = CiyatoWhite,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                // Says what access buys and what its absence costs, because the
+                // whole reason to grant it is the difference between the two.
+                Text(
+                    "With access it groups your library into collections, finds duplicates, " +
+                        "labels photos on this device, and builds PDFs. Without it, Ciyato " +
+                        "can still work with photos you hand it one at a time.",
+                    color = CiyatoMuted,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                )
+                Button(
+                    onClick = { requestAccess() },
+                    colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold),
+                ) {
+                    Text(
+                        if (requestedOnce) "Enable photo access in Settings" else "Allow photo access",
+                        color = Color.Black,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                TextButton(onClick = { usingPicker = true }) {
+                    Text("Or pick photos one at a time", color = CiyatoSec, fontSize = 13.sp)
+                }
+                if (requestedOnce) {
+                    Text(
+                        "Android stops showing its own prompt after a refusal, so this opens " +
+                            "Ciyato's page in Settings.",
+                        color = CiyatoMuted,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                    )
+                }
+            }
         }
         return
     }
