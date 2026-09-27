@@ -133,7 +133,10 @@ fun StickyNotesScreen(
         }
 
         LazyVerticalStaggeredGrid(
-            columns = StaggeredGridCells.Fixed(2),
+            // Notes are text-first, so the tile minimum is generous: two
+            // columns on a phone, four on a tablet, rather than two very
+            // wide ones.
+            columns = adaptiveStaggeredGrid(TileSize.Note),
             contentPadding = PaddingValues(
                 start = 12.dp, end = 12.dp,
                 top = padding.calculateTopPadding() + 8.dp,

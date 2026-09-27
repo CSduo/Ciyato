@@ -327,6 +327,11 @@ fun WallpaperPickerScreen(
                                 }
                             }
                         }
+                        // Keeps the last row's previews the same size as every
+                        // other row's rather than stretching them across the
+                        // gap. Unlike the dashboard these are fixed-ratio
+                        // previews in a short list, so the weight is doing real
+                        // work here instead of faking alignment (F-085).
                         repeat(3 - rowWallpapers.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }

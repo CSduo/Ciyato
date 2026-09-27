@@ -73,6 +73,10 @@ import com.ciyato.launcher.ui.theme.CiyatoWhite
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import androidx.compose.runtime.derivedStateOf
 import com.ciyato.launcher.data.MediaAccess
+import com.ciyato.launcher.ui.theme.currentWidth
+import com.ciyato.launcher.ui.theme.CiyatoWidth
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 
 /**
  * Organizer home — a real file/storage dashboard.
@@ -388,27 +392,61 @@ private val CATEGORY_TILES = listOf(
     CategoryTileSpec(CategoryKey.WHATSAPP, "WhatsApp", Icons.Default.Whatsapp, CiyatoGreen),
 )
 
+/**
+ * How many category tiles fit across, by window width.
+ *
+ * Two on a compact phone rather than three: a tile carries an icon, a title and
+ * a count, and three of those at 320dp compressed the labels to the point of
+ * truncation.
+ */
+@Composable
+private fun categoryColumns(): Int = when (currentWidth()) {
+    CiyatoWidth.COMPACT -> 2
+    CiyatoWidth.MEDIUM -> 3
+    CiyatoWidth.EXPANDED -> 4
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CategoryGrid(
     summaries: Map<CategoryKey, MediaLibraryRepository.CategorySummary>,
     onOpenCategory: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        CATEGORY_TILES.chunked(3).forEach { rowTiles ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                rowTiles.forEach { tile ->
-                    val summary = summaries[tile.key]
-                    CategoryTile(
-                        spec = tile,
-                        count = summary?.count ?: 0,
-                        // No summary yet (still loading) is also "unknown", not zero.
-                        unavailable = summary == null || summary.unavailable,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onOpenCategory(tile.key.name) },
-                    )
-                }
-                repeat(3 - rowTiles.size) { Spacer(Modifier.weight(1f)) }
-            }
+    // A real grid, not rows padded out with invisible spacers.
+    //
+    // Seven tiles in fixed three-column rows left a final row holding one card
+    // and two empty weights, which reads as missing content rather than as
+    // hierarchy - on a minimal surface that is the whole impression (F-085). The
+    // spacers existed only to make the last row align, which is faking a layout
+    // rather than having one.
+    //
+    // Adaptive also fixes the other half: three columns compressed these labels
+    // badly at 320dp, and gives four or five columns the room on a tablet.
+    // FlowRow rather than LazyVerticalGrid because there are seven items inside a
+    // scrolling parent, and nesting a lazy grid in a scrollable would need a
+    // fixed height - which is how the fixed row count got here in the first
+    // place.
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        maxItemsInEachRow = categoryColumns(),
+    ) {
+        val columns = categoryColumns()
+        CATEGORY_TILES.forEach { tile ->
+            val summary = summaries[tile.key]
+            CategoryTile(
+                spec = tile,
+                count = summary?.count ?: 0,
+                // No summary yet (still loading) is also "unknown", not zero.
+                unavailable = summary == null || summary.unavailable,
+                // Each tile takes one column's share of the row, so a short final
+                // row leaves its tiles at the same size as every other rather
+                // than stretching them across the gap.
+                modifier = Modifier.weight(1f, fill = false)
+                    .fillMaxWidth(1f / columns),
+                onClick = { onOpenCategory(tile.key.name) },
+            )
         }
     }
 }

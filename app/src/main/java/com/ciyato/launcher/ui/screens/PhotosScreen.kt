@@ -94,6 +94,9 @@ import java.util.Date
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ciyato.launcher.ui.theme.adaptiveStaggeredGrid
+import com.ciyato.launcher.ui.theme.adaptiveGrid
+import com.ciyato.launcher.ui.theme.TileSize
 
 private enum class PhotosMode(val label: String) {
     GRID("Grid"),
@@ -486,7 +489,7 @@ private fun PhotoGrid(
         return
     }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
+        columns = adaptiveGrid(TileSize.PhotoThumb),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

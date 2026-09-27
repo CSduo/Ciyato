@@ -61,6 +61,9 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ciyato.launcher.ui.theme.adaptiveStaggeredGrid
+import com.ciyato.launcher.ui.theme.adaptiveGrid
+import com.ciyato.launcher.ui.theme.TileSize
 
 private data class AppLibraryGroup(
     val category: AppCategory,
@@ -173,7 +176,7 @@ fun AppDrawerScreen(
                 )
             }
             else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+                columns = adaptiveGrid(TileSize.CategoryCard),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -300,7 +303,7 @@ private fun AppLibraryGroupSheet(
             Text(pluralStringResource(R.plurals.count_apps, group.apps.size, group.apps.size), color = CiyatoMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 3.dp))
             HorizontalDivider(color = CiyatoBorder, modifier = Modifier.padding(vertical = 16.dp))
             LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
+                columns = adaptiveGrid(TileSize.AppTile),
                 modifier = Modifier.height(360.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -340,7 +343,7 @@ private fun SearchResultsGrid(
         return
     }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(4),
+        columns = adaptiveGrid(TileSize.AppTile),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

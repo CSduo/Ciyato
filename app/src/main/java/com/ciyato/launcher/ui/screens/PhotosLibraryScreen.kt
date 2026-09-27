@@ -113,6 +113,9 @@ import com.ciyato.launcher.R
 import android.net.Uri
 import com.ciyato.launcher.data.PhotoAiCollectionStore
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ciyato.launcher.ui.theme.adaptiveStaggeredGrid
+import com.ciyato.launcher.ui.theme.adaptiveGrid
+import com.ciyato.launcher.ui.theme.TileSize
 
 private enum class LibraryTab(val label: String) {
     COLLECTIONS("Collections"), GRID("Grid"), TIMELINE("Timeline"), TRASH("Trash")
@@ -614,7 +617,9 @@ fun PhotosLibraryScreen(
                     }
                 }
                 tab == LibraryTab.COLLECTIONS -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    // A collection card carries a title and a count, so it
+                    // needs real width. Two on a phone, four on a tablet.
+                    columns = adaptiveGrid(TileSize.CollectionCard),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = padding.calculateBottomPadding() + 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -680,7 +685,7 @@ fun PhotosLibraryScreen(
                 else -> {
                     val groups = remember(images) { PhotoDeviceLibrary.timeline(images) }
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
+                        columns = adaptiveGrid(TileSize.PhotoThumb),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = padding.calculateBottomPadding() + 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -912,7 +917,11 @@ private fun PhotoGrid(
     onToggle: (String) -> Unit,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Fixed(4),
+        // Fixed(4) gave ~68dp thumbnails on a 320dp phone, below a usable
+        // touch target, and ~200dp on a tablet, which read as placeholder
+        // art (F-109). Adaptive fits as many as the width allows and never
+        // goes under the minimum.
+        columns = adaptiveGrid(TileSize.PhotoThumb),
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),

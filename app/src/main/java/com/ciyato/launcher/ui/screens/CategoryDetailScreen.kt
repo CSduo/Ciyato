@@ -48,6 +48,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ciyato.launcher.ui.theme.currentWidth
+import com.ciyato.launcher.ui.theme.CiyatoWidth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +74,16 @@ fun CategoryDetailScreen(
         viewModel.byCategory(category)
     }
 
+    // Columns follow the window, not the phone this was written on.
+    //
+    // Four was hard-coded, so a 320dp screen gave cramped tiles with truncated
+    // labels and a tablet gave four very wide ones (F-168). Read here rather than
+    // inside the list builder, which is not a composable scope.
+    val appColumns = when (currentWidth()) {
+        CiyatoWidth.COMPACT -> 4
+        CiyatoWidth.MEDIUM -> 6
+        CiyatoWidth.EXPANDED -> 8
+    }
     val filteredApps = remember(categoryApps, searchQuery) {
         if (searchQuery.isBlank()) categoryApps
         else categoryApps.filter {
@@ -176,8 +188,15 @@ fun CategoryDetailScreen(
                         }
                     }
                 } else {
-                    // 4-column grid rows
-                    val rows = filteredApps.chunked(4)
+                    // Columns follow the window, not the phone this was written on.
+                    //
+                    // Four was hard-coded, so a 320dp screen gave cramped tiles
+                    // with truncated labels and a tablet gave four very wide ones
+                    // (F-168). The trailing spacers were padding the last row out
+                    // to four, which keeps tiles a consistent size - that part is
+                    // real work rather than faked alignment, so it stays, now
+                    // against a column count that means something.
+                    val rows = filteredApps.chunked(appColumns)
                     items(rows) { rowApps ->
                         Row(modifier = Modifier.fillMaxWidth()) {
                             rowApps.forEach { app ->
@@ -188,7 +207,7 @@ fun CategoryDetailScreen(
                                     modifier = Modifier.weight(1f),
                                 )
                             }
-                            repeat(4 - rowApps.size) { Spacer(Modifier.weight(1f)) }
+                            repeat(appColumns - rowApps.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                 }
