@@ -38,6 +38,8 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 
 /**
  * SettingsScreen — fully expanded with all configurable options.
@@ -77,6 +79,22 @@ fun SettingsScreen(
     val lockedAppsCsv      by viewModel.lockedApps.collectAsStateWithLifecycle()
     val removedAppsCsv     by viewModel.removedApps.collectAsStateWithLifecycle()
     val locationGranted    = LocationHelper.hasPermission(context)
+    // Whether Ciyato is actually the home screen.
+    //
+    // The "Set Ciyato as Home" row never said. Someone who had already set it saw
+    // an invitation to do something already done, and someone who had not got no
+    // hint that this was why Home was not showing - on the one screen where they
+    // would go looking. Re-checked on resume because the answer changes in system
+    // settings, outside this app.
+    var isHomeLauncher by remember { mutableStateOf(isDefaultLauncher(context)) }
+    val homeRoleLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        // The result code is not the answer - a cancelled and an accepted dialog
+        // can both return RESULT_CANCELED depending on the OEM - so ask the role.
+        isHomeLauncher = isDefaultLauncher(context)
+    }
+
     val notificationBadges by viewModel.notificationBadges.collectAsStateWithLifecycle()
     // Notification access is granted in system settings, so the answer changes
     // while Ciyato is in the background - the same reason the Insights screen
@@ -87,6 +105,7 @@ fun SettingsScreen(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 notificationAccessGranted = isNotificationListenerEnabled(context)
+                isHomeLauncher = isDefaultLauncher(context)
             }
         }
         settingsLifecycleOwner.lifecycle.addObserver(observer)
@@ -139,11 +158,37 @@ fun SettingsScreen(
             item { SectionHeader("Launcher") }
             item {
                 CiyatoListCard(
-                    title = "Set Ciyato as Home",
-                    subtitle = "Choose Ciyato as your default launcher",
+                    title = if (isHomeLauncher) "Ciyato is your Home app" else "Set Ciyato as Home",
+                    subtitle = if (isHomeLauncher) {
+                        "The Home button opens Ciyato"
+                    } else {
+                        "Ciyato is installed but not your launcher yet — tap to change that"
+                    },
                     icon = Icons.Default.Home,
-                    iconColor = CiyatoGold,
-                    onClick = { try { context.startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) } catch (_: Exception) {} }
+                    iconColor = if (isHomeLauncher) CiyatoSec else CiyatoGold,
+                    onClick = {
+                        // No dead branch here. A row that looks tappable and does
+                        // nothing is the exact defect F-171 was about, so when
+                        // Ciyato is already Home this opens Android's Home app
+                        // settings - where the person can see the setting that is
+                        // being reported, and change it if they want.
+                        if (isHomeLauncher) {
+                            runCatching {
+                                context.startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+                            }
+                            return@CiyatoListCard
+                        }
+                        // Asks directly instead of opening a list.
+                        //
+                        // This used to launch ACTION_HOME_SETTINGS, a system screen
+                        // where the person then has to find Ciyato among their
+                        // launchers. RoleManager shows a one-tap "make Ciyato your
+                        // Home app?" dialog on Android 10 and up, which onboarding
+                        // has always used - so Settings was offering a worse route
+                        // to the same thing. requestDefaultLauncher picks the best
+                        // available and falls back to the list below API 29.
+                        requestDefaultLauncher(context, homeRoleLauncher::launch) {}
+                    },
                 )
             }
 
@@ -678,14 +723,33 @@ fun SettingsScreen(
                     onClick = { showResetAllDialog = true }
                 )
             }
-            item {
-                CiyatoListCard(
-                    title = "Switch back to system launcher",
-                    subtitle = "Change Home app in system settings",
-                    icon = Icons.AutoMirrored.Filled.Launch,
-                    iconColor = CiyatoSec,
-                    onClick = { try { context.startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) } catch (_: Exception) {} }
-                )
+            // Only offered when there is something to switch back FROM.
+            //
+            // It was always shown, so a person who had never made Ciyato their
+            // launcher was invited to stop using it as one. Android has no
+            // "release the Home role" API either, so this genuinely does need the
+            // system screen - and it now says so if it cannot open, rather than
+            // swallowing the failure and looking like a dead row.
+            if (isHomeLauncher) {
+                item {
+                    CiyatoListCard(
+                        title = "Switch back to system launcher",
+                        subtitle = "Opens Android's Home app settings. Ciyato stays installed.",
+                        icon = Icons.AutoMirrored.Filled.Launch,
+                        iconColor = CiyatoSec,
+                        onClick = {
+                            runCatching {
+                                context.startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+                            }.onFailure {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "This phone has no Home app settings screen",
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        },
+                    )
+                }
             }
         }
     }

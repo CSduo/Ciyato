@@ -371,12 +371,24 @@ fun WallpaperPickerScreen(
                                     wp = wp,
                                     isSelected = selected == wp.id,
                                     onClick = {
-                                        viewModel.setAppliedGradientId(wp.id)
-                                        applyGradientWallpaper(context, wp)
-                                        viewModel.setCiyatoImageWallpaper("")
-                                        viewModel.setCiyatoVideoWallpaper("")
-                                        viewModel.setUseSystemWallpaper(true)
-                                        imageStatus = "Applied as the Android system wallpaper. Ciyato follows it."
+                                        // Apply FIRST, then record. The other order
+                                        // ticked the preset and reported success
+                                        // before knowing whether the wallpaper had
+                                        // actually been set - and the function
+                                        // swallowed its own failures, so it never
+                                        // could know.
+                                        if (applyGradientWallpaper(context, wp)) {
+                                            viewModel.setAppliedGradientId(wp.id)
+                                            viewModel.setCiyatoImageWallpaper("")
+                                            viewModel.setCiyatoVideoWallpaper("")
+                                            viewModel.setUseSystemWallpaper(true)
+                                            imageStatus =
+                                                "Applied as the Android system wallpaper. Ciyato follows it."
+                                        } else {
+                                            imageStatus =
+                                                "Android refused the wallpaper change. Some phones only " +
+                                                "allow it from their own wallpaper app."
+                                        }
                                     }
                                 )
                             }
@@ -632,12 +644,31 @@ private fun GradientWallpaperCard(
     }
 }
 
-private fun applyGradientWallpaper(context: android.content.Context, wp: GradientWallpaper) {
-    try {
+/**
+ * Paints a gradient as the Android system wallpaper. Returns whether it worked.
+ *
+ * It used to return Unit and swallow every failure in a bare `catch (_: Exception)
+ * {}` - while the caller unconditionally reported "Applied as the Android system
+ * wallpaper" and ticked the preset as the active one. So a failed application
+ * claimed success and left a tick on a wallpaper that was never set.
+ *
+ * The failures here are real, not theoretical. `setBitmap` needs SET_WALLPAPER and
+ * can be refused; a full-screen ARGB_8888 bitmap is around 12 MB on a 1440p phone
+ * and allocating one can fail under memory pressure; and some OEM images restrict
+ * wallpaper changes outright.
+ *
+ * Also recycles the bitmap. Twelve megabytes was being left for the collector on
+ * every tap, and someone trying six presets in a row is the exact person most
+ * likely to feel it.
+ */
+private fun applyGradientWallpaper(context: android.content.Context, wp: GradientWallpaper): Boolean {
+    var bitmapRef: android.graphics.Bitmap? = null
+    return try {
         val wm = WallpaperManager.getInstance(context)
         val dm = context.resources.displayMetrics
         val bitmap = android.graphics.Bitmap.createBitmap(dm.widthPixels, dm.heightPixels,
             android.graphics.Bitmap.Config.ARGB_8888)
+        bitmapRef = bitmap
         val canvas = android.graphics.Canvas(bitmap)
         val paint = android.graphics.Paint()
         val colorInts = wp.colors.map { c ->
@@ -656,7 +687,15 @@ private fun applyGradientWallpaper(context: android.content.Context, wp: Gradien
         paint.shader = shader
         canvas.drawRect(0f, 0f, dm.widthPixels.toFloat(), dm.heightPixels.toFloat(), paint)
         wm.setBitmap(bitmap)
-    } catch (_: Exception) {}
+        true
+    } catch (_: Exception) {
+        // Includes OutOfMemoryError's checked cousins and the SecurityException an
+        // OEM can throw. The caller needs to know, so this reports rather than
+        // hides it.
+        false
+    } finally {
+        bitmapRef?.recycle()
+    }
 }
 
 private data class VideoValidationResult(val isValid: Boolean, val message: String)

@@ -210,7 +210,30 @@ fun SearchScreen(
                             val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
                                 android.net.Uri.parse("market://search?q=${searchQuery}"))
                             intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                            try { it.startActivity(intent) } catch (_: Exception) {}
+                            // A button that does nothing when the Play Store is
+                            // absent - de-Googled builds, some regions, and
+                            // enterprise images - is a dead control. The web
+                            // fallback works everywhere there is a browser, and if
+                            // even that fails the person is told rather than left
+                            // tapping.
+                            val opened = runCatching { it.startActivity(intent) }.isSuccess ||
+                                runCatching {
+                                    it.startActivity(
+                                        android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(
+                                                "https://play.google.com/store/search?q=$searchQuery",
+                                            ),
+                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                }.isSuccess
+                            if (!opened) {
+                                android.widget.Toast.makeText(
+                                    it,
+                                    "No app store or browser on this phone",
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                            }
                         })
                     }
                 } else {

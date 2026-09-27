@@ -155,6 +155,20 @@ cannot quietly spend a data allowance.
 **Photos-to-PDF** and **file exports** write to a location chosen through the
 same picker. Same caveat, same reason.
 
+**Handing a search to another app.** When an app search finds nothing, Ciyato
+offers to look in the Play Store. Tapping that builds an `ACTION_VIEW` intent
+containing what you typed and hands it to the Play Store app, or to a browser if
+that is absent.
+
+Ciyato opens no connection of its own here — the other app performs the
+navigation, in its own process, on your explicit tap. But the words you typed do
+leave the device inside that URL, so it belongs in this document rather than being
+treated as invisible because a different app made the request. It happens only on
+that tap, and only with the search text.
+
+The same applies to opening a file: `FileAccess` hands a content URI to whichever
+app you pick, and what that app does with it is its own business.
+
 ---
 
 ## 5. Traceability

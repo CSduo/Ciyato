@@ -158,10 +158,24 @@ class PermissionRegistryTest {
         val notContacted = (claimed - sourceHosts).sorted()
         assertTrue("the registry names hosts no source file contacts: $notContacted", notContacted.isEmpty())
 
-        // example.com appears only as a placeholder and as an intent probe for
+        // Two categories that are not Ciyato making a request.
+        //
+        // example.com appears only as a text placeholder and as an intent probe for
         // finding the default browser; neither transmits anything.
-        val placeholders = setOf("example.com", "www.example.com", "open-meteo.com", "nominatim.org")
-        val undisclosed = (sourceHosts - claimed - placeholders).sorted()
+        //
+        // play.google.com is a HANDOFF, not a request: Ciyato builds an ACTION_VIEW
+        // intent and another app - the Play Store or a browser - performs the
+        // navigation, on an explicit tap, in its own process. Ciyato opens no socket
+        // to it. The distinction matters because a registry row would claim Ciyato
+        // transmits there, which would be its own inaccuracy. What DOES leave with
+        // it is the search text the person typed, and that is recorded in
+        // DATA_INVENTORY.md section 4 alongside the other user-initiated handoffs.
+        val notContactedByCiyato = setOf(
+            "example.com", "www.example.com",
+            "open-meteo.com", "nominatim.org",
+            "play.google.com",
+        )
+        val undisclosed = (sourceHosts - claimed - notContactedByCiyato).sorted()
         assertTrue(
             "these hosts are contacted but no capability row discloses them: $undisclosed",
             undisclosed.isEmpty(),
