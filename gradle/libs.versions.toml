@@ -22,6 +22,15 @@ mockito = "5.12.0"
 benchmark = "1.3.3"
 profileinstaller = "1.3.1"
 uiautomator = "2.3.0"
+# DO NOT UPGRADE THESE TWO WITHOUT READING screenshots-README in docs.
+#
+# Pinned to the last releases built against Kotlin 1.9.x metadata, which a 2.0.0
+# compiler reads. Roborazzi 1.75.0 and Paparazzi 2.0.0-alpha both carry Kotlin
+# 2.3.0 metadata, which this compiler cannot read at all - the golden suite simply
+# stops building. Lint will keep reporting that newer versions exist; that report
+# is correct and acting on it breaks the build until Kotlin itself moves.
+robolectric = "4.13"
+roborazzi = "1.33.0"
 
 [libraries]
 # Core
@@ -89,6 +98,15 @@ androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchm
 androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
 androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+
+# Golden image tests (F-165). Pinned to the last releases built against Kotlin
+# 1.9.x metadata, which a 2.0.0 compiler reads fine - the newer ones are built
+# against 2.3.0 and cannot be read at all. Neither is a Gradle plugin carrying its
+# own compiler, so neither can conflict with KSP, and Robolectric picks its render
+# SDK from @Config rather than from compileSdk.
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
+roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "roborazzi" }
 
 
 [plugins]

@@ -243,40 +243,41 @@ limit rather than a silently wrong number.
 
 Commands are in `ci/README.md`.
 
-## Golden image tests (F-165) - written, BLOCKED, not wired
+## Golden image tests (F-165) - LIVE
 
-The suite exists at `screenshots/HomeCanvasGoldenTest.kt` and is not in the build. That
-directory is not a source set, so nothing there compiles or runs. Claiming otherwise would
-be the exact kind of defect this audit is about, so:
+Five goldens for `HomeCanvasSurface`, the single custom `Layout` that measures and places
+every Home object in one pass: flow order, even row splitting, the free-position-leaves-no-gap
+invariant that shipped as a bug once, z-order on overlap, and the far-edge clamp.
 
-| Attempt | Result |
+| | |
 |---|---|
-| Paparazzi 1.3.5 | Breaks `:app:kspDebugKotlin` - it puts `kotlin-compiler-embeddable:2.0.21` on the build classpath against this project's Kotlin 2.0.0 / KSP 2.0.0-1.0.21 |
-| Paparazzi 1.3.4 | KSP survives; every snapshot fails in `Renderer.configureBuildProperties` because its layoutlib does not know `compileSdk = 36` |
-| Paparazzi 2.0.0-alpha05 | Would know API 36. Requires **Kotlin 2.3.0** |
-| Roborazzi 1.75.0 + Robolectric 4.17 | Chosen because it is a test dependency rather than a plugin carrying a compiler, and `@Config(sdk)` decouples the render SDK from `compileSdk` - so neither Paparazzi failure applies. Fails anyway: *"metadata is 2.3.0, expected version is 2.0.0"* |
+| Suite | `app/src/test/java/com/ciyato/launcher/ui/HomeCanvasGoldenTest.kt` |
+| Goldens | `app/src/test/screenshots/` (committed) |
+| Record | `./gradlew :app:testDebugUnitTest -Proborazzi.record.image=true` |
+| Verify | `./gradlew testDebugUnitTest` - verification is the DEFAULT |
 
-**The cause is the toolchain, not the tool.** Every current Compose screenshot library has
-moved to Kotlin 2.3.x metadata; this project is on Kotlin 2.0.0 from mid-2024. Two libraries
-chosen for opposite architectures fail at the same version boundary.
+**Proven able to fail**, which matters more than proven to pass. Two traps were hit and
+closed on the way:
 
-F-165 is therefore blocked behind a **Kotlin 2.0.0 -> 2.3.x upgrade**, which since Kotlin 2.0
-moves the Compose compiler plugin, KSP and Room's codegen together. Worth doing on its own
-terms - this is the second time Kotlin 2.0.0 has blocked something - but it is its own change
-with its own verification, not something to carry out under a screenshot-test task.
+1. `-Proborazzi.record.image=true` is a Gradle *project* property and never reaches the test
+   JVM. Roborazzi reads a *system* property, so the first "successful" record wrote no images
+   and every test passed - a golden test that cannot fail, silently certifying whatever the
+   layout does. The build now translates the property, and defaults to **verify** rather than
+   to nothing, because "neither record nor verify" is exactly as vacuous.
+2. Verified by swapping one golden for another and confirming that exactly the affected test
+   failed.
 
-**Not forced, deliberately.** The fix is a Kotlin/KSP upgrade on a working 40k-line Compose
-app, performed to add a test harness; it can move codegen, the Compose compiler plugin, lint
-output and Room's generated code. Lowering `compileSdk` is not available either, since API 36
-is where F-186 and F-187 have to be verified. Adding the plugin and leaving five tests red
-would have been worse than both. `screenshots/README.md` has the enable steps.
+**Do not upgrade Robolectric or Roborazzi.** They are pinned to the last releases built
+against Kotlin 1.9.x metadata. The current ones carry Kotlin 2.3.0 metadata, which this
+project's 2.0.0 compiler cannot read - four attempts are documented in
+`docs/screenshots-README.md`. Lint will keep reporting newer versions; that report is correct
+and acting on it breaks the build.
 
-**The larger prerequisite, independent of the plugin:** F-165 asks for goldens of Home,
-Drawer, Files, Photos, Settings, onboarding and destructive dialogs. Each of those composables
-takes a `LauncherViewModel`, so rendering one needs a real DataStore and a real
-PackageManager. Whole-screen coverage needs their state hoisted first - a refactor of eight
-screens. The suite that exists targets `HomeCanvasSurface`, which takes plain data and is
-where spacing, overlap and displacement for every Home object actually live.
+**Still outstanding:** F-165 also asks for goldens of Home, Drawer, Files, Photos, Settings
+and onboarding as whole screens. Each takes a `LauncherViewModel`, so rendering one needs a
+real DataStore and PackageManager; whole-screen coverage needs their state hoisted first, a
+refactor of eight screens. What is covered is where spacing, overlap and displacement for
+every Home object actually live.
 
 ## Remaining device- and account-only gaps
 

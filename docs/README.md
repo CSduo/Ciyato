@@ -33,6 +33,7 @@ the document.
 | [`LICENSE`](../LICENSE) | Proprietary, all rights reserved. Scope, trade marks, warranty |
 | [`SECURITY.md`](../SECURITY.md) | Threat model and the boundaries Ciyato does and does not enforce |
 | [`TESTING.md`](../TESTING.md) | How to run the suite |
+| [`docs/screenshots-README.md`](screenshots-README.md) | Why the golden-test dependencies are pinned, and the four attempts it took |
 
 **The one current specification** is the Revision III audit — 210 findings, F-001 to F-210
 — held outside the repository by the project owner. Nothing in `docs/archive/` supersedes

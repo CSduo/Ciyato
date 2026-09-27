@@ -1,14 +1,12 @@
-# Golden image tests — written, not wired
+# Golden image tests — how they got here
 
-F-165 asks for a visual baseline, because Ciyato's real risk is structural layout
-drift and no logic test can catch it. The suite in
-[`HomeCanvasGoldenTest.kt`](HomeCanvasGoldenTest.kt) is that baseline for the
-highest-value target: the single custom `Layout` that measures and places every
-object on Home in one pass.
+**These are live now.** The suite is at
+`app/src/test/java/com/ciyato/launcher/ui/HomeCanvasGoldenTest.kt` and the goldens
+are committed under `app/src/test/screenshots/`.
 
-**It is not in the build.** This directory is not a source set, so nothing here
-compiles or runs. That is a deliberate stop, and this file records exactly why so
-the next attempt does not repeat it.
+This file is kept because the four failed attempts are the useful part: they are
+why the versions in `gradle/libs.versions.toml` are pinned, and anybody who
+"helpfully" upgrades Robolectric or Roborazzi will break the build and need this.
 
 ## What was tried
 
@@ -29,7 +27,7 @@ boundary.
 So F-165 is blocked behind a **Kotlin toolchain upgrade**, which is a different and
 much larger piece of work than adding a test harness.
 
-## Why it was left out rather than forced
+## Why the obvious fix was the wrong one
 
 The fix is to move this project from Kotlin 2.0.0 to 2.3.x. That is not a version
 bump. Since Kotlin 2.0 the Compose compiler plugin is versioned *with* Kotlin, KSP

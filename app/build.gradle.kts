@@ -277,6 +277,14 @@ android {
         )
     }
 
+    testOptions {
+        unitTests {
+            // Robolectric inflates real resources. Without this every lookup
+            // returns a stub and a golden is a picture of nothing.
+            isIncludeAndroidResources = true
+        }
+    }
+
     buildFeatures {
         compose    = true
         buildConfig = true
@@ -347,6 +355,12 @@ dependencies {
 
     // Testing
     testImplementation(libs.junit)
+    // Golden image tests. See screenshots/README.md and F-165.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.androidx.ui.test.junit4)
+    testImplementation(libs.androidx.test.ext.junit)
     testImplementation("org.json:json:20240303")
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockito.core)
@@ -376,6 +390,20 @@ tasks.whenTaskAdded {
 // alone would skip the very test that exists to catch that edit. Verified by
 // adding a permission and watching the run be skipped before this was added.
 tasks.withType<Test>().configureEach {
+    // Roborazzi reads SYSTEM properties, not Gradle project properties.
+    //
+    // Passing -Proborazzi.record.image=true alone does nothing: it never reaches
+    // the test JVM, captureRoboImage() becomes a no-op, no image is written, and
+    // the test passes. That is the worst possible shape for a golden test - it
+    // cannot fail, so it silently certifies whatever the layout does.
+    //
+    // Default is VERIFY, deliberately. If neither property is set Roborazzi does
+    // nothing at all, which would make an ordinary run vacuous; comparing against
+    // the committed goldens is the behaviour that earns the test its place.
+    val recording = providers.gradleProperty("roborazzi.record.image").isPresent
+    systemProperty("roborazzi.test.record", recording.toString())
+    systemProperty("roborazzi.test.verify", (!recording).toString())
+
     inputs.file(rootProject.file("app/src/main/AndroidManifest.xml"))
         .withPropertyName("shippingManifest")
         .withPathSensitivity(PathSensitivity.RELATIVE)
