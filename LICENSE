@@ -1,36 +1,81 @@
 Copyright (c) 2026 CSduo. All rights reserved.
 
-Ciyato and its source code, assets and documentation in this repository are
-proprietary. No licence to copy, modify, distribute, sublicense or create
-derivative works is granted, whether express or implied, except with the prior
-written permission of the copyright holder.
+Ciyato, together with its source code, assets, design and documentation in this
+repository, is proprietary and confidential. No licence to copy, modify,
+distribute, sublicense, reverse engineer or create derivative works is granted,
+whether express or implied, except with the prior written permission of the
+copyright holder.
 
 Viewing this repository does not grant any licence to its contents.
 
 -------------------------------------------------------------------------------
 
-WHY THIS LICENCE, AND HOW TO CHANGE IT
+1. SCOPE
 
-The audited tree contained no LICENCE at all (F-065). That is not a neutral
-state: with nothing stated, default copyright applies but nobody can tell
-whether that was intended, and a buyer, contributor or store reviewer has no
-answer to "what am I allowed to do with this?".
+This file governs the SOURCE in this repository.
 
-All-rights-reserved is chosen deliberately as the reversible option. Ciyato is
-being prepared for commercial release, and a permissive licence cannot be
-withdrawn once published - anyone who obtained the code under it keeps those
-rights forever. Starting closed preserves every choice; starting open forecloses
-some of them permanently.
+The compiled application distributed through Google Play is licensed to end
+users under Google Play's terms of service together with any in-app terms
+presented at first run. Installing the app from Play grants the right to use it
+on the user's own devices; it grants no rights to the source, and nothing in
+this file grants a Play user more than that.
 
-If the intent is open source, replacing this file is a one-line decision:
+2. TRADE MARKS
 
-  - Apache-2.0  - permissive, includes an explicit patent grant. The usual
-                  choice for a product that may later involve contributors.
-  - MIT         - permissive and shorter, no patent grant.
-  - GPL-3.0     - copyleft; derivative works must also be GPL. Note that this
-                  is generally incompatible with distribution through the
-                  Apple App Store, and imposes obligations on anyone who later
-                  buys or forks the project.
+"Ciyato", the Ciyato name and the Ciyato icon and wordmark are trade marks of
+the copyright holder. The licence above covers copyright only. No trade mark
+licence is granted, and in particular the name and icon may not be used to
+publish a derivative or competing application, or to imply endorsement.
 
-Third-party dependencies carry their own licences, which are unaffected by this
-file and are listed by the build's dependency report.
+3. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+
+This disclaimer is not boilerplate for this particular application, and it is
+worth being explicit about why. Ciyato manages files, moves photos to the system
+trash, deletes duplicates, and encrypts files into a vault whose key the
+operating system may invalidate if the device's screen lock is removed. Those are
+destructive and irreversible operations performed on the user's own data at the
+user's own instruction. The application asks for confirmation before each of
+them and states the consequences beforehand (see SECURITY.md), but no software
+can undo a deletion the user asked for.
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, INCLUDING ANY LOSS OF DATA, ARISING FROM OR IN CONNECTION WITH
+THE SOFTWARE OR ITS USE.
+
+4. THIRD-PARTY COMPONENTS
+
+Ciyato incorporates open-source components, each under its own licence, which
+are unaffected by this file. Several of those licences require attribution in
+the distributed application, and that is a condition of shipping rather than a
+courtesy: see THIRD_PARTY_NOTICES.md for the full list and what each one
+obliges.
+
+5. NOT LEGAL ADVICE
+
+This file was drafted to be accurate about the product's actual intent and
+behaviour. It has not been reviewed by a lawyer. Before publication, and
+particularly before offering paid features, have it and the in-app terms and
+privacy policy reviewed by someone qualified in the jurisdictions being sold
+into. The warranty and liability clauses above are standard in form, but their
+enforceability varies by jurisdiction, and consumer-protection law in some
+territories limits how far they can exclude liability.
+
+-------------------------------------------------------------------------------
+
+WHY THIS LICENCE
+
+The audited tree contained no licence at all (F-065). That is not a neutral
+state: default copyright applies, but nobody can tell whether that was intended,
+and a store reviewer, a collaborator or a buyer has no answer to "what am I
+allowed to do with this?".
+
+Proprietary, all rights reserved, is the settled decision and matches the
+product: Ciyato is a commercial application being prepared for release on Google
+Play, with the launcher, organizer, file management and photo tooling as paid or
+paid-adjacent capability. A permissive licence would be the wrong instrument for
+that, and it cannot be withdrawn afterwards — anyone who obtained the code under
+one keeps those rights permanently.

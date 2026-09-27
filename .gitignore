@@ -22,3 +22,17 @@ keystore.properties
 app/keystore.properties
 *.jks
 *.keystore
+
+# Build outputs and scratch artifacts — 25 MB of them were tracked (F-063).
+#
+# download/Ciyoto.apk was a committed build output (note the misspelling, which
+# is its own argument: nobody was looking at it). tmp/pdf-spec/ was 20 PNGs from
+# a one-off visual check. Neither is source, both are regenerable, and a binary
+# in git is a binary in every clone forever — git stores it whole, so a 23 MB APK
+# costs 23 MB on every fetch even after deletion.
+#
+# Untracked, not deleted: the files stay on disk, and git history still has them.
+/download/
+/tmp/
+*.apk
+*.aab

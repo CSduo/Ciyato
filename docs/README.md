@@ -28,6 +28,9 @@ the document.
 | [`CLAUDE_VALIDATION.md`](../CLAUDE_VALIDATION.md) | What is verified, what is verified only by unit test, and what still needs a device |
 | [`CLAUDE_IMPLEMENTATION_LEDGER.md`](../CLAUDE_IMPLEMENTATION_LEDGER.md) | Every Revision III finding that has been implemented, and what the defect actually was |
 | [`CLAUDE_REMOVAL_SALVAGE_LEDGER.md`](../CLAUDE_REMOVAL_SALVAGE_LEDGER.md) | What was deleted, what was salvaged, and the reachability proof for each |
+| [`PLAY_SUBMISSION.md`](../PLAY_SUBMISSION.md) | **How to actually publish: the 12-tester closed test, the upload key, and the order that saves weeks.** Says who does each step |
+| [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) | Open-source components and the attribution the release owes them |
+| [`LICENSE`](../LICENSE) | Proprietary, all rights reserved. Scope, trade marks, warranty |
 | [`SECURITY.md`](../SECURITY.md) | Threat model and the boundaries Ciyato does and does not enforce |
 | [`TESTING.md`](../TESTING.md) | How to run the suite |
 
