@@ -15,17 +15,30 @@ import java.net.URL
  * is exactly how earlier network paths ended up with no timeout on one call
  * and a leaked stream on another.
  *
- * Retry policy: transient failures only — connect/read timeouts, IOExceptions
- * (DNS hiccups, reset connections) and 5xx server errors get up to
- * [maxAttempts] tries with exponential backoff (1s, 2s, 4s…). 4xx client
- * errors are NOT retried: the request itself is wrong (or, for this app,
- * will always be wrong the same way), so retrying just burns battery and
- * adds latency for an identical failure.
+ * Retry policy lives in [RetryPolicy], which is where it can be tested.
+ * In short: connect/read timeouts, IOExceptions (DNS hiccups, reset
+ * connections), 5xx and **429** get up to [maxAttempts] tries. Every other 4xx
+ * fails immediately, because the request itself is wrong and retrying it burns
+ * battery to receive the same answer.
+ *
+ * Backoff is exponential with jitter, and a server's own `Retry-After` overrides
+ * it — bounded, because that header is not something this app should trust
+ * without a limit.
  */
 object NetworkClient {
 
-    /** Non-2xx HTTP response. [code] is what callers use to decide retry-worthiness. */
-    class HttpStatusException(val code: Int, message: String) : IOException(message)
+    /**
+     * Non-2xx HTTP response.
+     *
+     * [retryAfter] is the raw header, kept rather than parsed here so the
+     * decision stays in one place ([RetryPolicy]) and so a caller that wants to
+     * surface "try again in a minute" has the original to work from.
+     */
+    class HttpStatusException(
+        val code: Int,
+        message: String,
+        val retryAfter: String? = null,
+    ) : IOException(message)
 
     private const val DEFAULT_CONNECT_TIMEOUT_MS = 8_000
     private const val DEFAULT_READ_TIMEOUT_MS = 8_000
@@ -45,16 +58,32 @@ object NetworkClient {
         readTimeoutMs: Int = DEFAULT_READ_TIMEOUT_MS,
     ): String = withContext(Dispatchers.IO) {
         var lastError: IOException? = null
+        var retryAfter: String? = null
         repeat(maxAttempts) { attempt ->
+            retryAfter = null
             try {
                 return@withContext fetchOnce(urlString, headers, connectTimeoutMs, readTimeoutMs)
             } catch (e: HttpStatusException) {
-                if (e.code in 400..499) throw e // non-transient — fail fast, no retry
-                lastError = e // 5xx — worth another try
+                // 429 used to land in a blanket `400..499 -> throw`, on the
+                // reasoning that a client error will always be wrong the same
+                // way. True of 404; false of a rate limit, which is the server
+                // saying NOT YET (F-033). It matters here specifically:
+                // Nominatim's usage policy is one request per second and it
+                // enforces it, so a weather refresh that also reverse-geocodes
+                // could report a hard failure for a condition that clears in a
+                // second.
+                if (!RetryPolicy.isTransient(e.code)) throw e
+                lastError = e
+                retryAfter = e.retryAfter
             } catch (e: IOException) {
                 lastError = e // timeout / DNS / reset — worth another try
             }
-            if (attempt < maxAttempts - 1) delay(1_000L shl attempt) // 1s, 2s, 4s
+            if (attempt < maxAttempts - 1) {
+                // The server's own Retry-After wins over the backoff curve: it
+                // knows when its window resets and we are guessing. Bounded and
+                // jittered - see RetryPolicy for why both are necessary.
+                delay(RetryPolicy.delayMsFor(attempt, retryAfter))
+            }
         }
         throw lastError ?: IOException("Request failed after $maxAttempts attempts")
     }
@@ -73,7 +102,11 @@ object NetworkClient {
             val code = conn.responseCode
             if (code !in 200..299) {
                 val body = conn.errorStream?.use { it.bufferedReader().readText() }
-                throw HttpStatusException(code, "HTTP $code${body?.let { ": ${it.take(200)}" } ?: ""}")
+                throw HttpStatusException(
+                    code = code,
+                    message = "HTTP $code${body?.let { ": ${it.take(200)}" } ?: ""}",
+                    retryAfter = conn.getHeaderField("Retry-After"),
+                )
             }
             // use{} guarantees the socket stream is closed even on a parse
             // failure downstream — otherwise every call leaks a file descriptor.

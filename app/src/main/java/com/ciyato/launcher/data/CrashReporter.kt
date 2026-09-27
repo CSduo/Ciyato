@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import com.ciyato.launcher.BuildConfig
 
 /**
  * Local crash reporter — Suggestion #144.
@@ -70,11 +71,19 @@ object CrashReporter {
         val ts  = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val log = File(dir, "crash_$ts.txt")
         log.writeText(buildString {
-            appendLine("=== Ciyato Crash Report ===")
-            appendLine("Time    : $ts")
-            appendLine("Thread  : ${thread.name}")
-            appendLine("Device  : ${Build.MANUFACTURER} ${Build.MODEL} (API ${Build.VERSION.SDK_INT})")
-            appendLine("Version : ${Build.VERSION.RELEASE}")
+            append(
+                crashReportHeader(
+                    timestamp = ts,
+                    threadName = thread.name,
+                    appVersionName = BuildConfig.VERSION_NAME,
+                    appVersionCode = BuildConfig.VERSION_CODE,
+                    gitSha = BuildConfig.GIT_SHA,
+                    androidRelease = Build.VERSION.RELEASE,
+                    androidSdk = Build.VERSION.SDK_INT,
+                    manufacturer = Build.MANUFACTURER,
+                    model = Build.MODEL,
+                ),
+            )
             appendLine()
             appendLine("=== Throwable ===")
             appendLine(t.toString())
@@ -112,4 +121,46 @@ object CrashReporter {
     fun clearLogs(context: Context) {
         File(context.filesDir, LOG_DIR).listFiles()?.forEach { it.delete() }
     }
+
+    /**
+     * The identifying block at the top of a crash log.
+     *
+     * The old header printed `Version : ${Build.VERSION.RELEASE}` — the ANDROID
+     * version, under a label that reads like the app's — and recorded no app
+     * version at all (F-055). So a report could not answer the first question
+     * anybody asks of one: which build was this? Between releases dozens of
+     * builds share `1.1.0`, which is why the commit is here too.
+     *
+     * Pure and parameterised because `Build.*` are non-functional stubs on the
+     * JVM: taking the values as arguments is what makes the wording testable,
+     * and wording is the entire defect here.
+     *
+     * Nothing personal is recorded, and that is a constraint rather than an
+     * omission: no file names, no search queries, no notification text, no
+     * package list. A local diagnostic is still the person's data, and a log
+     * they might send to someone must not carry what they never chose to send.
+     */
+    fun crashReportHeader(
+        timestamp: String,
+        threadName: String,
+        appVersionName: String,
+        appVersionCode: Int,
+        gitSha: String,
+        androidRelease: String?,
+        androidSdk: Int,
+        manufacturer: String?,
+        model: String?,
+    ): String = buildString {
+        appendLine("=== Ciyato Crash Report ===")
+        appendLine("Time    : $timestamp")
+        appendLine("Thread  : $threadName")
+        // App first: it is the thing under our control and the thing a fix
+        // changes.
+        appendLine("App     : $appVersionName ($appVersionCode) $gitSha")
+        appendLine("Android : ${androidRelease.orUnknown()} (API $androidSdk)")
+        appendLine("Device  : ${manufacturer.orUnknown()} ${model.orUnknown()}")
+    }
+
+    /** A missing Build field reads as unknown rather than as the string "null". */
+    private fun String?.orUnknown(): String = this?.takeIf { it.isNotBlank() } ?: "unknown"
 }

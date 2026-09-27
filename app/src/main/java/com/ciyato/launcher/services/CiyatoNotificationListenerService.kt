@@ -5,6 +5,7 @@ import android.service.notification.StatusBarNotification
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.ciyato.launcher.data.BadgeTally
 
 /**
  * Notification Listener Service — Suggestion #81.
@@ -40,44 +41,79 @@ class CiyatoNotificationListenerService : NotificationListenerService() {
         fun countFor(packageName: String): Int = _badgeCounts.value[packageName] ?: 0
     }
 
+    /**
+     * Incremental state, reconciled against the system on connection.
+     *
+     * Every post and removal used to call getActiveNotifications() and re-group
+     * the whole list (F-034): a binder round trip plus an O(n) walk per event,
+     * and notifications do not arrive one at a time. A group chat waking up
+     * produced a burst, and every message in it paid for a full rebuild.
+     *
+     * See [BadgeTally] for why this is keyed rather than counted. The short
+     * version: an UPDATE to a notification re-fires onNotificationPosted with
+     * the same key, so a counter would drift upward forever with nothing to
+     * correct it until the listener reconnected.
+     */
+    private val tally = BadgeTally()
+
     override fun onListenerConnected() {
         super.onListenerConnected()
-        rebuildCounts()
+        // The full reconcile, and the only place one is needed: nothing is known
+        // about what was posted while the service was not listening, and
+        // incremental updates are only correct relative to a known start.
+        reconcileFromSystem()
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
-        _badgeCounts.value = emptyMap()
+        if (tally.clear()) publish()
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        sbn ?: return
-        rebuildCounts()
+        val notification = sbn ?: return
+        val key = notification.key ?: return
+        val pkg = notification.packageName ?: return
+        // isOngoing is read per event rather than decided once, because an
+        // update can move a notification in either direction: a finished
+        // download stops being ongoing and starts counting.
+        if (tally.post(key, pkg, notification.isOngoing)) publish()
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        rebuildCounts()
+        val key = sbn?.key ?: return
+        if (tally.remove(key)) publish()
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
+    // ---- Private helpers ----------------------------------------------------
 
     /**
-     * Counts active (non-ongoing) notifications grouped by package.
-     * Uses runCatching so any security exception from getActiveNotifications()
-     * on Android 14+ doesn't crash the service.
+     * Rebuilds from the system's own list.
+     *
+     * runCatching because getActiveNotifications() reaches into system_server and
+     * can throw while the binding is being torn down. A launcher losing its
+     * badges is a cosmetic failure; a launcher crashing is not.
      */
-    private fun rebuildCounts() {
-        val counts = mutableMapOf<String, Int>()
-        runCatching {
-            activeNotifications?.forEach { sbn ->
-                // Skip persistent notifications (e.g. music player, VPN) — they
-                // are not actionable items and would inflate the badge count.
-                if (!sbn.isOngoing) {
-                    val pkg = sbn.packageName ?: return@forEach
-                    counts[pkg] = (counts[pkg] ?: 0) + 1
+    private fun reconcileFromSystem() {
+        val active = runCatching {
+            activeNotifications
+                ?.mapNotNull { sbn ->
+                    val key = sbn.key ?: return@mapNotNull null
+                    val pkg = sbn.packageName ?: return@mapNotNull null
+                    Triple(key, pkg, sbn.isOngoing)
                 }
-            }
-        }
-        _badgeCounts.value = counts
+                .orEmpty()
+        }.getOrDefault(emptyList())
+        if (tally.reconcile(active)) publish()
+    }
+
+    /**
+     * Publishes only when membership actually changed.
+     *
+     * [BadgeTally] returns false for a no-op, and notification updates are
+     * frequent while mostly not moving a count. Republishing an identical map
+     * would recompose every badge on Home for nothing.
+     */
+    private fun publish() {
+        _badgeCounts.value = tally.counts()
     }
 }

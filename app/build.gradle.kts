@@ -116,6 +116,38 @@ fun ciyatoVersionCode(releaseDate: String, buildOfDay: Int): Int {
     return (((year % 100) * 10000 + month * 100 + day) * 10) + buildOfDay
 }
 
+/**
+ * Short commit SHA of the working tree, plus "-dirty" when it has uncommitted
+ * changes, or "unknown" when git is not available.
+ *
+ * A local crash log is only worth keeping if it identifies the exact build that
+ * produced it (F-055). versionName answers that for a release; between releases
+ * dozens of builds share "1.1.0", and the commit is the only thing separating
+ * them.
+ *
+ * Degrades rather than fails: a source archive with no .git directory must still
+ * build, and a missing SHA weakens a diagnostic instead of blocking a release.
+ * "-dirty" matters because a bare SHA would claim the artifact matches that
+ * commit when it does not.
+ */
+fun ciyatoGitSha(): String = runCatching {
+    fun git(vararg args: String): String {
+        val process = ProcessBuilder(listOf("git") + args)
+            .directory(rootDir)
+            .redirectErrorStream(true)
+            .start()
+        val out = process.inputStream.bufferedReader().readText().trim()
+        return if (process.waitFor() != 0) "" else out
+    }
+    val sha = git("rev-parse", "--short", "HEAD")
+    when {
+        sha.isEmpty() -> "unknown"
+        git("status", "--porcelain").isNotEmpty() -> "$sha-dirty"
+        else -> sha
+    }
+}.getOrDefault("unknown")
+
+
 android {
     namespace = "com.ciyato.launcher"
     compileSdk = 36
@@ -153,6 +185,8 @@ android {
         buildConfigField("long",    "WEATHER_CACHE_TTL_MS","1800000L")   // 30 min
         buildConfigField("int",     "MAX_CRASH_LOGS",      "10")
         buildConfigField("boolean", "IS_INTERNAL",         "false")
+        // Which commit this artifact was built from - see ciyatoGitSha above.
+        buildConfigField("String", "GIT_SHA", "\"${ciyatoGitSha()}\"")
         // #143 ENABLE_CERT_PINNING was declared here and in both build types
         // but never wired into any HTTP client — a security toggle that did
         // nothing. Deliberately NOT implemented rather than left dead:
