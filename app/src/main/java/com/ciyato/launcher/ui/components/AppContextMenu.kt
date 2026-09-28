@@ -654,11 +654,15 @@ private fun ContextMenuRow(item: ContextMenuItem) {
 }
 
 private fun openAppInfo(context: Context, packageName: String) {
-    context.startActivity(
+    // Was an unguarded startActivity. ActivityNotFoundException here does not fail
+    // quietly — it crashes the process that draws the home screen, from a long-press
+    // menu every user reaches.
+    openSystemScreen(
+        context,
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", packageName, null)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
+        },
+        "find the app in Settings > Apps",
     )
 }
 
@@ -671,18 +675,22 @@ private fun uninstallApp(context: Context, packageName: String) {
             "Ciyato is your current home app. Choose another launcher first.",
             android.widget.Toast.LENGTH_LONG,
         ).show()
-        context.startActivity(
-            Intent(Settings.ACTION_HOME_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
+        openSystemScreen(
+            context,
+            Intent(Settings.ACTION_HOME_SETTINGS),
+            "change it in Settings > Apps > Default apps > Home app",
         )
         return
     }
-    context.startActivity(
+    // Also unguarded before. ACTION_DELETE is refused on managed profiles and on
+    // devices where uninstall is administrator-controlled, and a crash was the
+    // response to being told no.
+    openWithApp(
+        context,
         Intent(Intent.ACTION_DELETE).apply {
             data = Uri.fromParts("package", packageName, null)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
+        },
+        "This phone will not let Ciyato start an uninstall — remove the app from Settings > Apps",
     )
 }
 

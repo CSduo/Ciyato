@@ -46,6 +46,14 @@ object PhotoAiLabeler {
     data class AiScanResult(
         val collections: Map<String, List<PhotoDeviceLibrary.DeviceImage>>,
         val scannedCount: Int,
+        /**
+         * Images the labeller could not read.
+         *
+         * Separate from [scannedCount] because "we looked at 300 and found nothing" and
+         * "we could not open 300" are different answers and the screen said the first
+         * for both.
+         */
+        val unreadable: Int = 0,
     )
 
     /**
@@ -64,6 +72,8 @@ object PhotoAiLabeler {
                 .build(),
         )
         val targets = images.take(maxImages)
+        var labelled = 0
+        var unreadable = 0
         val grouped = mutableMapOf<String, MutableList<PhotoDeviceLibrary.DeviceImage>>()
         try {
             targets.forEachIndexed { index, image ->
@@ -80,6 +90,13 @@ object PhotoAiLabeler {
                 // cancellation, and `finally` closes the client either way.
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 val labels = labelUri(context, labeler, image.uri)
+                // labelUri resumes with an empty list when the image cannot be decoded
+                // or ML Kit fails on it, which is indistinguishable from an image that
+                // genuinely matched nothing. Counting only the ones that produced labels
+                // would under-report; counting every attempt over-reported. `unreadable`
+                // carries the difference so the screen can state it instead of implying
+                // a completed scan that found nothing.
+                if (labels.isEmpty()) unreadable += 1 else labelled += 1
                 labels
                     .mapNotNull { LABEL_BUCKETS[it] }
                     .distinct()
@@ -91,7 +108,11 @@ object PhotoAiLabeler {
         }
         AiScanResult(
             collections = grouped.filterValues { it.size >= 3 },
-            scannedCount = targets.size,
+            // Was targets.size - the number ATTEMPTED. An image ML Kit could not read
+            // was reported as scanned, so a pass where every image failed read as a
+            // completed scan that simply found nothing.
+            scannedCount = labelled,
+            unreadable = unreadable,
         )
     }
 

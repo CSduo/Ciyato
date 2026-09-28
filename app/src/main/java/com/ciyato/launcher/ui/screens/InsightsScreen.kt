@@ -138,7 +138,7 @@ fun InsightsScreen(
                             // readers (F-194).
                             PermissionRegistry.usageAccess.scope
                         } else {
-                            "All four features read the same Android permission. Granting it once " +
+                            "All five features read the same Android permission. Granting it once " +
                                 "enables every one of them, and nothing is sent off this phone."
                         },
                         color = CiyatoMuted, fontSize = 12.sp, lineHeight = 17.sp,

@@ -127,6 +127,14 @@ object LocationHelper {
                 override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
                 override fun onProviderEnabled(provider: String)  = Unit
                 override fun onProviderDisabled(provider: String) {
+                    // removeUpdates was missing here and present in onLocationChanged.
+                    // invokeOnCancellation does not cover this path either: the coroutine
+                    // completes normally, so nothing cancels, and the listener stays
+                    // registered for the life of the process. A provider being disabled
+                    // mid-request is the ordinary case - somebody turning Location off
+                    // while the weather card is loading - so every such attempt leaked
+                    // one more registration.
+                    lm.removeUpdates(this)
                     if (cont.isActive) cont.resume(null)
                 }
             }

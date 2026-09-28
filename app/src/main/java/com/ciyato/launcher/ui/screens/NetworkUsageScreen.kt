@@ -34,6 +34,9 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.util.concurrent.TimeUnit
 import com.ciyato.launcher.data.PermissionRegistry
 import com.ciyato.launcher.ui.components.SpecialAccessGate
+import com.ciyato.launcher.ui.components.QueryFailureState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * NetworkUsageScreen
@@ -61,7 +64,10 @@ fun NetworkUsageScreen(
 ) {
     val context = LocalContext.current
     var hasPermission by remember { mutableStateOf(hasUsageStatsPermission(context)) }
-    var stats by remember { mutableStateOf<List<AppNetworkStat>>(emptyList()) }
+    // Null means NetworkStatsManager would not answer. An empty list means it answered
+    // and there genuinely was no mobile data. This screen used to say the second thing
+    // for both, beside a confident 0 B total.
+    var stats by remember { mutableStateOf<List<AppNetworkStat>?>(emptyList()) }
     var isLoading by remember { mutableStateOf(hasPermission) }
 
     // NetworkStatsManager.querySummary requires the same "Usage access" special
@@ -81,15 +87,18 @@ fun NetworkUsageScreen(
     LaunchedEffect(hasPermission) {
         if (hasPermission) {
             isLoading = true
-            stats = getNetworkStats(context)
+            // Off the main thread: querySummary is a binder call and the bucket walk
+            // below it is a loop. Run inline in LaunchedEffect it blocked the frame and
+            // never yielded, so the loading state could not render.
+            stats = withContext(Dispatchers.IO) { getNetworkStats(context) }
             isLoading = false
         } else {
             isLoading = false
         }
     }
 
-    val totalRx = stats.sumOf { it.rxBytes }
-    val totalTx = stats.sumOf { it.txBytes }
+    val totalRx = stats?.sumOf { it.rxBytes } ?: 0L
+    val totalTx = stats?.sumOf { it.txBytes } ?: 0L
 
     Scaffold(
         containerColor = CiyatoBg,
@@ -125,6 +134,21 @@ fun NetworkUsageScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            val current = stats
+            if (current == null) {
+                // The totals card is deliberately not drawn here. "0 B" beside a failed
+                // query is the most confident thing on the screen and the only entirely
+                // invented one.
+                item {
+                    QueryFailureState(
+                        title = "Couldn't read your data usage",
+                        detail = "Android didn't return network statistics. This does not mean " +
+                            "no mobile data was used — Ciyato could not tell either way.",
+                    )
+                }
+                return@LazyColumn
+            }
+
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = CiyatoBgEl),
@@ -147,13 +171,14 @@ fun NetworkUsageScreen(
                     fontWeight = FontWeight.SemiBold)
             }
 
-            if (stats.isEmpty()) {
+            if (current.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("📡", fontSize = 32.sp)
                             Spacer(Modifier.height(8.dp))
                             Text("No mobile data usage", color = CiyatoMuted, fontWeight = FontWeight.SemiBold)
+                            // Now earned: the query succeeded and reported nothing.
                             Text("No app has used mobile data in the last 30 days. Wi-Fi usage isn't counted here.",
                                 color = CiyatoMuted, fontSize = 12.sp,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -161,8 +186,8 @@ fun NetworkUsageScreen(
                     }
                 }
             } else {
-                val maxBytes = stats.firstOrNull()?.totalBytes?.toFloat() ?: 1f
-                itemsIndexed(stats.take(20), key = { _, stat -> stat.uid }) { idx, stat ->
+                val maxBytes = current.firstOrNull()?.totalBytes?.toFloat() ?: 1f
+                itemsIndexed(current.take(20), key = { _, stat -> stat.uid }) { idx, stat ->
                     NetworkStatRow(stat = stat, maxBytes = maxBytes, rank = idx + 1)
                 }
             }
@@ -232,7 +257,14 @@ private fun hasUsageStatsPermission(context: Context): Boolean {
     return mode == AppOpsManager.MODE_ALLOWED
 }
 
-private fun getNetworkStats(context: Context): List<AppNetworkStat> {
+/**
+ * Per-app mobile data, or null when NetworkStatsManager would not answer.
+ *
+ * The empty-list fallback rendered as "No app has used mobile data in the last 30
+ * days" beside a confident 0 B total: a specific factual claim about the person's
+ * month, produced by a query that failed.
+ */
+private fun getNetworkStats(context: Context): List<AppNetworkStat>? {
     return try {
         val nsm = context.getSystemService(Context.NETWORK_STATS_SERVICE) as NetworkStatsManager
         val pm = context.packageManager
@@ -242,16 +274,17 @@ private fun getNetworkStats(context: Context): List<AppNetworkStat> {
         val bucket = NetworkStats.Bucket()
         val statsMap = mutableMapOf<Int, Pair<Long, Long>>()
 
-        val summary = nsm.querySummary(
-            ConnectivityManager.TYPE_MOBILE, null, monthAgo, now
-        )
-        while (summary.hasNextBucket()) {
-            summary.getNextBucket(bucket)
-            val uid = bucket.uid
-            val (rx, tx) = statsMap.getOrDefault(uid, 0L to 0L)
-            statsMap[uid] = (rx + bucket.rxBytes) to (tx + bucket.txBytes)
+        // use {} rather than a trailing close(). close() sat after the loop, so a throw
+        // inside getNextBucket jumped to the outer catch and leaked the session. These
+        // are a finite system resource and this screen can be reopened indefinitely.
+        nsm.querySummary(ConnectivityManager.TYPE_MOBILE, null, monthAgo, now).use { summary ->
+            while (summary.hasNextBucket()) {
+                summary.getNextBucket(bucket)
+                val uid = bucket.uid
+                val (rx, tx) = statsMap.getOrDefault(uid, 0L to 0L)
+                statsMap[uid] = (rx + bucket.rxBytes) to (tx + bucket.txBytes)
+            }
         }
-        summary.close()
 
         statsMap.entries
             .filter { it.value.first + it.value.second > 0 }
@@ -264,7 +297,7 @@ private fun getNetworkStats(context: Context): List<AppNetworkStat> {
                 AppNetworkStat(appLabel = label, uid = uid, rxBytes = bytes.first, txBytes = bytes.second)
             }
             .sortedByDescending { it.totalBytes }
-    } catch (_: Exception) { emptyList() }
+    } catch (_: Exception) { null }
 }
 
 internal fun formatBytes(bytes: Long): String {

@@ -37,6 +37,9 @@ import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
 import com.ciyato.launcher.data.PermissionRegistry
 import com.ciyato.launcher.ui.components.SpecialAccessGate
+import com.ciyato.launcher.ui.components.QueryFailureState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * AppUsageStatsScreen
@@ -57,7 +60,10 @@ fun AppUsageStatsScreen(
 ) {
     val context = LocalContext.current
     var hasPermission by remember { mutableStateOf(hasUsageStatsPermission(context)) }
-    var stats by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
+    // Null means the query failed. An empty list means it worked and there was
+    // genuinely nothing - two different sentences, and this screen used to say the
+    // second one for both.
+    var stats by remember { mutableStateOf<List<AppUsageStat>?>(emptyList()) }
     var isLoading by remember { mutableStateOf(hasPermission) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -76,7 +82,12 @@ fun AppUsageStatsScreen(
     LaunchedEffect(hasPermission) {
         if (hasPermission) {
             isLoading = true
-            stats = getUsageStats(context)
+            // withContext(IO), because queryAndAggregateUsageStats is a binder call
+            // followed by a per-app loop. Run straight inside LaunchedEffect it executes
+            // on the main thread, which both blocks the frame and means isLoading is set
+            // and cleared without ever yielding - so the spinner below could never
+            // actually render.
+            stats = withContext(Dispatchers.IO) { getUsageStats(context) }
             isLoading = false
         } else {
             isLoading = false
@@ -109,7 +120,17 @@ fun AppUsageStatsScreen(
             return@Scaffold
         }
 
-        if (stats.isEmpty()) {
+        val current = stats
+        if (current == null) {
+            QueryFailureState(
+                title = "Couldn't read your screen time",
+                detail = "Android didn't return usage data. This does not mean you have used " +
+                    "nothing \u2014 Ciyato could not tell either way.",
+                modifier = Modifier.padding(padding),
+            )
+            return@Scaffold
+        }
+        if (current.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CiyatoEmptyState(
                     icon = Icons.Default.HourglassEmpty,
@@ -121,7 +142,7 @@ fun AppUsageStatsScreen(
             return@Scaffold
         }
 
-        val totalMs = stats.sumOf { it.totalTimeMs }
+        val totalMs = current.sumOf { it.totalTimeMs }
 
         LazyColumn(
             contentPadding = PaddingValues(
@@ -146,7 +167,7 @@ fun AppUsageStatsScreen(
                             fontSize = 36.sp,
                             fontWeight = FontWeight.ExtraBold,
                         )
-                        Text("across " + pluralStringResource(R.plurals.count_apps, stats.size, stats.size), color = CiyatoSec, fontSize = 13.sp)
+                        Text("across " + pluralStringResource(R.plurals.count_apps, current.size, current.size), color = CiyatoSec, fontSize = 13.sp)
                     }
                 }
             }
@@ -155,7 +176,7 @@ fun AppUsageStatsScreen(
                 Text("By App", color = CiyatoWhite, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             }
 
-            itemsIndexed(stats.take(20), key = { _, stat -> stat.packageName }) { idx, stat ->
+            itemsIndexed(current.take(20), key = { _, stat -> stat.packageName }) { idx, stat ->
                 UsageStatRow(stat = stat, totalMs = totalMs, rank = idx + 1)
             }
         }
@@ -240,7 +261,14 @@ private fun hasUsageStatsPermission(context: Context): Boolean {
     return mode == AppOpsManager.MODE_ALLOWED
 }
 
-private fun getUsageStats(context: Context): List<AppUsageStat> {
+/**
+ * Per-app foreground time, or null when Android would not say.
+ *
+ * Returned an empty list on failure, which the screen rendered as "No app has been
+ * used for a full minute in the last 24 hours" - a precise, confident claim produced
+ * by a query that did not answer.
+ */
+private fun getUsageStats(context: Context): List<AppUsageStat>? {
     return try {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()
@@ -273,7 +301,7 @@ private fun getUsageStats(context: Context): List<AppUsageStat> {
             }
             .sortedByDescending { it.totalTimeMs }
     } catch (_: Exception) {
-        emptyList()
+        null
     }
 }
 

@@ -43,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ciyato.launcher.ui.components.openSystemScreen
 
 /**
  * What each installed app has declared it can access.
@@ -160,12 +161,13 @@ fun PermissionAuditScreen(
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(CiyatoBgEl)
                                 .clickable {
-                                    runCatching {
-                                        context.startActivity(
-                                            Intent(Settings.ACTION_PRIVACY_SETTINGS)
-                                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                        )
-                                    }
+                                    // Swallowed its failure, so on a build without the
+                                    // privacy dashboard this row did nothing at all.
+                                    openSystemScreen(
+                                        context,
+                                        Intent(Settings.ACTION_PRIVACY_SETTINGS),
+                                        "look under Settings > Security & privacy",
+                                    )
                                 }
                                 .padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically,

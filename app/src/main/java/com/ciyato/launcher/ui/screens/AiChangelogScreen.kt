@@ -40,9 +40,22 @@ import com.ciyato.launcher.ui.components.SpecialAccessGate
 import com.ciyato.launcher.ui.components.QueryFailureState
 
 /**
- * AiChangelogScreen
- * AI-generated summary of "what changed on your phone today":
- * new installs, significant usage changes, updates.
+ * Today's Summary - what changed on this phone today, from usage statistics.
+ *
+ * Not AI-generated, and this KDoc said it was. There is no model here: the entries
+ * come from threshold comparisons against each app's own recent average - first use,
+ * a surge past 2.5x, a drop below 0.2x - plus packages installed in the last day.
+ * Calling that AI is the F-122 claim in a comment, and comments are where a
+ * maintainer goes to find out what something is.
+ *
+ * It also promised "updates". Nothing here detects an app update: `firstInstallTime`
+ * is what the install pass reads, so an app updated today is not reported at all.
+ * Rather than leave the promise, the list below is what it actually produces:
+ *
+ *  - first time an app has been used
+ *  - an app used far more than usual today
+ *  - an app used far less than usual today
+ *  - an app installed in the last day
  */
 
 data class PhoneChangeEntry(

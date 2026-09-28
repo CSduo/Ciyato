@@ -26,6 +26,7 @@ import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ciyato.launcher.ui.screens.OpenSourceLicencesScreen
+import com.ciyato.launcher.services.CiyatoWeatherTileService
 
 /**
  * LauncherHomeActivity — the REAL home screen.
@@ -102,6 +103,11 @@ class LauncherHomeActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshApps()
+        // Honours a Quick Settings tile tap. Without this the tile's "Refreshing..."
+        // was theatre: it wrote a flag nothing read.
+        if (CiyatoWeatherTileService.consumeRefreshRequest(this)) {
+            viewModel.forceRefreshWeather(this)
+        }
     }
 
     override fun onPause() {

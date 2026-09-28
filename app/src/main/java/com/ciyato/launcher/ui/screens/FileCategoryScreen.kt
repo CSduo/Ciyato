@@ -58,6 +58,7 @@ import java.text.DateFormat
 import java.util.Date
 import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
+import com.ciyato.launcher.ui.components.openSystemScreen
 
 /**
  * Flat file list for one library category (Screenshots, Documents, Downloads…).
@@ -152,12 +153,26 @@ fun FileCategoryScreen(
                                     .clip(CiyatoShapes.full)
                                     .background(CiyatoGold)
                                     .clickable {
-                                        runCatching {
-                                            context.startActivity(
-                                                Intent(
-                                                    android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                                    android.net.Uri.parse("package:${context.packageName}"),
-                                                ),
+                                        // Built its own Intent and swallowed the result,
+                                        // bypassing FileAccess.allFilesSettingsIntent -
+                                        // which exists for this exact case, resolves the
+                                        // per-app screen first and falls back to the
+                                        // global list on OEM builds that lack it. This is
+                                        // the only route this screen offers, so on those
+                                        // builds it was the whole feature doing nothing.
+                                        val intent = FileAccess.allFilesSettingsIntent(context)
+                                        if (intent == null) {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "This phone has no all-files access screen \u2014 " +
+                                                    "grant folder access instead from Files.",
+                                                android.widget.Toast.LENGTH_LONG,
+                                            ).show()
+                                        } else {
+                                            openSystemScreen(
+                                                context,
+                                                intent,
+                                                "look under Settings > Apps > Special app access > All files access",
                                             )
                                         }
                                     }

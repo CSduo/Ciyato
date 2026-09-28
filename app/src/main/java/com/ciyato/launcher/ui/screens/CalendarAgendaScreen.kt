@@ -35,6 +35,10 @@ import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.text.SimpleDateFormat
 import java.util.*
+import com.ciyato.launcher.ui.components.openWithApp
+import com.ciyato.launcher.ui.components.QueryFailureState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * CalendarAgendaScreen
@@ -62,14 +66,20 @@ fun CalendarAgendaScreen(
     var hasPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED)
     }
-    var events by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
+    // Null means the calendar provider did not answer; empty means it did and the
+    // fortnight really is clear.
+    var events by remember { mutableStateOf<List<CalendarEvent>?>(emptyList()) }
     var isLoading by remember { mutableStateOf(hasPermission) }
+    // Three controls call this - the top bar, the empty state and the bottom button -
+    // and all three were silently dead with no calendar app installed: runCatching
+    // with no else branch, so the tap simply did nothing. Ciyato cannot create an
+    // event itself, and saying so is the only honest response.
     val addEvent: () -> Unit = {
-        runCatching {
-            context.startActivity(Intent(Intent.ACTION_INSERT).apply {
-                data = CalendarContract.Events.CONTENT_URI
-            })
-        }
+        openWithApp(
+            context,
+            Intent(Intent.ACTION_INSERT).apply { data = CalendarContract.Events.CONTENT_URI },
+            "No calendar app on this phone can add an event.",
+        )
         Unit
     }
 
@@ -82,7 +92,9 @@ fun CalendarAgendaScreen(
     LaunchedEffect(hasPermission) {
         if (hasPermission) {
             isLoading = true
-            events = readCalendarEvents(context)
+            // A ContentProvider query and a cursor walk, previously run inline on the
+            // main thread.
+            events = withContext(Dispatchers.IO) { readCalendarEvents(context) }
             isLoading = false
         } else {
             isLoading = false
@@ -142,7 +154,18 @@ fun CalendarAgendaScreen(
         }
 
         val today = System.currentTimeMillis()
-        val todayEvents = events.filter { it.startMs >= today || it.endMs >= today }
+        val loaded = events
+        if (loaded == null) {
+            QueryFailureState(
+                title = "Couldn't read your calendar",
+                detail = "Android didn't return your events. This does not mean your calendar " +
+                    "is clear \u2014 Ciyato could not tell either way.",
+                modifier = Modifier.padding(padding),
+            )
+            return@Scaffold
+        }
+
+        val todayEvents = loaded.filter { it.startMs >= today || it.endMs >= today }
             .groupBy { formatDate(it.startMs) }
 
         if (todayEvents.isEmpty()) {
@@ -230,7 +253,20 @@ private fun CalendarEventCard(event: CalendarEvent, onClick: () -> Unit) {
     }
 }
 
-internal fun readCalendarEvents(context: Context): List<CalendarEvent> {
+/**
+ * The next fortnight of events, or null when the calendar provider would not answer.
+ *
+ * Had no error handling whatsoever. HomeScreen wrapped its call in runCatching; the
+ * Agenda screen called it bare, on the main thread, so a provider failure did not
+ * degrade the screen - it threw. A revoked permission, a disabled calendar provider
+ * or a locked work profile all produce exactly that.
+ *
+ * Null rather than an empty list because the Agenda screen's empty state is a
+ * definite claim - a party emoji and "Your calendar has no upcoming events" - and a
+ * failed read telling somebody their fortnight is clear is the worst version of this
+ * mistake in the app.
+ */
+internal fun readCalendarEvents(context: Context): List<CalendarEvent>? = runCatching {
     val events = mutableListOf<CalendarEvent>()
     val now = System.currentTimeMillis()
     val twoWeeks = now + 14L * 24 * 60 * 60 * 1000
@@ -281,15 +317,20 @@ internal fun readCalendarEvents(context: Context): List<CalendarEvent> {
             ))
         }
     }
-    return events
-}
+    events
+}.getOrNull()
 
 private fun openEventInCalendar(context: Context, eventId: Long) {
+    // Unguarded before, so tapping an event on a phone with no calendar app crashed.
+    // Reading the calendar and being able to open it are separate capabilities: the
+    // events can be read through the provider while nothing is registered to display
+    // one, which is exactly the case on a device whose calendar app was removed.
     val uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, eventId)
-    context.startActivity(Intent(Intent.ACTION_VIEW).apply {
-        data = uri
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    })
+    openWithApp(
+        context,
+        Intent(Intent.ACTION_VIEW).apply { data = uri },
+        "No app on this phone can open a calendar event.",
+    )
 }
 
 private fun formatDate(ms: Long): String {

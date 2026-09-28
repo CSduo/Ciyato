@@ -241,7 +241,11 @@ fun HomeScreen(
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         if (granted) {
             agendaEvents = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                runCatching { readCalendarEvents(homeContext) }.getOrDefault(emptyList())
+                // readCalendarEvents handles its own failure now and returns null.
+                // Home shows nothing in that case, which is right for a compact card
+                // with no room to explain - the Agenda screen is where the reason is
+                // stated.
+                readCalendarEvents(homeContext).orEmpty()
             }
         }
     }

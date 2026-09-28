@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
+import com.ciyato.launcher.ui.components.openSystemScreen
 
 /**
  * SettingsScreen — fully expanded with all configurable options.
@@ -174,9 +175,16 @@ fun SettingsScreen(
                         // settings - where the person can see the setting that is
                         // being reported, and change it if they want.
                         if (isHomeLauncher) {
-                            runCatching {
-                                context.startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
-                            }
+                            // Reported nothing when refused, which put the row back in
+                            // the state the comment above says it was fixed out of: it
+                            // looked tappable and did nothing. openAppSettings in this
+                            // same file was corrected for exactly this and this sibling
+                            // was missed.
+                            openSystemScreen(
+                                context,
+                                Intent(Settings.ACTION_HOME_SETTINGS),
+                                "change it in Settings > Apps > Default apps > Home app",
+                            )
                             return@CiyatoListCard
                         }
                         // Asks directly instead of opening a list.

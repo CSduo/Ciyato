@@ -334,7 +334,7 @@ private fun PermissionCard(onGrant: () -> Unit) {
         Text("See your files here", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         Spacer(Modifier.height(6.dp))
         Text(
-            "Allow media access to show categories, recent files, and cleanup suggestions. Everything stays on this device.",
+            "Allow media access to show categories, recent files, and cleanup suggestions. Your files are read on this phone and never uploaded.",
             color = CiyatoMuted,
             fontSize = 13.sp,
             lineHeight = 18.sp,

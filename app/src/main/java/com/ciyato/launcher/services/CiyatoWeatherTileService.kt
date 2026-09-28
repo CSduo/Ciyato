@@ -84,5 +84,26 @@ class CiyatoWeatherTileService : TileService() {
     companion object {
         const val PREFS_NAME              = "ciyato_tile_prefs"
         const val KEY_REFRESH_REQUESTED_AT = "weather_refresh_requested_at"
+
+        /**
+         * True once, if the tile asked for a refresh since this was last called.
+         *
+         * The tile wrote that flag and **nothing ever read it**, so the tile said
+         * "Tap to refresh", showed "Refreshing..." for two seconds, and refreshed
+         * nothing. Every part of the feature existed except the line that connects
+         * them - the same shape as the notification badges and the app shortcuts.
+         *
+         * Reading clears it, so a stale request from days ago cannot trigger a
+         * surprise fetch, and two resumes do not fetch twice.
+         */
+        fun consumeRefreshRequest(context: android.content.Context): Boolean = runCatching {
+            val prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            val requestedAt = prefs.getLong(KEY_REFRESH_REQUESTED_AT, 0L)
+            if (requestedAt == 0L) return@runCatching false
+            prefs.edit().remove(KEY_REFRESH_REQUESTED_AT).apply()
+            // Only honour a recent request. Tapping the tile and opening Ciyato an
+            // hour later should not force a network call the person did not ask for.
+            System.currentTimeMillis() - requestedAt < 5 * 60 * 1000L
+        }.getOrDefault(false)
     }
 }

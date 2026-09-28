@@ -110,7 +110,7 @@ fun ContextualSuggestionsScreen(
             SpecialAccessGate(
                 capability = PermissionRegistry.usageAccess,
                 icon = "📊",
-                featureLine = "Frequent apps are ranked by how often and how recently you open them.",
+                featureLine = "Frequent apps are ranked by how long you have spent in them this week.",
                 modifier = Modifier.padding(padding),
             )
             return@Scaffold
@@ -269,7 +269,7 @@ private fun buildContextualSuggestions(
                 suggestions.add(AppSuggestion(
                     packageName = stat.packageName,
                     appLabel = label,
-                    reason = "Used ${String.format(java.util.Locale.getDefault(), "%.1f", usageHours)}h this week — often at this time",
+                    reason = "Used ${String.format(java.util.Locale.getDefault(), "%.1f", usageHours)}h this week",
                     weeklyHours = usageHours,
                     timeSlot = timeSlot,
                 ))

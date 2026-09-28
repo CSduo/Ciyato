@@ -421,16 +421,42 @@ fun WallpaperPickerScreen(
                             viewModel.setCiyatoImageWallpaper(Uri.fromFile(file).toString())
                             viewModel.setCiyatoVideoWallpaper("")
                             viewModel.setUseSystemWallpaper(false)
-                            scope.launch(Dispatchers.IO) { applyImageToSystemWallpaper(context, file, WallpaperTarget.HOME) }
-                            imageStatus = "Applied to your Home screen."
+                            // The status used to be set here, synchronously, before the
+                            // coroutine had started - so it said "Applied" whatever
+                            // happened, and applyImageToSystemWallpaper swallowed the
+                            // failure anyway. setStream is refused outright by several
+                            // OEM images and by some device-management policies. This is
+                            // the same defect fixed for gradient wallpapers, left in the
+                            // image path.
+                            scope.launch(Dispatchers.IO) {
+                                val applied = applyImageToSystemWallpaper(context, file, WallpaperTarget.HOME)
+                                imageStatus = if (applied) {
+                                    "Applied to Home screen."
+                                } else {
+                                    "Android refused the wallpaper change. Some phones only allow it from their own wallpaper app."
+                                }
+                            }
                             pendingWallpaperChoice = null
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Home screen", color = CiyatoWhite, modifier = Modifier.fillMaxWidth()) }
                     TextButton(
                         onClick = {
-                            scope.launch(Dispatchers.IO) { applyImageToSystemWallpaper(context, file, WallpaperTarget.LOCK) }
-                            imageStatus = "Applied to your Lock screen."
+                            // The status used to be set here, synchronously, before the
+                            // coroutine had started - so it said "Applied" whatever
+                            // happened, and applyImageToSystemWallpaper swallowed the
+                            // failure anyway. setStream is refused outright by several
+                            // OEM images and by some device-management policies. This is
+                            // the same defect fixed for gradient wallpapers, left in the
+                            // image path.
+                            scope.launch(Dispatchers.IO) {
+                                val applied = applyImageToSystemWallpaper(context, file, WallpaperTarget.LOCK)
+                                imageStatus = if (applied) {
+                                    "Applied to Lock screen."
+                                } else {
+                                    "Android refused the wallpaper change. Some phones only allow it from their own wallpaper app."
+                                }
+                            }
                             pendingWallpaperChoice = null
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -440,8 +466,21 @@ fun WallpaperPickerScreen(
                             viewModel.setCiyatoImageWallpaper(Uri.fromFile(file).toString())
                             viewModel.setCiyatoVideoWallpaper("")
                             viewModel.setUseSystemWallpaper(false)
-                            scope.launch(Dispatchers.IO) { applyImageToSystemWallpaper(context, file, WallpaperTarget.BOTH) }
-                            imageStatus = "Applied to both Home and Lock screen."
+                            // The status used to be set here, synchronously, before the
+                            // coroutine had started - so it said "Applied" whatever
+                            // happened, and applyImageToSystemWallpaper swallowed the
+                            // failure anyway. setStream is refused outright by several
+                            // OEM images and by some device-management policies. This is
+                            // the same defect fixed for gradient wallpapers, left in the
+                            // image path.
+                            scope.launch(Dispatchers.IO) {
+                                val applied = applyImageToSystemWallpaper(context, file, WallpaperTarget.BOTH)
+                                imageStatus = if (applied) {
+                                    "Applied to both Home and Lock screen."
+                                } else {
+                                    "Android refused the wallpaper change. Some phones only allow it from their own wallpaper app."
+                                }
+                            }
                             pendingWallpaperChoice = null
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -460,7 +499,11 @@ private enum class WallpaperTarget { HOME, LOCK, BOTH }
 
 /** Pushes the image to the real Android wallpaper (visible system-wide, unlike
  *  Ciyato's own in-app background) for the chosen surface(s). */
-private fun applyImageToSystemWallpaper(context: android.content.Context, file: File, target: WallpaperTarget) {
+private fun applyImageToSystemWallpaper(
+    context: android.content.Context,
+    file: File,
+    target: WallpaperTarget,
+): Boolean =
     runCatching {
         val wm = WallpaperManager.getInstance(context)
         val flags = when (target) {
@@ -469,8 +512,7 @@ private fun applyImageToSystemWallpaper(context: android.content.Context, file: 
             WallpaperTarget.BOTH -> WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK
         }
         file.inputStream().use { input -> wm.setStream(input, null, true, flags) }
-    }
-}
+    }.isSuccess
 
 @Composable
 private fun ImageBackgroundControls(

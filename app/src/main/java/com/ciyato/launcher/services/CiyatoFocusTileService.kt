@@ -22,7 +22,12 @@ import kotlinx.coroutines.launch
  * Appears in the Android Quick Settings panel as "Focus Mode".
  * Tapping it starts or ends a focus session without opening the launcher UI.
  *
- * Default session: 25 minutes, blocking SOCIAL + ENTERTAINMENT + GAMES.
+ * Duration and blocked categories come from the person's own Focus settings.
+ * This said "Default session: 25 minutes, blocking SOCIAL + ENTERTAINMENT +
+ * GAMES" while the code below had already been changed to read
+ * settings.focusDurationMinutes and settings.focusBlockedCats - the comment
+ * describing the behaviour the change removed, which is worse than no comment
+ * because it reads as the contract.
  *
  * Tile states:
  *  STATE_ACTIVE   → session running (tap to end)

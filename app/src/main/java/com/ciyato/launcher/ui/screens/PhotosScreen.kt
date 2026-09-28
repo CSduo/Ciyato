@@ -422,7 +422,7 @@ private fun EmptyMediaState(onAddMedia: () -> Unit) {
         Icon(Icons.Default.PhotoLibrary, contentDescription = null, tint = CiyatoGold, modifier = Modifier.size(28.dp))
         Text("Choose media to organize", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
         Text(
-            "Android Photo Picker lets you choose specific photos and videos. Ciyato does not request access to your complete gallery.",
+            "The Android photo picker lets you hand Ciyato specific photos and videos without granting anything further. Ciyato can also ask for full gallery access, which is what the organizing and cleanup features use.",
             color = CiyatoSec,
             fontSize = 13.sp,
             lineHeight = 19.sp,
