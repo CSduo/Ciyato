@@ -43,6 +43,7 @@ import com.ciyato.launcher.ui.theme.CiyatoTheme
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ciyato.launcher.ui.screens.OpenSourceLicencesScreen
 
 /**
  * MainActivity — dashboard/settings entry point.
@@ -372,6 +373,7 @@ class MainActivity : FragmentActivity() {
         openDuplicateShortcuts = { navController.navigate("duplicate_shortcuts") },
         openWidgetHost = { navController.navigate("widget_host") },
         openInsights = { navController.navigate("insights") },
+        openOpenSourceLicences = { navController.navigate("open_source_licences") },
     ),
 )
                     }
@@ -520,6 +522,10 @@ class MainActivity : FragmentActivity() {
                     }
                     composable("widget_host") {
                         WidgetHostScreen(onBack = { navController.popBackStack() })
+                    }
+
+                    composable("open_source_licences") {
+                        OpenSourceLicencesScreen(onBack = { navController.popBackStack() })
                     }
 
                     composable("agenda") {

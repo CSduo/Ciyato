@@ -533,3 +533,124 @@ androidComponents {
 tasks.matching { it.name == "bundleRelease" || it.name == "assembleRelease" }.configureEach {
     dependsOn("verifyReleaseManifest")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Open-source attribution, shipped from the same file the repository documents.
+//
+// Apache-2.0 section 4(d) requires attribution notices to travel with derivative
+// works, and almost every dependency here is Apache-2.0. A commercial app that
+// omits them distributes those libraries outside their licence.
+//
+// The usual mechanical answer is com.google.android.gms:oss-licenses-plugin, and
+// it is the wrong one for this app: Ciyato has no Google Play Services dependency
+// at all - ML Kit is the bundled on-device variant - so that plugin would make the
+// licences screen the reason the app gains its first GMS dependency, in an app
+// whose entire claim is that nothing leaves the device.
+//
+// The other usual answer is a hand-written screen, which drifts. That objection is
+// real: a stale attribution list is the same breach as no list.
+//
+// So the document IS the screen. THIRD_PARTY_NOTICES.md is the single copy, the
+// marked section of it is copied into assets here, and ThirdPartyNoticesTest fails
+// the build when a dependency has no entry in it.
+val copyThirdPartyNotices = tasks.register("copyThirdPartyNotices") {
+    group = "build"
+    description = "Extracts the shipped section of THIRD_PARTY_NOTICES.md into assets."
+
+    val source = rootProject.layout.projectDirectory.file("THIRD_PARTY_NOTICES.md")
+    val target = layout.buildDirectory.file("generated/notices/assets/third_party_notices.md")
+
+    inputs.file(source).withPropertyName("notices").withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.file(target).withPropertyName("asset")
+
+    doLast {
+        val text = source.asFile.readText()
+        val begin = text.indexOf("<!-- SHIPPED:BEGIN")
+        val end = text.indexOf("<!-- SHIPPED:END")
+
+        // Failing loudly here rather than shipping an empty screen. A blank
+        // licences page is indistinguishable from no licences page, and this
+        // project has already produced three features that were silently inert.
+        require(begin >= 0) {
+            "THIRD_PARTY_NOTICES.md has no <!-- SHIPPED:BEGIN --> marker, so there is " +
+                "nothing to put in the app's licences screen."
+        }
+        require(end > begin) {
+            "THIRD_PARTY_NOTICES.md has no <!-- SHIPPED:END --> marker after the BEGIN " +
+                "marker. Without it the internal notes and open questions would ship to users."
+        }
+
+        // Past the end of the BEGIN comment itself, so the marker text is not shown.
+        val bodyStart = text.indexOf("-->", begin).let { if (it < 0) begin else it + 3 }
+        val body = text.substring(bodyStart, end).trim()
+        require(body.length > 200) {
+            "The shipped section of THIRD_PARTY_NOTICES.md is only ${body.length} characters. " +
+                "That is not an attribution list - check the markers."
+        }
+        require(body.contains("Apache License 2.0")) {
+            "The shipped section does not mention Apache License 2.0, which nearly every " +
+                "dependency is licensed under. The markers are probably around the wrong section."
+        }
+
+        val out = target.get().asFile
+        out.parentFile.mkdirs()
+        out.writeText(body + "\n")
+        logger.lifecycle("Open-source notices: ${body.length} characters -> ${out.name}")
+    }
+}
+
+// Registering the TASK PROVIDER as the source directory rather than a bare path, so
+// Gradle infers the dependency for every consumer instead of only the ones named by
+// hand. The hand-written version wired merge*Assets and missed the lint model tasks,
+// which read the same source set - so a combined `testDebugUnitTest lintDebug` run
+// raced the copy and failed intermittently. An intermittent build failure is worse
+// than a consistent one; it gets re-run rather than diagnosed.
+android {
+    sourceSets.getByName("main").assets.srcDir(copyThirdPartyNotices)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The guard tests read files Gradle does not otherwise associate with them, and a
+// test that does not run is a test that cannot fail.
+//
+// Found by proving ThirdPartyNoticesTest could fail: adding an unattributed
+// dependency produced no failure on the first attempt, because the test task was
+// UP-TO-DATE and skipped. The dependency change did eventually invalidate it, but a
+// change to THIRD_PARTY_NOTICES.md alone would not have - so deleting an attribution
+// row would leave the guard passing by never executing.
+//
+// That is the same defect as the golden test that silently recorded nothing earlier
+// in this project: a check that looks green because it did not happen. These
+// declarations make each document a real input, so editing it re-runs the test that
+// guards it.
+tasks.withType<Test>().configureEach {
+    val guarded = listOf(
+        // ThirdPartyNoticesTest - Apache-2.0 4(d) attribution coverage
+        rootProject.layout.projectDirectory.file("THIRD_PARTY_NOTICES.md"),
+        // ThirdPartyNoticesTest resolves catalog aliases to coordinates from here
+        rootProject.layout.projectDirectory.file("gradle/libs.versions.toml"),
+        // PermissionRegistryTest - every capability documented for Play
+        rootProject.layout.projectDirectory.file("DATA_INVENTORY.md"),
+        // FeatureReachabilityTest - a route with no row, or a row with no route
+        rootProject.layout.projectDirectory.file("docs/FEATURE_MATRIX.md"),
+        // StoreReadinessTest - the release checklist
+        rootProject.layout.projectDirectory.file("STORE_READINESS.md"),
+        // NoSuggestionNumbersTest - the archived catalogue those numbers pointed at
+        rootProject.layout.projectDirectory.file("docs/archive/2026-07/SUGGESTIONS.md"),
+    )
+    guarded.forEachIndexed { index, file ->
+        if (file.asFile.exists()) {
+            inputs.file(file)
+                .withPropertyName("guardedDoc$index")
+                .withPathSensitivity(PathSensitivity.RELATIVE)
+        }
+    }
+
+    // ThirdPartyNoticesTest and the reachability tests read these two directly.
+    inputs.file(layout.projectDirectory.file("build.gradle.kts"))
+        .withPropertyName("guardedBuildScript")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(layout.projectDirectory.file("src/main/AndroidManifest.xml"))
+        .withPropertyName("guardedManifest")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}

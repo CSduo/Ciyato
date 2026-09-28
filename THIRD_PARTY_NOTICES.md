@@ -15,18 +15,45 @@ check for it; that does not make it optional.
 
 An **Open-source licences** entry in Settings, showing the notices below.
 
-That screen does not exist yet. It is the one outstanding compliance item on this
-document, and it is deliberately recorded as outstanding rather than assumed:
+- [x] Settings → Open-source licences, listing every component below with its
+      licence text — `ui/screens/OpenSourceLicencesScreen.kt`, reached from the
+      About section of Settings
+- [ ] **Verified present in a release build, not just a debug one (yours)** — the
+      asset is copied by a task wired into asset merging for every variant, and
+      `ThirdPartyNoticesTest` asserts the wiring exists, but only installing a
+      release build proves the screen renders there
 
-- [ ] Settings → About → Open-source licences, listing every component below
-      with its licence text
-- [ ] Verified present in a release build, not just a debug one
+### Why not the oss-licenses plugin
 
-The mechanical route is `com.google.android.gms:oss-licenses-plugin`, which
-generates the screen from the resolved dependency graph and cannot drift from it.
-The manual route is a static screen, which can drift and will. Prefer the plugin.
+`com.google.android.gms:oss-licenses-plugin` is the usual answer, and it was
+recommended here until somebody checked the dependency list. Ciyato has **no Google
+Play Services dependency at all** — ML Kit is the bundled on-device variant
+(`com.google.mlkit:image-labeling`), which carries no GMS. That plugin would make a
+licences screen the reason this app gains its first Play Services dependency, in an
+app whose whole positioning is that nothing leaves the device. Wrong trade.
+
+A static hand-written screen is the other usual answer, and it drifts — which is a
+real objection, not a stylistic one, because a stale attribution list is the same
+licence breach as no list at all.
+
+So neither. The document you are reading **is** the screen:
+
+- The section between the `SHIPPED` markers below is copied into the APK as an asset
+  by the `copyThirdPartyNotices` Gradle task, wired ahead of asset merging. There is
+  one copy of the text, so there is nothing to drift.
+- The task fails the build if the markers are missing or the extracted text is
+  empty, so the screen cannot silently ship blank.
+- `ThirdPartyNoticesTest` fails the build when a dependency in `build.gradle.kts`
+  has no entry here. That closes the gap the plugin's dependency-graph generation
+  was wanted for, without the dependency.
+- Only the marked section ships. Everything else on this page — these notes, the
+  outstanding wallpaper question, the regeneration instructions — is internal and
+  must not appear in front of a user.
 
 ---
+
+<!-- SHIPPED:BEGIN - everything below this marker is copied into the APK and shown
+     to users. Keep it free of internal notes, questions and checkboxes. -->
 
 ## Components
 
@@ -39,7 +66,10 @@ The full text is at https://www.apache.org/licenses/LICENSE-2.0
 | AndroidX Core | `androidx.core:core-ktx` | Platform compatibility |
 | AndroidX Activity | `androidx.activity:activity-compose` | Activity + Compose integration |
 | AndroidX Lifecycle | `androidx.lifecycle:lifecycle-runtime-ktx`, `-runtime-compose`, `-viewmodel-compose` | Lifecycle-aware state |
-| Jetpack Compose | `androidx.compose:compose-bom` and the `ui`, `ui-graphics`, `ui-tooling`, `material3`, `material-icons-extended` artifacts | The entire user interface |
+| Jetpack Compose (version alignment) | `androidx.compose:compose-bom` | Keeps the Compose artifacts below on one consistent version |
+| Compose UI | `androidx.compose.ui:ui`, `ui-graphics`, `ui-tooling-preview` | The rendering and layout foundation |
+| Compose Material 3 | `androidx.compose.material3:material3` | Buttons, cards, dialogs, the app bar |
+| Compose Material Icons | `androidx.compose.material:material-icons-extended` | Every icon in the interface |
 | AndroidX Navigation | `androidx.navigation:navigation-compose` | The organizer's route graph |
 | AndroidX DataStore | `androidx.datastore:datastore-preferences` | Settings and layout persistence |
 | AndroidX DocumentFile | `androidx.documentfile:documentfile` | SAF file access |
@@ -52,6 +82,8 @@ The full text is at https://www.apache.org/licenses/LICENSE-2.0
 | Kotlin standard library | `org.jetbrains.kotlin:kotlin-stdlib` | Language runtime |
 | Coil | `io.coil-kt:coil-compose` | Image loading in Photos and Files |
 | ML Kit Image Labeling | `com.google.mlkit:image-labeling` | On-device photo labelling. **Bundled model — the model ships inside the APK and is not downloaded** (see `DATA_INVENTORY.md` §1) |
+
+<!-- SHIPPED:END - internal from here down. -->
 
 ### Test and build only — not distributed
 

@@ -84,6 +84,7 @@ worse than one that admits a gap, so an em dash means genuinely untested.
 | Sticky notes | `sticky_notes`, `LauncherDest.StickyNotes` | — | — | `ui/screens/StickyNotesScreen.kt` |
 | Search history | `search_history`, `LauncherDest.SearchHistory` | — | `FileSearchHistoryStoreTest` | `ui/screens/SearchHistoryScreen.kt` |
 | Duplicate shortcuts | `duplicate_shortcuts`, `LauncherDest.DuplicateShortcuts` | `QUERY_ALL_PACKAGES` | — | `ui/screens/DuplicateShortcutsScreen.kt` |
+| Open-source licences | `open_source_licences`, `LauncherDest.OpenSourceLicences` | — | `ThirdPartyNoticesTest` | `ui/screens/OpenSourceLicencesScreen.kt`, `THIRD_PARTY_NOTICES.md`, `app/build.gradle.kts` (`copyThirdPartyNotices`) |
 
 ## Lab — reachable, never in the store listing
 

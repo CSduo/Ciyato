@@ -683,6 +683,16 @@ fun SettingsScreen(
                 }
             }
 
+            item {
+                CiyatoListCard(
+                    title = "Open-source licences",
+                    subtitle = "The open-source components Ciyato is built on, and their licences",
+                    icon = Icons.Default.Balance,
+                    iconColor = CiyatoSec,
+                    onClick = destinations.openOpenSourceLicences,
+                )
+            }
+
             // ── Danger Zone ───────────────────────────────────────────────────
             item { SectionHeader("App info") }
             item {

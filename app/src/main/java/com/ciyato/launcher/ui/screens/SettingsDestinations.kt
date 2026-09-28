@@ -44,4 +44,11 @@ data class SettingsDestinations(
     val openDuplicateShortcuts: () -> Unit,
     val openWidgetHost: () -> Unit,
     val openInsights: () -> Unit,
+    /**
+     * Open-source licences. Apache-2.0 section 4(d) requires the attribution to be
+     * carried in the app, so this row is a compliance obligation rather than a
+     * nicety - which is why it is reachable from Settings rather than left to a
+     * document in the repository.
+     */
+    val openOpenSourceLicences: () -> Unit,
 )

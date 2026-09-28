@@ -25,6 +25,7 @@ import com.ciyato.launcher.ui.theme.CiyatoTheme
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ciyato.launcher.ui.screens.OpenSourceLicencesScreen
 
 /**
  * LauncherHomeActivity — the REAL home screen.
@@ -170,6 +171,7 @@ private sealed class LauncherDest {
     object DuplicateShortcuts : LauncherDest()   // Apps placed in more than one smart category
     object WidgetHost         : LauncherDest()   // — AppWidgetHost placement
     object Insights           : LauncherDest()   // One entry for everything built on Usage Access
+    object OpenSourceLicences : LauncherDest()   // Apache-2.0 4(d) attribution
     object AppUsage           : LauncherDest()   // Screen Time — was an orphan (F-154)
     object NetworkUsage       : LauncherDest()   // Data Usage — was an orphan (F-170)
 }
@@ -279,6 +281,7 @@ private fun LauncherRoot(
             is LauncherDest.AutoBackup -> LauncherDest.Settings
             is LauncherDest.DuplicateShortcuts -> LauncherDest.Settings
             is LauncherDest.WidgetHost -> LauncherDest.Settings
+            is LauncherDest.OpenSourceLicences -> LauncherDest.Settings
             else -> LauncherDest.Home
         }
     }
@@ -377,6 +380,7 @@ private fun LauncherRoot(
                 openDuplicateShortcuts = { dest = LauncherDest.DuplicateShortcuts },
                 openWidgetHost = { dest = LauncherDest.WidgetHost },
                 openInsights = { dest = LauncherDest.Insights },
+                openOpenSourceLicences = { dest = LauncherDest.OpenSourceLicences },
             ),
         )
 
@@ -547,6 +551,10 @@ private fun LauncherRoot(
 
         is LauncherDest.WidgetHost -> WidgetHostScreen(
             onBack    = { dest = LauncherDest.Settings },
+        )
+
+        is LauncherDest.OpenSourceLicences -> OpenSourceLicencesScreen(
+            onBack = { dest = LauncherDest.Settings },
         )
 
     }
