@@ -1044,42 +1044,6 @@ private fun SectionHeader(title: String, caption: String? = null) {
 }
 
 @Composable
-private fun SettingsToggle(icon: ImageVector, title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Surface(onClick = { onCheckedChange(!checked) }, color = CiyatoBgEl,
-        shape = RoundedCornerShape(18.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, CiyatoSubtleBorder)) {
-        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Icon(icon, null, tint = CiyatoSec, modifier = Modifier.size(22.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Text(subtitle, color = CiyatoMuted, fontSize = 12.sp)
-            }
-            Switch(checked = checked, onCheckedChange = onCheckedChange,
-                colors = SwitchDefaults.colors(checkedThumbColor = CiyatoWhite, checkedTrackColor = CiyatoGold,
-                    uncheckedThumbColor = CiyatoMuted, uncheckedTrackColor = CiyatoBgEl2))
-        }
-    }
-}
-
-@Composable
-private fun SettingsAction(icon: ImageVector, title: String, subtitle: String,
-    tintColor: Color = CiyatoWhite, onClick: () -> Unit) {
-    Surface(onClick = onClick, color = CiyatoBgEl, shape = RoundedCornerShape(18.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, CiyatoSubtleBorder)) {
-        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Icon(icon, null, tint = if (tintColor == CiyatoWhite) CiyatoSec else tintColor, modifier = Modifier.size(22.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, color = tintColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Text(subtitle, color = CiyatoMuted, fontSize = 12.sp)
-            }
-            Icon(Icons.Default.ChevronRight, null, tint = CiyatoMuted)
-        }
-    }
-}
-
-@Composable
 private fun SettingsOptionRow(
     icon: ImageVector,
     title: String,

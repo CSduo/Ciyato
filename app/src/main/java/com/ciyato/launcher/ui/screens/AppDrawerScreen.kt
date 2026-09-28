@@ -224,63 +224,6 @@ fun AppDrawerScreen(
     }
 }
 
-@Composable
-private fun AppLibraryGroupTile(group: AppLibraryGroup, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(132.dp)
-            .clip(CiyatoShapes.medium)
-            .background(CiyatoBgEl)
-            .border(1.dp, CiyatoBorder, CiyatoShapes.medium)
-            .clickable(onClick = onClick)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            group.apps.take(4).forEach { app ->
-                RealAppIcon(
-                    drawable = app.icon,
-                    size = 32.dp,
-                    cornerRadius = 9.dp,
-                    scale = app.iconScale,
-                    rotation = app.iconRotation,
-                    accentHex = app.iconAccent,
-                )
-            }
-        }
-        Column {
-            Text(group.label, color = CiyatoWhite, fontWeight = FontWeight.Medium, fontSize = 15.sp, maxLines = 1)
-            Text(pluralStringResource(R.plurals.count_apps, group.apps.size, group.apps.size), color = CiyatoMuted, fontSize = 12.sp)
-        }
-    }
-}
-
-@Composable
-private fun StandaloneAppsTile(apps: List<InstalledApp>, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(132.dp)
-            .clip(CiyatoShapes.medium)
-            .background(CiyatoBgEl)
-            .border(1.dp, CiyatoBorder, CiyatoShapes.medium)
-            .clickable(onClick = onClick)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            apps.take(4).forEach { app ->
-                RealAppIcon(app.icon, size = 32.dp, cornerRadius = 9.dp, scale = app.iconScale, rotation = app.iconRotation, accentHex = app.iconAccent)
-            }
-        }
-        Column {
-            Text("Apps", color = CiyatoWhite, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-            Text("${apps.size} ungrouped", color = CiyatoMuted, fontSize = 12.sp)
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppLibraryGroupSheet(

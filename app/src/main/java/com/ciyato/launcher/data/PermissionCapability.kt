@@ -41,6 +41,29 @@ data class PermissionCapability(
     val onDenial: String,
     /** Where in the app or the system the person turns it off again. */
     val settingsPath: String,
+    /**
+     * The Intent action that opens the toggle, for [Kind.SPECIAL_ACCESS] rows.
+     *
+     * Here rather than in each screen because it is a property of the permission,
+     * not of whoever happens to ask for it. Six screens each built their own
+     * `startActivity(Intent(ACTION_USAGE_ACCESS_SETTINGS))` for the same
+     * permission, none of them guarded, so on any image without that settings
+     * activity all six crashed on the Grant button.
+     *
+     * Null for [Kind.RUNTIME] (a system dialog, not a settings page) and for
+     * [Kind.NORMAL] (nothing to turn off).
+     *
+     * Also null for MANAGE_EXTERNAL_STORAGE, which is the case that proves one
+     * action string is not always enough. `FileAccess.allFilesSettingsIntent`
+     * already resolved that route properly: it returns null below API 30 where the
+     * permission does not exist, prefers the per-app screen that lands directly on
+     * Ciyato's own toggle, falls back to the global list on the OEM builds that
+     * ship without it, and returns null rather than an unresolvable Intent. Putting
+     * a flat action here duplicated that and lost every part of it - and lint said
+     * so, flagging the API-30 constant against a minSdk of 26. A single field
+     * cannot hold an API gate and a fallback chain, so this one does not try.
+     */
+    val settingsAction: String? = null,
     val playDeclaration: PlayDeclaration,
 ) {
     enum class Kind {
@@ -287,6 +310,7 @@ object PermissionRegistry {
             optional = true,
             onDenial = "Each of those screens says Usage access is off and offers to open the Settings page. None of them invent numbers.",
             settingsPath = "Android Settings > Apps > Special app access > Usage access",
+            settingsAction = android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS,
             playDeclaration = PermissionCapability.PlayDeclaration.NONE,
         ),
 
@@ -301,6 +325,7 @@ object PermissionRegistry {
             optional = true,
             onDenial = "Icons show no badges. Nothing else changes.",
             settingsPath = "Android Settings > Notifications > Device and app notifications",
+            settingsAction = android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS,
             playDeclaration = PermissionCapability.PlayDeclaration.NONE,
         ),
 
@@ -397,4 +422,38 @@ object PermissionRegistry {
 
     fun forPermission(permission: String): PermissionCapability? =
         capabilities.firstOrNull { it.permission == permission }
+
+    /**
+     * The three special-access rows, by name, for the screens that gate on them.
+     *
+     * Named accessors rather than string lookups at each call site, because a
+     * typo'd permission string returns null and a null here would put a screen
+     * back to inventing its own copy - the exact failure this is meant to end.
+     *
+     * These throw if the row is missing, and `PermissionRegistryTest` asserts all
+     * three resolve. That ordering is deliberate: a missing row is a programming
+     * error, and the choice is between failing a build and shipping a Home screen
+     * that crashes. The test turns the second into the first.
+     */
+    val usageAccess: PermissionCapability
+        get() = require("android.permission.PACKAGE_USAGE_STATS")
+
+    /**
+     * All-files access. Its [PermissionCapability.settingsAction] is deliberately
+     * null - use `FileAccess.allFilesSettingsIntent` for the route, which is API
+     * gated and has a fallback chain.
+     */
+    val allFilesAccess: PermissionCapability
+        get() = require("android.permission.MANAGE_EXTERNAL_STORAGE")
+
+    val notificationAccess: PermissionCapability
+        get() = require("android.permission.BIND_NOTIFICATION_LISTENER_SERVICE")
+
+    private fun require(permission: String): PermissionCapability =
+        forPermission(permission)
+            ?: error(
+                "PermissionRegistry has no row for $permission. A screen gates on it, " +
+                    "so the row cannot be removed without moving that screen's disclosure " +
+                    "somewhere else first."
+            )
 }

@@ -22,37 +22,10 @@ import com.ciyato.launcher.ui.theme.CiyatoMuted
 import com.ciyato.launcher.ui.theme.CiyatoSec
 
 @Composable
-fun EmptyAppsState(message: String, modifier: Modifier = Modifier) {
-    EmptyStateBase(
-        message = message,
-        icon = { Icon(Icons.Default.AutoAwesome, null, tint = CiyatoGold, modifier = Modifier.size(48.dp)) },
-        modifier = modifier
-    )
-}
-
-@Composable
-fun EmptyFilesState(message: String, modifier: Modifier = Modifier) {
-    EmptyStateBase(
-        message = message,
-        icon = { Icon(Icons.Default.Folder, null, tint = CiyatoGold, modifier = Modifier.size(48.dp)) },
-        modifier = modifier
-    )
-}
-
-@Composable
 fun EmptySearchState(query: String, modifier: Modifier = Modifier) {
     EmptyStateBase(
         message = "No results found for \"$query\"",
         icon = { Icon(Icons.Default.Search, null, tint = CiyatoGold, modifier = Modifier.size(48.dp)) },
-        modifier = modifier
-    )
-}
-
-@Composable
-fun EmptyPhotosState(modifier: Modifier = Modifier) {
-    EmptyStateBase(
-        message = "No photos available",
-        icon = { Icon(Icons.Default.PhotoCamera, null, tint = CiyatoGold, modifier = Modifier.size(48.dp)) },
         modifier = modifier
     )
 }

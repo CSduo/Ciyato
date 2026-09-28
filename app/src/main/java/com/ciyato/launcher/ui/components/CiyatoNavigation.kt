@@ -207,35 +207,6 @@ fun CiyatoTabRow(
 }
 
 /**
- * Ciyato Breadcrumb — path indicator for nested navigation.
- */
-@Composable
-fun CiyatoBreadcrumb(
-    path: List<String>,
-    onSegmentClick: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(CiyatoSpacing.sp4)
-    ) {
-        path.forEachIndexed { idx, segment ->
-            Text(
-                text = segment,
-                style = labelL,
-                color = if (idx == path.lastIndex) CiyatoGold else CiyatoMuted,
-                fontWeight = if (idx == path.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier.clickable { onSegmentClick(idx) }
-            )
-            if (idx < path.lastIndex) {
-                Icon(Icons.Default.ChevronRight, null, tint = CiyatoMuted, modifier = Modifier.size(14.dp))
-            }
-        }
-    }
-}
-
-/**
  * Ciyato Step Indicator — onboarding progress dots.
  */
 @Composable
@@ -265,31 +236,6 @@ fun CiyatoStepIndicator(
                     .background(dotColor)
             )
         }
-    }
-}
-
-/**
- * Ciyato Floating Action Button — gold circle FAB with icon.
- */
-@Composable
-fun CiyatoFAB(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    color: Color = CiyatoGold,
-) {
-    val pulse by rememberPulse(1f, 1.04f)
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = modifier
-            .scale(pulse)
-            .size(56.dp)
-            .clip(CircleShape)
-            .background(color)
-            .clickable(onClick = onClick)
-    ) {
-        Icon(icon, contentDescription, tint = CiyatoBg, modifier = Modifier.size(24.dp))
     }
 }
 

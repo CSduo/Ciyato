@@ -35,6 +35,9 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 import androidx.compose.ui.text.style.TextAlign
+import com.ciyato.launcher.data.PermissionRegistry
+import com.ciyato.launcher.ui.components.SpecialAccessGate
+import com.ciyato.launcher.ui.components.QueryFailureState
 
 /**
  * AiChangelogScreen
@@ -92,28 +95,12 @@ fun AiChangelogScreen(
         }
     ) { padding ->
         if (!isLoading && !hasPermission) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text("📊", fontSize = 48.sp)
-                Spacer(Modifier.height(16.dp))
-                Text("Usage Access Required", color = CiyatoWhite, fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Ciyato needs Usage Access permission to summarize what changed on your phone today.",
-                    color = CiyatoMuted, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-                Spacer(Modifier.height(24.dp))
-                Button(
-                    onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
-                    colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold),
-                ) {
-                    Text("Grant Permission", color = Color.Black)
-                }
-            }
+            SpecialAccessGate(
+                capability = PermissionRegistry.usageAccess,
+                icon = "📊",
+                featureLine = "Today's summary is assembled from which apps you opened today and for how long.",
+                modifier = Modifier.padding(padding),
+            )
             return@Scaffold
         }
 
@@ -161,25 +148,11 @@ fun AiChangelogScreen(
             when {
                 // Could not tell, which is not the same as nothing to tell.
                 current is ChangelogResult.Unavailable -> item {
-                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("⚠️", fontSize = 40.sp)
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                "Couldn't read today's activity",
-                                color = CiyatoWhite,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                "Android didn't return usage data. This is not a quiet day — " +
-                                    "Ciyato could not tell either way.",
-                                color = CiyatoMuted,
-                                fontSize = 13.sp,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                    }
+                    QueryFailureState(
+                        title = "Couldn't read today's activity",
+                        detail = "Android didn't return usage data. This is not a quiet day — " +
+                            "Ciyato could not tell either way.",
+                    )
                 }
 
                 current is ChangelogResult.Ready && current.entries.isEmpty() -> item {

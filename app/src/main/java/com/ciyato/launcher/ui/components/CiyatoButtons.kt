@@ -143,67 +143,6 @@ fun CiyatoGhostButton(
 }
 
 /**
- * Ciyato Icon Button — circle with icon inside.
- */
-@Composable
-fun CiyatoIconButton(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    size: Dp = 44.dp,
-    iconSize: Dp = 20.dp,
-    tint: Color = CiyatoSec,
-    backgroundColor: Color = CiyatoBgEl,
-    borderColor: Color = CiyatoSubtleBorder,
-) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(backgroundColor)
-            .border(1.dp, borderColor, CircleShape)
-            .clickable(onClick = onClick)
-    ) {
-        Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(iconSize))
-    }
-}
-
-/**
- * Ciyato AI Action Button — glowing purple circle for AI triggers.
- */
-@Composable
-fun CiyatoAIButton(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    size: Dp = 52.dp,
-) {
-    val pulse by rememberPulse(1f, 1.05f)
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = modifier
-            .scale(pulse)
-            .size(size)
-            .clip(CircleShape)
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        CiyatoPurple.copy(alpha = 0.3f),
-                        CiyatoPurple.copy(alpha = 0.1f)
-                    )
-                )
-            )
-            .border(1.dp, CiyatoPurple.copy(alpha = 0.5f), CircleShape)
-            .clickable(onClick = onClick)
-    ) {
-        Icon(icon, contentDescription, tint = CiyatoPurple, modifier = Modifier.size(size * 0.45f))
-    }
-}
-
-/**
  * Ciyato Destructive Button — red warning action.
  */
 @Composable
@@ -267,27 +206,4 @@ fun CiyatoToggleChip(
         if (leadingIcon != null) Icon(leadingIcon, null, tint = textColor, modifier = Modifier.size(14.dp))
         Text(text, color = textColor, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
     }
-}
-
-/**
- * Small compact action button — used in card trailing areas.
- */
-@Composable
-fun CiyatoCompactButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    color: Color = CiyatoGold,
-) {
-    Text(
-        text = text,
-        color = if (color == CiyatoGold) CiyatoBg else CiyatoWhite,
-        fontWeight = FontWeight.Bold,
-        fontSize = 11.sp,
-        modifier = modifier
-            .clip(CiyatoShapes.full)
-            .background(color)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 5.dp)
-    )
 }

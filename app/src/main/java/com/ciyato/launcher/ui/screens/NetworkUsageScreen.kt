@@ -32,6 +32,8 @@ import com.ciyato.launcher.ui.components.CiyatoTopBar
 import com.ciyato.launcher.ui.theme.*
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import java.util.concurrent.TimeUnit
+import com.ciyato.launcher.data.PermissionRegistry
+import com.ciyato.launcher.ui.components.SpecialAccessGate
 
 /**
  * NetworkUsageScreen
@@ -96,31 +98,12 @@ fun NetworkUsageScreen(
         }
     ) { padding ->
         if (!hasPermission) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text("📡", fontSize = 48.sp)
-                Spacer(Modifier.height(16.dp))
-                Text("Usage Access Required", color = CiyatoWhite, fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Ciyato needs Usage Access permission to break down mobile data by app.",
-                    color = CiyatoMuted, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-                Spacer(Modifier.height(24.dp))
-                Button(
-                    onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
-                    colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold),
-                ) {
-                    Text("Grant Permission", color = Color.Black)
-                }
-            }
+            SpecialAccessGate(
+                capability = PermissionRegistry.usageAccess,
+                icon = "📡",
+                featureLine = "The mobile-data breakdown is per-app, and Android puts it behind this same switch.",
+                modifier = Modifier.padding(padding),
+            )
             return@Scaffold
         }
 

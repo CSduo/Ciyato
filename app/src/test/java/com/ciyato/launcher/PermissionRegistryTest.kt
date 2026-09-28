@@ -5,6 +5,9 @@ import com.ciyato.launcher.data.PermissionRegistry
 import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertEquals
 
 /**
  * Holds the permission registry to the manifest, and the manifest to the code.
@@ -253,5 +256,119 @@ class PermissionRegistryTest {
             .filterNot { text.contains(it) }
             .sorted()
         assertTrue("DATA_INVENTORY.md does not mention: $undocumented", undocumented.isEmpty())
+    }
+
+    @Test
+    fun `every special-access row knows how to open its own toggle`() {
+        // The registry carries the Intent action now, because it is a property of
+        // the permission rather than of whichever screen asks. Six screens each
+        // built their own unguarded startActivity for this one permission; a row
+        // without an action would send the next screen back to doing that.
+        val special = PermissionRegistry.capabilities.filter {
+            it.kind == PermissionCapability.Kind.SPECIAL_ACCESS
+        }
+        assertTrue("no special-access rows found - the registry has lost them", special.isNotEmpty())
+
+        // One exemption, with its reason. MANAGE_EXTERNAL_STORAGE cannot be reduced
+        // to a single action: the route is API-30-gated, prefers a per-app screen,
+        // falls back to the global list on OEM builds that lack it, and has to
+        // resolve to nothing below API 30. FileAccess.allFilesSettingsIntent does
+        // all of that, and a flat field here duplicated it while losing every part.
+        val routeResolvedInCode = mapOf(
+            "android.permission.MANAGE_EXTERNAL_STORAGE" to
+                "FileAccess.allFilesSettingsIntent - API gated with a per-app/global fallback chain",
+        )
+
+        special.forEach { cap ->
+            if (cap.permission in routeResolvedInCode) {
+                assertNull(
+                    "${cap.permission} is exempt because its route is resolved in code " +
+                        "(${routeResolvedInCode[cap.permission]}), so it must not also carry " +
+                        "a settingsAction - two routes drift",
+                    cap.settingsAction,
+                )
+                return@forEach
+            }
+            assertNotNull(
+                "${cap.permission} is SPECIAL_ACCESS but has no settingsAction, so a gate " +
+                    "cannot offer to open it and would have to hardcode the Intent again. " +
+                    "If the route genuinely needs code, add it to routeResolvedInCode with " +
+                    "the reason.",
+                cap.settingsAction,
+            )
+            assertTrue(
+                "${cap.permission} settingsAction is blank",
+                cap.settingsAction!!.isNotBlank(),
+            )
+        }
+
+        // The exemption has to stay true, or it is just a hole.
+        val fileAccess = File("src/main/java/com/ciyato/launcher/data/FileAccess.kt")
+        assertTrue("FileAccess.kt not found", fileAccess.exists())
+        assertTrue(
+            "FileAccess no longer declares allFilesSettingsIntent, so the exemption above " +
+                "points at nothing and all-files access has no route",
+            fileAccess.readText().contains("fun allFilesSettingsIntent("),
+        )
+    }
+
+    @Test
+    fun `a runtime permission does not pretend to have a settings page`() {
+        // RUNTIME means a system dialog. A settingsAction on one of those rows would
+        // make a gate send the person to a page that is not where the decision
+        // happens.
+        PermissionRegistry.capabilities
+            .filter { it.kind == PermissionCapability.Kind.RUNTIME }
+            .forEach { cap ->
+                assertNull(
+                    "${cap.permission} is RUNTIME but carries a settingsAction",
+                    cap.settingsAction,
+                )
+            }
+    }
+
+    @Test
+    fun `the gated accessors resolve`() {
+        // These three throw rather than returning null, because a screen that cannot
+        // find its row would fall back to inventing its own disclosure - the drift
+        // the registry exists to end. The throw is only acceptable because this test
+        // turns it into a failed build instead of a crashed Home screen, so this
+        // test is load-bearing rather than decorative.
+        listOf(
+            "usageAccess" to PermissionRegistry.usageAccess,
+            "allFilesAccess" to PermissionRegistry.allFilesAccess,
+            "notificationAccess" to PermissionRegistry.notificationAccess,
+        ).forEach { (name, cap) ->
+            assertEquals(
+                "$name resolved to a row of the wrong kind",
+                PermissionCapability.Kind.SPECIAL_ACCESS,
+                cap.kind,
+            )
+            // Not settingsAction here: all-files access resolves its route through
+            // FileAccess, which the case above pins.
+            assertTrue("$name has no feature named", cap.feature.isNotBlank())
+        }
+    }
+
+    @Test
+    fun `no screen hardcodes a usage-access intent any more`() {
+        // The whole point of the shared gate. A new screen that writes its own
+        // startActivity(ACTION_USAGE_ACCESS_SETTINGS) is a seventh copy of the
+        // disclosure, and copies are what drifted.
+        val ui = File("src/main/java/com/ciyato/launcher/ui")
+        assertTrue("ui sources not found", ui.isDirectory)
+        val offenders = ui.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            // The gate and the Insights hub read the action from the registry, so
+            // they name the constant nowhere; anything else that does is hardcoding.
+            .filter { it.readText().contains("Settings.ACTION_USAGE_ACCESS_SETTINGS") }
+            .map { it.name }
+            .toList()
+        assertEquals(
+            "these name the usage-access Intent directly instead of using " +
+                "PermissionRegistry.usageAccess.settingsAction: $offenders",
+            emptyList<String>(),
+            offenders,
+        )
     }
 }

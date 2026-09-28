@@ -183,16 +183,3 @@ internal fun HomeControlToggle(label: String, checked: Boolean, onCheckedChange:
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
-
-@Composable
-internal fun HomeSectionRemoveButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
-    IconButton(
-        onClick = onClick,
-        modifier = modifier
-            .size(28.dp)
-            .clip(RoundedCornerShape(9.dp))
-            .background(CiyatoBg.copy(alpha = 0.84f)),
-    ) {
-        Icon(Icons.Default.Close, contentDescription = "Remove from Home", tint = CiyatoRed, modifier = Modifier.size(16.dp))
-    }
-}

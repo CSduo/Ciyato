@@ -155,3 +155,95 @@ Restoring any of these means re-deciding the product question, not just revertin
 The audit is explicit that these are good decisions to keep: SAF-first storage, system-owned
 MediaStore trash and consent flows, local-only crash logs, coarsened weather location, fail-closed
 authentication, and the restrained near-black/graphite/silver visual direction.
+
+## Unreachable code sweep — 16 files and 29 declarations
+
+Rule 1 requires the searches, so here they are. Every name below was checked against:
+every `.kt` file under `app/src/main` (with comments stripped, so a KDoc mention is not
+counted as a call site), every file under `app/src/test` and `app/src/androidTest`,
+`AndroidManifest.xml`, `app/src/main/res/`, the `:macrobenchmark` module, and
+`proguard-rules.pro` for `-keep` rules. Nothing matched, and the compiler is the final
+arbiter — which is the point of the next paragraph.
+
+**The searches were not sufficient on their own, exactly as Rule 1 warns.** I read my own
+sweep output wrongly and deleted `WeatherAgendaRow.kt`, which also declares `WeatherCard`
+and `AgendaCard` — both live, both used by `HomeScreen`. The script had correctly excluded
+that file; I overrode it. The build broke on the next compile and it was restored. Recorded
+because the near-miss is the argument for the rule: a candidate list is a starting point,
+and the only verdict that counts is a green build.
+
+### Legacy from the V1 → V2 migration
+
+The archived `V2_IMPLEMENTATION_AUDIT.md` named `SwipeableHomeDrawer` and
+`MultiPageHomeScreen` as removal candidates "only after their dependencies and navigation
+references are mapped". That mapping is the paragraph above, and both had zero references.
+`MultiPageHomeScreen` is a *paged* home, which the canvas model supersedes outright.
+
+| Removed | Lines | Why not retained |
+|---|---|---|
+| `ui/screens/MultiPageHomeScreen.kt` | 85 | A paged Home. The canvas replaced the model, not just the implementation. |
+| `ui/components/SwipeableHomeDrawer.kt` | 108 | Superseded drawer; the live one is elsewhere and reachable. |
+
+### Duplicate implementations of something already live
+
+These are the ones worth noticing, because each was a second, unused answer to a question
+the app had already answered — and in every case the live answer was better.
+
+| Removed | Lines | Superseded by |
+|---|---|---|
+| `data/VideoThumbnailHelper.kt` | 96 | `PhotoDeviceLibrary.loadVideoThumbnail`, which Photos actually calls. |
+| `data/AdaptiveIconLoader.kt` | 80 | `LauncherRepository`'s LRU icon cache. `ri.loadIcon(pm)` already returns an `AdaptiveIconDrawable` and Android masks it; the extra layer separation existed for icon-pack theming, which is not a shipped feature. |
+| `ui/components/UndoSnackbar.kt` | 88 | `HomeScreen`'s own per-object Undo snackbar. |
+| `ui/components/CiyatoErrorState` | 31 | Replaced by `QueryFailureState`, and the difference is the lesson — see below. |
+
+### Suggestion-era polish with no setting behind it
+
+Every one of these is referenced only from `docs/archive/` — the suggestion lists and
+superseded plans F-169 dismantled. Nothing in a shipped document claims any of them.
+
+| Removed | Lines | Note |
+|---|---|---|
+| `ui/components/ClockWidgetStylePicker.kt` | 181 | Ten clock renderers and a picker. Home already draws a live clock; adding a clock-style setting is a product decision, not a gap (F-056 precedent). |
+| `ui/components/CoachMarkOverlay.kt` | 145 | Coach marks with no tour to attach them to. |
+| `ui/components/WhatsNewSheet.kt` | 134 | A hardcoded changelog — including an entry advertising "Undo for Hide/Delete" — inside code nothing could open. |
+| `ui/components/CiyatoIconography.kt` | 171 | Six unused icon treatments. |
+| `ui/components/CiyatoDataViz.kt` | 96 | Sparkline and circular progress, never charted. |
+| `ui/components/VpnStatusIndicator.kt` | 82 | A launcher reporting VPN state implies a security claim nothing backs. |
+| `ui/components/Confetti.kt` | 60 | Suggestion 133, onboarding confetti. |
+| `ui/components/ParticleEffect.kt` | 46 | Unused burst animation. |
+| `ui/components/HapticFeedbackHelper.kt` | 75 | Haptics are applied directly where wanted. |
+| `ui/components/GoldGradientText.kt` | 28 | Named for a gold the palette does not contain (F-039). |
+| `data/CategoryColorManager.kt` | 81 | Per-category accent colours, Suggestion 8. Noted honestly: I fixed a real partial-application bug in this file before discovering nothing calls it. |
+
+### Component library with no call sites — 29 declarations
+
+`CiyatoCards` shipped eight components and three were used. Across eleven files, 29
+top-level declarations had no call site anywhere: `CiyatoAIButton`, `CiyatoCompactButton`,
+`CiyatoIconButton`, `CiyatoErrorState`, `CiyatoKPICard`, `CiyatoProgressCard`,
+`CiyatoSectionHeader`, `CiyatoStatRow`, `CiyatoDialog`, `CiyatoPermissionCard`,
+`CiyatoShimmerCard`, `CiyatoBreadcrumb`, `CiyatoFAB`, `EmptyAppsState`, `EmptyFilesState`,
+`EmptyPhotosState`, `SkeletonAppTile`, `SkeletonWeatherCard`, `WeatherAgendaRow`,
+`WeatherConditionBackdrop`, `AppLibraryGroupTile`, `StandaloneAppsTile`,
+`HomeSectionRemoveButton`, `SettingsAction`, `SettingsToggle`, `AccentCard`,
+`ElevatedDarkCard`, `GlassMorphCard`, `PillBadge`.
+
+**The lesson, and it is not "delete dead code".** `CiyatoErrorState` took a single `message`
+and offered a Retry. Earlier in this same session I hand-wrote two failure states and needed
+a title *and* a contradicting detail — "this is not a quiet day", "waiting won't help" — and
+Retry is wrong for a permission Android has refused. The unused component could not express
+any of it, because it was shaped by what seemed reasonable rather than by what a screen
+needed. It had been available the whole time and was useless the moment anyone tried.
+
+So `QueryFailureState` was written *with* its two call sites, adopted in the same change, and
+named for the failure rather than for a generic error so it is not reached for casually. That
+is the rule this sweep earns: **a component and its first call site ship together.** A
+component library written ahead of demand does not prevent duplication — it adds a shelf of
+plausible-looking things that nobody can use, and screens hand-roll past it anyway.
+
+### Retained
+
+`PermissionRegistry` has no production caller by design and is staying. It is the source of
+truth for the Play Data Safety form, the privacy policy and `DATA_INVENTORY.md`, and
+`PermissionRegistryTest` enforces it against the merged manifest. A future sweep like this one
+would flag it, so this row exists to say no. It now has production callers regardless — see
+the implementation ledger for `SpecialAccessGate`.

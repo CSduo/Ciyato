@@ -51,6 +51,7 @@ import com.ciyato.launcher.ui.theme.CiyatoMuted
 import com.ciyato.launcher.ui.theme.CiyatoSubtleBorder
 import com.ciyato.launcher.ui.theme.CiyatoWhite
 import androidx.compose.material.icons.automirrored.filled.*
+import com.ciyato.launcher.data.PermissionRegistry
 
 /**
  * One entry point for everything built on Usage Access (F-130).
@@ -128,9 +129,14 @@ fun InsightsScreen(
                     )
                     Text(
                         if (granted) {
-                            "Android reports how long each app was in the foreground. That is all " +
-                                "these use, so they can show what you spent time on — not why, and " +
-                                "not what you were doing inside an app."
+                            // The scope sentence comes from the registry now. This was
+                            // a good hand-written version - it said what the numbers
+                            // cannot tell you, which the five full-screen gates all
+                            // omitted - but it was still a separate copy of an answer
+                            // that also appears in the Play Data Safety form, the
+                            // privacy policy and DATA_INVENTORY.md. One row, four
+                            // readers (F-194).
+                            PermissionRegistry.usageAccess.scope
                         } else {
                             "All four features read the same Android permission. Granting it once " +
                                 "enables every one of them, and nothing is sent off this phone."
@@ -146,10 +152,20 @@ fun InsightsScreen(
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(CiyatoGold)
                                 .clickable {
-                                    runCatching {
-                                        context.startActivity(
-                                            Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS),
-                                        )
+                                    // Guarded before, but silently: a refused intent
+                                    // left the person tapping the one control on the
+                                    // screen that was supposed to fix their problem.
+                                    val action = PermissionRegistry.usageAccess.settingsAction
+                                    val opened = action != null && runCatching {
+                                        context.startActivity(Intent(action))
+                                    }.isSuccess
+                                    if (!opened) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "This phone will not open that page from here \u2014 " +
+                                                PermissionRegistry.usageAccess.settingsPath,
+                                            android.widget.Toast.LENGTH_LONG,
+                                        ).show()
                                     }
                                 }
                                 .padding(horizontal = 16.dp, vertical = 9.dp),

@@ -101,47 +101,6 @@ fun SkeletonCategoryCard(modifier: Modifier = Modifier) {
 }
 
 /**
- * Skeleton placeholder for an AppIconTile in a horizontal list.
- */
-@Composable
-fun SkeletonAppTile(modifier: Modifier = Modifier, brush: Brush = rememberShimmerBrush()) {
-    Column(
-        modifier = modifier.width(60.dp),
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        SkeletonCircle(size = 48.dp, brush = brush)
-        SkeletonBox(Modifier.width(42.dp), height = 10.dp, brush = brush)
-    }
-}
-
-/**
- * Skeleton placeholder for the WeatherCard widget.
- */
-@Composable
-fun SkeletonWeatherCard(modifier: Modifier = Modifier) {
-    val brush = rememberShimmerBrush()
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
-            .background(CiyatoBgEl)
-            .border(1.dp, CiyatoSubtleBorder, RoundedCornerShape(22.dp))
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SkeletonCircle(size = 36.dp, brush = brush)
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                SkeletonBox(Modifier.width(50.dp), height = 24.dp, brush = brush)
-                SkeletonBox(Modifier.width(70.dp), height = 10.dp, brush = brush)
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        SkeletonBox(Modifier.fillMaxWidth(0.7f), height = 10.dp, brush = brush)
-    }
-}
-
-/**
  * Full-page skeleton grid for the home screen category section.
  */
 @Composable

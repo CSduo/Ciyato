@@ -25,91 +25,6 @@ import androidx.compose.ui.unit.sp
 import com.ciyato.launcher.ui.theme.*
 
 /**
- * KPI Card — single metric with trend indicator.
- * Most commonly used in dashboards and stats screens.
- */
-@Composable
-fun CiyatoKPICard(
-    title: String,
-    value: String,
-    modifier: Modifier = Modifier,
-    subtitle: String = "",
-    accentColor: Color = CiyatoGold,
-    icon: ImageVector? = null,
-    trendUp: Boolean? = null,
-    onClick: (() -> Unit)? = null,
-) {
-    Column(
-        modifier = modifier
-            .clip(CiyatoShapes.large)
-            .background(CiyatoBgEl)
-            .border(1.dp, CiyatoSubtleBorder, CiyatoShapes.large)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(CiyatoSpacing.cardPad),
-        verticalArrangement = Arrangement.spacedBy(CiyatoSpacing.sp8)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(title, style = labelL, color = CiyatoSec)
-            if (icon != null) {
-                Icon(icon, null, tint = accentColor, modifier = Modifier.size(16.dp))
-            }
-        }
-        Text(value, style = headingXL, color = CiyatoWhite)
-        if (subtitle.isNotBlank() || trendUp != null) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (trendUp != null) {
-                    Icon(
-                        if (trendUp) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
-                        null,
-                        tint = if (trendUp) CiyatoGreen else CiyatoRed,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-                if (subtitle.isNotBlank()) Text(subtitle, style = bodyS, color = CiyatoMuted)
-            }
-        }
-    }
-}
-
-/**
- * Stat Row — 3 KPI values side-by-side.
- */
-@Composable
-fun CiyatoStatRow(
-    stats: List<Triple<String, String, Color>>,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(CiyatoShapes.large)
-            .background(CiyatoBgEl)
-            .border(1.dp, CiyatoSubtleBorder, CiyatoShapes.large)
-            .padding(CiyatoSpacing.cardPad),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        stats.forEachIndexed { idx, (label, value, color) ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(value, color = color, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Text(label, style = labelM, color = CiyatoMuted)
-            }
-            if (idx < stats.size - 1) {
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .height(36.dp)
-                        .background(CiyatoDivider)
-                )
-            }
-        }
-    }
-}
-
-/**
  * Info Row Card — icon + title + subtitle + optional trailing.
  * Used in settings, detail screens.
  */
@@ -156,33 +71,6 @@ fun CiyatoListCard(
 }
 
 /**
- * Section Header — label on left + optional action on right.
- */
-@Composable
-fun CiyatoSectionHeader(
-    title: String,
-    modifier: Modifier = Modifier,
-    actionLabel: String = "",
-    onAction: () -> Unit = {},
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(title, style = headingM, color = CiyatoWhite)
-        if (actionLabel.isNotBlank()) {
-            Text(
-                actionLabel,
-                style = labelL,
-                color = CiyatoGold,
-                modifier = Modifier.clickable(onClick = onAction)
-            )
-        }
-    }
-}
-
-/**
  * Empty State — illustration + title + subtitle + optional action.
  */
 @Composable
@@ -222,36 +110,6 @@ fun CiyatoEmptyState(
 }
 
 /**
- * Error State — red icon + message + retry.
- */
-@Composable
-fun CiyatoErrorState(
-    message: String,
-    modifier: Modifier = Modifier,
-    onRetry: (() -> Unit)? = null,
-) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(CiyatoSpacing.sp12)
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape)
-                .background(CiyatoErrorContainer)
-        ) {
-            Icon(Icons.Default.ErrorOutline, null, tint = CiyatoRed, modifier = Modifier.size(30.dp))
-        }
-        Text(message, style = bodyM, color = CiyatoSec)
-        if (onRetry != null) {
-            CiyatoGhostButton(text = "Retry", onClick = onRetry, leadingIcon = Icons.Default.Refresh)
-        }
-    }
-}
-
-/**
  * Badge — small colored pill with text.
  */
 @Composable
@@ -273,42 +131,4 @@ fun CiyatoBadge(
             .border(1.dp, color.copy(alpha = if (filled) 0f else 0.3f), CiyatoShapes.full)
             .padding(horizontal = 8.dp, vertical = 3.dp)
     )
-}
-
-/**
- * Progress Card — bar progress with label and percentage.
- */
-@Composable
-fun CiyatoProgressCard(
-    title: String,
-    progress: Float,
-    modifier: Modifier = Modifier,
-    subtitle: String = "",
-    accentColor: Color = CiyatoGold,
-    progressLabel: String = "${(progress * 100).toInt()}%",
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(CiyatoShapes.large)
-            .background(CiyatoBgEl)
-            .border(1.dp, CiyatoSubtleBorder, CiyatoShapes.large)
-            .padding(CiyatoSpacing.cardPad),
-        verticalArrangement = Arrangement.spacedBy(CiyatoSpacing.sp10)
-    ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(title, style = headingS, color = CiyatoWhite)
-            Text(progressLabel, style = labelL, color = accentColor)
-        }
-        LinearProgressIndicator(
-            progress = { progress.coerceIn(0f, 1f) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(CiyatoShapes.full),
-            color = accentColor,
-            trackColor = CiyatoBgEl2
-        )
-        if (subtitle.isNotBlank()) Text(subtitle, style = bodyS, color = CiyatoMuted)
-    }
 }
