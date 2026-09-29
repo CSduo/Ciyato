@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+import androidx.compose.runtime.saveable.rememberSaveable
 
 /**
  * Local URL inspection — warning signs only, never a safety verdict.
@@ -141,7 +142,7 @@ fun SafeBrowsingHelperScreen(
     onBack: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var urlInput by remember { mutableStateOf("") }
+    var urlInput by rememberSaveable { mutableStateOf("") }
     var result by remember { mutableStateOf<SafeBrowsingHelper.UrlCheck?>(null) }
     var isChecking by remember { mutableStateOf(false) }
 

@@ -44,6 +44,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import com.ciyato.launcher.data.AppShortcutsManager
 import android.content.pm.ShortcutInfo
+import androidx.compose.runtime.saveable.rememberSaveable
 
 /**
  * AppContextMenu
@@ -347,7 +348,7 @@ fun AppContextMenu(
     }
 
     if (showAppearanceEditor) {
-        var displayName by remember(app.packageName) { mutableStateOf(app.label) }
+        var displayName by rememberSaveable(app.packageName) { mutableStateOf(app.label) }
         var iconScale by remember(app.packageName) { mutableFloatStateOf(app.iconScale) }
         var iconRotation by remember(app.packageName) { mutableFloatStateOf(app.iconRotation) }
         var accent by remember(app.packageName) { mutableStateOf(app.iconAccent) }
@@ -447,7 +448,7 @@ fun AppContextMenu(
         customCats.split(",").map(String::trim).filter(String::isNotEmpty)
     }
     var showNewCategoryDialog by remember { mutableStateOf(false) }
-    var newCategoryName by remember { mutableStateOf("") }
+    var newCategoryName by rememberSaveable { mutableStateOf("") }
 
     if (showLockExplainer) {
         AlertDialog(

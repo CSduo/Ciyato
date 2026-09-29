@@ -54,6 +54,7 @@ import com.ciyato.launcher.ui.theme.CiyatoSubtleBorder
 import com.ciyato.launcher.ui.theme.CiyatoWhite
 import com.ciyato.launcher.viewmodel.LauncherViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
 
 enum class AppVisibilityMode {
     Hidden,
@@ -78,7 +79,7 @@ fun AppVisibilityScreen(
             AppVisibilityMode.Removed -> it.packageName in removed
         }
     }
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     val filteredApps = apps.filter {
         searchQuery.isBlank() ||
             it.label.contains(searchQuery, ignoreCase = true) ||

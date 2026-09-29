@@ -233,9 +233,31 @@ fun HomeScreen(
         }
     }
 
-    // Real calendar events for the Today card, refreshed on each resume-ish recomposition.
+    // Real calendar events for the Today card, re-read whenever Home comes back to
+    // the foreground.
+    //
+    // This said "refreshed on each resume-ish recomposition" and was keyed on Unit,
+    // which runs exactly once per composition and never again. On a phone that is
+    // barely a distinction; on a launcher it is a large one, because the Home process
+    // survives for days. The Today card showed whatever the calendar held the first
+    // time Home was drawn — add an event, come back, and it was not there. Granting
+    // the calendar permission mid-session had the same problem: nothing re-ran the
+    // check, so the card stayed empty until the launcher was killed.
+    //
+    // ON_RESUME rather than a timer: the interesting moment is returning from the
+    // calendar app, and the same observer shape is already used by the usage screens.
+    var agendaRefreshTick by remember { mutableIntStateOf(0) }
+    val agendaLifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(agendaLifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) agendaRefreshTick += 1
+        }
+        agendaLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { agendaLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     var agendaEvents by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(agendaRefreshTick) {
         val granted = androidx.core.content.ContextCompat.checkSelfPermission(
             homeContext, android.Manifest.permission.READ_CALENDAR,
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -332,16 +354,16 @@ fun HomeScreen(
 
     // Dialog state for creating a custom category
     var showCreateCategoryDialog by remember { mutableStateOf(false) }
-    var newCategoryName by remember { mutableStateOf("") }
+    var newCategoryName by rememberSaveable { mutableStateOf("") }
     var newCategoryIcon by remember { mutableStateOf("folder") }
     var newCategoryPresentation by remember { mutableStateOf(CustomCategoryPresentation.GROUP) }
     var newCategoryAppSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var newCategoryAppQuery by remember { mutableStateOf("") }
+    var newCategoryAppQuery by rememberSaveable { mutableStateOf("") }
 
     // Dialog state for picking apps for custom pages
     var showPageAppPicker by remember { mutableStateOf(false) }
     var pickerPageIndex by remember { mutableIntStateOf(0) }
-    var pageAppPickerQuery by remember { mutableStateOf("") }
+    var pageAppPickerQuery by rememberSaveable { mutableStateOf("") }
     var pageAppPickerSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showWorkspaceCategoryPicker by remember { mutableStateOf(false) }
     var workspaceCategoryPickerIndex by remember { mutableIntStateOf(0) }

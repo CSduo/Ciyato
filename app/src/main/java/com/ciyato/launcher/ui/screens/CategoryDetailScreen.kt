@@ -51,6 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ciyato.launcher.ui.theme.currentWidth
 import com.ciyato.launcher.ui.theme.CiyatoWidth
 import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.runtime.saveable.rememberSaveable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,11 +62,11 @@ fun CategoryDetailScreen(
 ) {
     val allApps by viewModel.apps.collectAsStateWithLifecycle()
     val categoryRenames by viewModel.categoryRenames.collectAsStateWithLifecycle()
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var contextMenuApp by remember { mutableStateOf<InstalledApp?>(null) }
     var showManageDialog by remember { mutableStateOf(false) }
     var showAppPicker by remember { mutableStateOf(false) }
-    var appPickerQuery by remember { mutableStateOf("") }
+    var appPickerQuery by rememberSaveable { mutableStateOf("") }
     var renameValue by remember(category) { mutableStateOf(viewModel.getCategoryDisplayName(category)) }
     val categoryDisplayName = remember(category, categoryRenames) {
         viewModel.getCategoryDisplayName(category)
