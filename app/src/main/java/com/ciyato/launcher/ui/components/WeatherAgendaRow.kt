@@ -227,7 +227,7 @@ private fun WeatherCardFallback(
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text("Use precise or approximate location", color = CiyatoMuted, fontSize = subtextSz)
+        Text("Uses approximate location only", color = CiyatoMuted, fontSize = subtextSz)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)

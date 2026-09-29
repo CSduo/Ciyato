@@ -889,3 +889,54 @@ object WorkspaceStore {
         .filter(String::isNotEmpty)
         .distinct()
 }
+
+/**
+ * Rewrites a collection's canvas identity everywhere this record stores it.
+ *
+ * A collection is not only an entry in [WorkspaceRecord.categoryKeys]. On the Home
+ * canvas its card is an object whose stable id is `category:<name>`, and that id is the
+ * key of both [WorkspaceRecord.objectPositions] and [WorkspaceRecord.hiddenObjects].
+ * Rename, merge and delete each rewrote `categoryKeys` and left the other two alone.
+ *
+ * Renaming "Work" to "Office" therefore moved the key and left `category:Work` pinned at
+ * its dragged position forever, while the renamed card - `category:Office`, with no
+ * placement - dropped back into flow. The person saw their card jump back into the grid
+ * and a ghost of the old name stay where they had put it. Deleting was worse: the
+ * delete path never touched the layout at all, so the placement outlived the collection
+ * with nothing left that could ever clear it.
+ *
+ * It matters more here than it would elsewhere, because Home is a freeform canvas of
+ * objects and an object's position IS the user's work.
+ *
+ * Lives here rather than in the ViewModel because it is pure layout arithmetic with no
+ * dependency on any of that state - and because a private ViewModel method cannot be
+ * tested, which is how the gap survived three separate call sites.
+ *
+ * @param replacement the new name, or null to drop the collection entirely.
+ */
+fun WorkspaceRecord.withCategoryRenamed(
+    current: String,
+    replacement: String?,
+): WorkspaceRecord {
+    val oldId = "category:$current"
+    val newId = replacement?.let { "category:$it" }
+    return copy(
+        categoryKeys = categoryKeys.mapNotNull { key ->
+            if (key == current) replacement else key
+        }.distinct(),
+        objectPositions = objectPositions.mapNotNull { (id, pos) ->
+            when {
+                id != oldId -> id to pos
+                newId == null -> null
+                // Merging into a collection that is itself already placed: the
+                // destination's own position wins. Overwriting it would move a card the
+                // person never touched.
+                objectPositions.containsKey(newId) -> null
+                else -> newId to pos
+            }
+        }.toMap(),
+        hiddenObjects = hiddenObjects.mapNotNull { id ->
+            if (id == oldId) newId else id
+        }.toSet(),
+    )
+}

@@ -135,10 +135,20 @@ object CrashReporter {
      * JVM: taking the values as arguments is what makes the wording testable,
      * and wording is the entire defect here.
      *
-     * Nothing personal is recorded, and that is a constraint rather than an
-     * omission: no file names, no search queries, no notification text, no
-     * package list. A local diagnostic is still the person's data, and a log
-     * they might send to someone must not carry what they never chose to send.
+     * Nothing personal is recorded IN THE HEADER, and that is a constraint rather
+     * than an omission: no file names, no search queries, no notification text, no
+     * package list. A local diagnostic is still the person's data, and a log they
+     * might send to someone must not carry what they never chose to send.
+     *
+     * The scope of that promise matters and this comment used to overstate it. The
+     * header is fully under Ciyato's control; the stack trace written after it is
+     * not. An exception's own message is included, and the platform's messages
+     * routinely embed a path - a FileNotFoundException or SecurityException can
+     * carry something like `/storage/emulated/0/DCIM/Camera/IMG_0042.jpg` straight
+     * into the log. Ciyato does not put it there and cannot strip it without
+     * destroying the diagnostic value of the trace, so the honest handling is to
+     * say so where somebody is about to share one, which the crash-log viewer now
+     * does.
      */
     fun crashReportHeader(
         timestamp: String,

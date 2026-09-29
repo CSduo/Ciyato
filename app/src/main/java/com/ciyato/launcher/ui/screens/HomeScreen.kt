@@ -2379,9 +2379,10 @@ fun HomeScreen(
                         onClick = {
                             val undoSnapshot = currentLayoutSnapshot()
                             categoryName?.let { name ->
-                                categoryAppPickerSelection.forEach { packageName ->
-                                    viewModel.setAppCustomCategoryOverride(packageName, name)
-                                }
+                                // One write for the whole selection. Looping the
+                                // single-app setter raced every call against the same
+                                // stale StateFlow value, so only the last one survived.
+                                viewModel.addAppsToCustomCategory(name, categoryAppPickerSelection)
                             }
                             if (categoryAppPickerSelection.isNotEmpty()) {
                                 offerLayoutUndo("Apps added to collection", undoSnapshot)

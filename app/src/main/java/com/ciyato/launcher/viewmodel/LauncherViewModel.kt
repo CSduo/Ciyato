@@ -20,6 +20,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.Calendar
+import com.ciyato.launcher.data.WorkspaceRecord
+import com.ciyato.launcher.data.withCategoryRenamed
 
 /**
  * LauncherViewModel — central state hub.
@@ -509,6 +511,15 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeCustomCategory(name: String) = viewModelScope.launch {
         settings.editCategories { snapshot -> CategoryMutations.remove(snapshot, name) }
+        // The layout was never touched here, so a deleted collection left its canvas
+        // placement behind permanently - an entry under `category:<name>` that nothing
+        // could ever clear, because the collection it belonged to no longer existed to
+        // be renamed or deleted again.
+        updateLayout { layout ->
+            layout.copy(workspaces = layout.workspaces.map { workspace ->
+                workspace.withCategoryRenamed(name.trim(), null)
+            })
+        }
         repo.loadApps()
     }
 
@@ -549,6 +560,31 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             current.add(packageName)
         }
         settings.setExpandedApps(current.joinToString(","))
+    }
+
+    /**
+     * Adds every package in [packageNames] to [categoryName] in a single write.
+     *
+     * The picker used to call [setAppCustomCategoryOverride] once per selected app, in a
+     * `forEach`. Each call launches its own coroutine, and each reads
+     * `appCategoryOverrides.value` - the StateFlow's CURRENT value, which only advances
+     * once DataStore has emitted back. So every coroutine read the same starting map,
+     * each wrote its own single addition over the top, and the last one won. Selecting
+     * seven apps and tapping the button labelled "Add 7" persisted ONE.
+     *
+     * Silent, and invisible until the person reopened the collection and found it nearly
+     * empty. The undo snackbar cheerfully said "Apps added to collection" (plural).
+     *
+     * Distinct from [setAppsForCustomCategory], which REPLACES the membership: the
+     * picker starts from an empty selection rather than the current members, so
+     * replacing would delete everything already in the collection.
+     */
+    fun addAppsToCustomCategory(categoryName: String, packageNames: Set<String>) = viewModelScope.launch {
+        if (packageNames.isEmpty()) return@launch
+        val map = try { JSONObject(appCategoryOverrides.value) } catch (_: Exception) { JSONObject() }
+        packageNames.forEach { pkg -> map.put(pkg, categoryName) }
+        settings.setAppCategoryOverrides(map.toString())
+        repo.loadApps()
     }
 
     fun setAppsForCustomCategory(categoryName: String, packageNames: Set<String>) = viewModelScope.launch {
@@ -593,11 +629,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
         updateLayout { layout ->
             layout.copy(workspaces = layout.workspaces.map { workspace ->
-                workspace.copy(
-                    categoryKeys = workspace.categoryKeys.map { key ->
-                        if (key == current) replacement else key
-                    }.distinct(),
-                )
+                workspace.withCategoryRenamed(current, replacement)
             })
         }
         repo.loadApps()
@@ -618,11 +650,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
         updateLayout { layout ->
             layout.copy(workspaces = layout.workspaces.map { workspace ->
-                workspace.copy(
-                    categoryKeys = workspace.categoryKeys.map { key ->
-                        if (key == source) destination else key
-                    }.distinct(),
-                )
+                workspace.withCategoryRenamed(source, destination)
             })
         }
         repo.loadApps()

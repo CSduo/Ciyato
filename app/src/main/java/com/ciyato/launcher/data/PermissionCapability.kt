@@ -302,9 +302,9 @@ object PermissionRegistry {
         PermissionCapability(
             permission = "android.permission.PACKAGE_USAGE_STATS",
             kind = PermissionCapability.Kind.SPECIAL_ACCESS,
-            feature = "Insights, screen time, anomaly detection and suggestions",
+            feature = "Insights: screen time, today's summary, frequent apps, unusual usage and data usage",
             userValue = "Shows how long apps are used, what changed this week, and which app to suggest next.",
-            scope = "Per-app foreground time and launch counts from Android's own usage statistics. No content, no keystrokes, no screen contents.",
+            scope = "Per-app foreground time and launch counts, and per-app mobile data volumes, from Android's own statistics. No content, no keystrokes, no screen contents, and no record of what was sent or to where.",
             dataCategory = PermissionCapability.DataCategory.APP_ACTIVITY,
             destination = On,
             optional = true,

@@ -371,10 +371,10 @@ private fun WeatherPermissionCard(onEnable: () -> Unit) {
             }
             Column {
                 Text("Enable Local Weather", color = CiyatoWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Text("Precise location available", color = CiyatoGold, fontSize = 12.sp)
+                Text("Approximate location only", color = CiyatoGold, fontSize = 12.sp)
             }
         }
-        Text("Ciyato uses Open-Meteo to show local conditions. Android lets you choose precise or approximate foreground access; your choice is respected.",
+        Text("Ciyato uses Open-Meteo to show local conditions. It asks only for approximate location \u2014 precise location is never requested \u2014 and only while you are using the app.",
             color = CiyatoSec, fontSize = 13.sp, lineHeight = 20.sp)
         Button(onClick = onEnable, modifier = Modifier.fillMaxWidth().height(50.dp),
             colors = ButtonDefaults.buttonColors(containerColor = CiyatoGold), shape = RoundedCornerShape(14.dp)) {

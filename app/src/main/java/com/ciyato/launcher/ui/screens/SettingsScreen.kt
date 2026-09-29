@@ -880,8 +880,17 @@ fun SettingsScreen(
             containerColor = CiyatoBgEl,
             title = { Text("Reset Layout", color = CiyatoWhite, fontWeight = FontWeight.Bold) },
             text = {
+                // Named only two of the things it resets. It also empties the dock and
+                // forces the grid back to 4x5 - and because the layout is reconciled to
+                // the grid width at startup, a narrower grid repacks where icons sit.
+                // Losing a dock you curated, with no warning, is the kind of thing that
+                // gets an app uninstalled.
                 Text(
-                    "This restores Home density and App Library style to Ciyato defaults.",
+                    "This resets Home density, grid size, the App Library style, icon " +
+                        "style and shape, font, accent colour and wallpaper settings to " +
+                        "Ciyato defaults.\n\nIt also empties your dock, and returning the " +
+                        "grid to 4x5 will move icons that were placed on a wider grid.\n\n" +
+                        "Your apps, collections and hidden-app choices are not affected.",
                     color = CiyatoSec,
                     fontSize = 13.sp,
                     lineHeight = 20.sp
@@ -966,7 +975,12 @@ fun SettingsScreen(
 
 @Composable
 private fun CrashLogsScreen(context: Context, onBack: () -> Unit) {
-    val logs = remember { CrashReporter.getLogs(context) }
+    // Keyed on a counter rather than a bare remember{}. Captured once, the list
+    // survived Clear All: the files were deleted and the rows stayed on screen,
+    // still tappable, and opening one showed a read error. A destructive action
+    // that appears to do nothing invites the person to press it again.
+    var logsRevision by remember { mutableIntStateOf(0) }
+    val logs = remember(logsRevision) { CrashReporter.getLogs(context) }
     var selectedContent by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -997,7 +1011,10 @@ private fun CrashLogsScreen(context: Context, onBack: () -> Unit) {
                 title = "Crash Logs",
                 onBack = onBack,
                 actions = {
-                    TextButton(onClick = { CrashReporter.clearLogs(context) }) {
+                    TextButton(onClick = {
+                        CrashReporter.clearLogs(context)
+                        logsRevision += 1
+                    }) {
                         Text("Clear All", color = CiyatoRed)
                     }
                 },
@@ -1013,6 +1030,23 @@ private fun CrashLogsScreen(context: Context, onBack: () -> Unit) {
                 contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize().padding(p),
             ) {
+                item {
+                    // Said where somebody is about to read or send one. Ciyato's own
+                    // header carries nothing personal by construction, but the stack
+                    // trace beneath it includes the exception's message, and the
+                    // platform's messages routinely embed a full path. Ciyato cannot
+                    // strip that without destroying what makes the trace useful, so the
+                    // honest option is to say so rather than to promise otherwise.
+                    Text(
+                        "These stay on your phone. Ciyato records no personal data in a " +
+                            "report, but an Android error message can include a file path — " +
+                            "worth a look before you send one to anybody.",
+                        color = CiyatoMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
                 items(logs, key = { it.name }) { file ->
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(CiyatoBgEl)

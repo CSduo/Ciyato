@@ -101,7 +101,7 @@ voice action has a tap equivalent.
 
 | Permission | Data category | Feature | Leaves device |
 |---|---|---|---|
-| `PACKAGE_USAGE_STATS` | App activity | Insights, screen time, anomaly detection, suggestions, daily summary. Per-app foreground time and launch counts — no content, no keystrokes, no screen contents | No |
+| `PACKAGE_USAGE_STATS` | App activity | Insights: screen time, today's summary, frequent apps, unusual usage, data usage. Per-app foreground time, launch counts and mobile data volumes — no content, no keystrokes, no screen contents, no record of what was sent or where | No |
 | `BIND_NOTIFICATION_LISTENER_SERVICE` | App activity | Notification badges. The count, not the contents | No |
 
 ### Install-time
