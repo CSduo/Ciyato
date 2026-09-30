@@ -654,3 +654,30 @@ tasks.withType<Test>().configureEach {
         .withPropertyName("guardedManifest")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sideload-safe debug build: ./gradlew assembleDebug -PsideloadSafe
+//
+// A normal debug APK of Ciyato is refused by the installer on most modern
+// phones, and the scanners are not wrong to refuse it. They see a debuggable
+// package that wants MANAGE_EXTERNAL_STORAGE, QUERY_ALL_PACKAGES and
+// REQUEST_DELETE_PACKAGES together - every file on the device, a list of every
+// app, and the ability to remove them. That is the signature of a malicious
+// sideload, and a scanner cannot tell that a launcher has honest reasons for it.
+//
+// Opt-in rather than default, because a build that quietly drops permissions is
+// a test of a different app. The reasoning and the exact cost are in
+// app/src/sideload/AndroidManifest.xml.
+val sideloadSafe = providers.gradleProperty("sideloadSafe").isPresent
+if (sideloadSafe) {
+    android {
+        // Merged ON TOP of src/main, so this only removes; it never becomes the
+        // whole manifest.
+        sourceSets.getByName("debug").manifest.srcFile("src/sideload/AndroidManifest.xml")
+    }
+    logger.lifecycle(
+        "Ciyato: sideload-safe debug build - MANAGE_EXTERNAL_STORAGE and " +
+            "REQUEST_DELETE_PACKAGES are removed. Whole-device file browsing and the " +
+            "uninstall menu entry will not work. Release builds are unaffected."
+    )
+}

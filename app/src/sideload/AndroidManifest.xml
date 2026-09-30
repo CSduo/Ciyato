@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sideload-safe overlay. Opt-in, and never part of a release build.
+
+  Enabled with:  ./gradlew assembleDebug -PsideloadSafe
+
+  WHY THIS FILE EXISTS
+
+  A debug APK of Ciyato is refused by the package installer on most modern
+  phones. The refusal is not a bug in the manifest, which is already tight:
+  READ_EXTERNAL_STORAGE is capped at API 32, location is coarse only, and both
+  ACCESS_FINE_LOCATION and FOREGROUND_SERVICE were deliberately dropped. It is
+  refused because of what a scanner sees when it adds four facts together:
+
+    android:debuggable="true"   (true of every debug APK)
+    MANAGE_EXTERNAL_STORAGE     (read and write every file on the device)
+    QUERY_ALL_PACKAGES          (enumerate every installed app)
+    REQUEST_DELETE_PACKAGES     (ask to uninstall them)
+
+  A debuggable package, signed by no known authority, that wants all your files,
+  a list of your apps, and the ability to remove them, is exactly the shape of a
+  malicious sideload. Play Protect, Samsung Auto Blocker and the Xiaomi/HyperOS
+  installer scan all block it. They are behaving correctly: Ciyato does request
+  all four, and a scanner cannot know a launcher has honest reasons for three.
+
+  WHAT THIS REMOVES, AND WHAT IT COSTS
+
+  Only the two that carry the most weight with a scanner and are not needed to
+  exercise the rest of the app.
+
+  MANAGE_EXTERNAL_STORAGE. The source manifest already calls this "optional:
+  full file-manager mode". Files still works through the Storage Access
+  Framework folder grant, which is the primary path anyway. What is lost is
+  whole-device browsing of the Documents, Downloads and APK categories.
+
+  REQUEST_DELETE_PACKAGES. Only the Uninstall entry in the long-press menu.
+  Without it Android refuses the request, and AppContextMenu now reports that
+  refusal instead of crashing.
+
+  Everything else is untouched, so Home, the drawer, Photos, Insights, widgets,
+  the vault, search and collections behave exactly as they will in release.
+
+  WHY IT IS NOT THE DEFAULT
+
+  A test build that quietly drops permissions is a test of a different app. So
+  it has to be asked for by name, and verifyReleaseManifest still checks the
+  real release manifest against the allowlist, which continues to require both.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:node="remove" />
+
+    <uses-permission
+        android:name="android.permission.REQUEST_DELETE_PACKAGES"
+        tools:node="remove" />
+
+</manifest>
