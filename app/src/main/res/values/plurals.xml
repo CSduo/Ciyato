@@ -23,10 +23,6 @@
         <item quantity="other">%d photos</item>
     </plurals>
 
-    <plurals name="count_files">
-        <item quantity="one">%d file</item>
-        <item quantity="other">%d files</item>
-    </plurals>
 
     <plurals name="count_items">
         <item quantity="one">%d item</item>
@@ -39,10 +35,6 @@
     </plurals>
 
 
-    <plurals name="count_copies">
-        <item quantity="one">%d copy</item>
-        <item quantity="other">%d copies</item>
-    </plurals>
 
     <plurals name="count_shortcuts">
         <item quantity="one">%d shortcut</item>
@@ -90,15 +82,7 @@
         <item quantity="other">%d recent files</item>
     </plurals>
 
-    <plurals name="count_duplicate_groups">
-        <item quantity="one">%d verified duplicate group</item>
-        <item quantity="other">%d verified duplicate groups</item>
-    </plurals>
 
-    <plurals name="count_large_files">
-        <item quantity="one">%d large accessible file</item>
-        <item quantity="other">%d large accessible files</item>
-    </plurals>
 
     <plurals name="count_items_added">
         <item quantity="one">%d item added to Ciyato Photos.</item>
@@ -110,13 +94,5 @@
         <item quantity="other">%d selected items will stay on your device.</item>
     </plurals>
 
-    <plurals name="removed_duplicate_copies">
-        <item quantity="one">Removed %d selected duplicate copy.</item>
-        <item quantity="other">Removed %d selected duplicate copies.</item>
-    </plurals>
 
-    <plurals name="removed_copies_partial">
-        <item quantity="one">Removed %d selected copy</item>
-        <item quantity="other">Removed %d selected copies</item>
-    </plurals>
 </resources>

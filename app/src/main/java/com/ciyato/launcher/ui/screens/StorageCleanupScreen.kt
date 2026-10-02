@@ -47,6 +47,31 @@ import androidx.compose.ui.res.pluralStringResource
 import com.ciyato.launcher.R
 import androidx.compose.runtime.derivedStateOf
 import com.ciyato.launcher.data.MediaAccess
+import com.ciyato.launcher.ui.components.openSystemScreen
+import com.ciyato.launcher.ui.components.GlyphChip
+import com.ciyato.launcher.ui.components.FilePreview
+import com.ciyato.launcher.data.FileAccess
+import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
+import androidx.activity.compose.BackHandler
+import android.provider.Settings
 
 /**
  * StorageCleanupScreen — real, on-device storage analysis and deletion.
@@ -99,6 +124,8 @@ fun StorageCleanupScreen(
             val overview = readDeviceStorageOverview(context, access)
             val scanned = buildList {
                 add(scanCache(context))
+                // Needs Usage access, not media access, so it is measured either way.
+                add(scanAppCaches(context))
                 // Categories backed by MediaStore can't be measured without the
                 // media permission, so they simply don't appear rather than
                 // showing a fake zero.
@@ -123,6 +150,10 @@ fun StorageCleanupScreen(
     }
 
     val openCategory = results.firstOrNull { it.category == selectedCategory }
+    if (openCategory != null && openCategory.category == CleanupCategory.APP_CACHES) {
+        AppCacheDetail(result = openCategory, onBack = { selectedCategory = null })
+        return
+    }
     if (openCategory != null) {
         CleanupCategoryDetail(
             result = openCategory,
@@ -140,12 +171,11 @@ fun StorageCleanupScreen(
         return
     }
 
-    Scaffold(
-        containerColor = CiyatoBg,
-        topBar = { CiyatoTopBar(title = "Storage Cleanup", subtitle = "Real scan of this device", onBack = onBack) },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            if (!hasPermission) {
+    Column(Modifier.fillMaxSize().background(CiyatoBg)) {
+        CleanupHeader(scanning = isScanning, onBack = onBack)
+
+        if (!hasPermission) {
+            Box(Modifier.padding(horizontal = 16.dp)) {
                 CleanupPermissionCard(
                     onGrant = {
                         val perms = if (Build.VERSION.SDK_INT >= 33) {
@@ -161,64 +191,50 @@ fun StorageCleanupScreen(
                     },
                 )
             }
+        }
 
-            if (isScanning) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        CircularProgressIndicator(color = CiyatoGold)
-                        Text("Scanning device storage…", color = CiyatoMuted, style = bodyM)
-                    }
+        if (isScanning) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    CircularProgressIndicator(color = CiyatoWhite, strokeWidth = 2.dp, modifier = Modifier.size(30.dp))
+                    Text("Scanning your storage\u2026", color = CiyatoMuted, style = bodyM)
                 }
-            } else {
-                val uniqueItems = remember(results) { results.flatMap { it.items }.distinctBy { it.id } }
-                // Unique bytes, not the sum of category totals.
-                //
-                // A single file legitimately appears in several categories — a
-                // 400 MB video in Downloads is also a Large File, and a trashed
-                // photo is also in Trash — so summing category totals counted the
-                // same bytes two or three times. The headline could therefore
-                // promise more free space than the device physically had (F-113).
-                // The overlap was already detected here, and used only to soften
-                // the SUBTITLE while leaving the number wrong.
-                val measuredBytes = remember(uniqueItems) { uniqueItems.sumOf { it.sizeBytes } }
-                val overlapping = remember(uniqueItems, results) {
-                    uniqueItems.size < results.sumOf { it.totalCount }
+            }
+        } else {
+            val uniqueItems = remember(results) { results.flatMap { it.items }.distinctBy { it.id } }
+            // Unique bytes, not the sum of category totals: one file can sit in
+            // several categories - a 400 MB video in Downloads is also a Large File -
+            // and summing totals promised more space than the phone had (F-113).
+            val measuredBytes = remember(uniqueItems) { uniqueItems.sumOf { it.sizeBytes } }
+            val overlapping = remember(uniqueItems, results) { uniqueItems.size < results.sumOf { it.totalCount } }
+            LazyColumn(
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                deviceStorage?.let { overview ->
+                    item(key = "donut") { StorageDonutCard(overview = overview) }
                 }
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    deviceStorage?.let { overview ->
-                        item { StorageBreakdownCard(overview = overview) }
-                    }
-                    item {
-                        CleanupSummaryCard(
-                            totalBytes = measuredBytes,
-                            // Distinct files too — the count had the same
-                            // double-counting problem as the bytes.
-                            totalCount = uniqueItems.size,
-                            overlapNote = overlapping,
-                        )
-                    }
-                    // Grouped by how much judgement each needs, safest first.
-                    // A flat list invited the same action - delete - across
-                    // evidence as different as "Ciyato's own cache" and "the
-                    // Downloads folder" (F-118).
-                    CleanupTier.entries.forEach { tier ->
-                        val inTier = results.filter { it.category.tier == tier }
-                        if (inTier.isEmpty()) return@forEach
-                        item(key = "tier_${tier.name}") {
-                            Column(
-                                Modifier.padding(top = 6.dp),
-                                verticalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                Text(tier.title, color = CiyatoWhite, style = labelL)
-                                Text(tier.blurb, color = CiyatoMuted, style = bodyS)
-                            }
+                item(key = "found") {
+                    CleanupSummaryCard(totalBytes = measuredBytes, totalCount = uniqueItems.size, overlapNote = overlapping)
+                }
+                // Grouped by how much judgement each needs, safest first (F-118).
+                CleanupTier.entries.forEach { tier ->
+                    val inTier = results.filter { it.category.tier == tier }
+                    if (inTier.isEmpty()) return@forEach
+                    item(key = "tier_${tier.name}") {
+                        Column(Modifier.padding(top = 10.dp, bottom = 2.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(
+                                tier.title.uppercase(),
+                                color = CiyatoMuted,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 11.sp,
+                                letterSpacing = 1.3.sp,
+                            )
+                            Text(tier.blurb, color = CiyatoMuted, fontSize = 12.sp, lineHeight = 16.sp)
                         }
-                        items(inTier, key = { it.category }) { result ->
-                            CleanupCategoryCard(result = result, onClick = { selectedCategory = result.category })
-                        }
+                    }
+                    items(inTier, key = { it.category }) { result ->
+                        CleanupCategoryCard(result = result, onClick = { selectedCategory = result.category })
                     }
                 }
             }
@@ -335,129 +351,329 @@ private fun CleanupCategoryDetail(
 @Composable
 private fun CleanupSummaryCard(totalBytes: Long, totalCount: Int, overlapNote: Boolean) {
     Column(
-        Modifier.fillMaxWidth().clip(CiyatoShapes.large).background(CiyatoBgEl)
-            .border(1.dp, CiyatoSubtleBorder, CiyatoShapes.large).padding(18.dp),
+        Modifier
+            .fillMaxWidth()
+            .clip(CleanupCardShape)
+            .background(Brush.linearGradient(listOf(Color(0xFF14201D), Color(0xFF0F1115))))
+            .border(1.dp, CleanupEdge, CleanupCardShape)
+            .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        // "You could free up" presented a candidate list as guaranteed reclaim,
-        // over a total that also double-counted (F-113, F-114). These are things
-        // worth LOOKING at — some will be worth keeping — so the headline frames
-        // it as found, and the number is now distinct bytes.
-        Text("Found to review", color = CiyatoMuted, style = labelL)
-        Text(MediaLibraryRepository.formatBytes(totalBytes), color = CiyatoGold, style = displaySection)
+        // Framed as found, not as guaranteed reclaim: these are worth LOOKING at, and
+        // some will be worth keeping (F-113, F-114).
+        Text("READY TO REVIEW", color = CiyatoMuted, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.4.sp)
+        Text(
+            MediaLibraryRepository.formatBytes(totalBytes),
+            style = TextStyle(
+                brush = Brush.linearGradient(listOf(Color(0xFF6EE7B7), Color(0xFF5EEAD4), Color(0xFF7DD3FC))),
+                fontSize = 40.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-1).sp,
+            ),
+        )
         Text(
             buildString {
-                append("$totalCount distinct item")
+                append("$totalCount item")
                 if (totalCount != 1) append("s")
-                if (overlapNote) {
-                    append(" — some appear in more than one category, counted once here")
-                } else {
-                    append(" across the categories below")
-                }
+                append(if (overlapNote) ", each counted once even where it sits in two categories" else " across the categories below")
             },
             color = CiyatoSec,
-            style = bodyM,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
         )
     }
 }
 
+/** Colour for a breakdown slice, by what it measures - the same hues as the categories. */
+private fun sliceColor(label: String): Color = when {
+    label.startsWith("Image") -> Color(0xFFC084FC)
+    label.startsWith("Video") -> Color(0xFFFB7185)
+    label.startsWith("Audio") -> Color(0xFF34D399)
+    label.startsWith("Document") -> Color(0xFFFBBF24)
+    else -> Color(0xFF64748B)
+}
+
+/**
+ * What is using the phone's storage, as a donut.
+ *
+ * The whole ring is the device; each arc is a measured slice; the empty track is
+ * free space. On most phones "Apps & system" is most of the ring, and the chart is
+ * honest about that rather than inflating the media slices to look interesting.
+ */
 @Composable
-private fun StorageBreakdownCard(overview: DeviceStorageOverview) {
+private fun StorageDonutCard(overview: DeviceStorageOverview) {
+    val visible = overview.slices.filter { it.bytes > 0L }
     Column(
-        Modifier.fillMaxWidth().clip(CiyatoShapes.large).background(CiyatoBgEl)
-            .border(1.dp, CiyatoSubtleBorder, CiyatoShapes.large).padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        Modifier
+            .fillMaxWidth()
+            .clip(CleanupCardShape)
+            .background(Brush.linearGradient(listOf(Color(0xFF171B22), Color(0xFF0F1115))))
+            .border(1.dp, CleanupEdge, CleanupCardShape)
+            .padding(20.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Device storage", color = CiyatoMuted, style = labelL)
-            Text(
-                "${MediaLibraryRepository.formatBytes(overview.usedBytes)} used of ${MediaLibraryRepository.formatBytes(overview.totalBytes)}",
-                color = CiyatoGold,
-                style = headingM,
-            )
-            Text(
-                "${MediaLibraryRepository.formatBytes(overview.freeBytes)} free",
-                color = CiyatoSec,
-                style = bodyM,
-            )
-        }
-
-        if (overview.slices.isNotEmpty()) {
-            StorageBreakdownBar(slices = overview.slices)
-            StorageBreakdownLegend(slices = overview.slices)
-            if (!overview.access.totalsAreComplete) {
-                // Said next to the chart, not buried in settings. Under a
-                // partial grant the category sizes are real but incomplete, and
-                // the remainder is mostly the person's own media rather than app
-                // data — a chart that does not say so is more misleading than no
-                // chart at all (F-115).
-                Text(
-                    "Ciyato can only see the photos and videos you selected, so the " +
-                        "category sizes below are partial. Most of \"Not visible to " +
-                        "Ciyato\" is likely your own media. Allow access to all photos " +
-                        "for a complete breakdown.",
-                    color = CiyatoMuted,
-                    style = bodyS,
-                )
+        Text("STORAGE", color = CiyatoMuted, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.4.sp)
+        Spacer(Modifier.height(14.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(136.dp), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.matchParentSize()) {
+                    val stroke = size.minDimension * 0.12f
+                    val inset = stroke / 2f
+                    val arc = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke)
+                    drawArc(
+                        color = Color.White.copy(alpha = 0.07f),
+                        startAngle = 0f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        topLeft = Offset(inset, inset),
+                        size = arc,
+                        style = Stroke(width = stroke),
+                    )
+                    val total = overview.totalBytes.coerceAtLeast(1L).toFloat()
+                    var start = -90f
+                    val gap = if (visible.size > 1) 2.4f else 0f
+                    visible.forEach { slice ->
+                        val sweep = 360f * slice.bytes / total
+                        if (sweep > gap + 0.4f) {
+                            drawArc(
+                                color = sliceColor(slice.label),
+                                startAngle = start + gap / 2f,
+                                sweepAngle = sweep - gap,
+                                useCenter = false,
+                                topLeft = Offset(inset, inset),
+                                size = arc,
+                                style = Stroke(width = stroke, cap = StrokeCap.Butt),
+                            )
+                        }
+                        start += sweep
+                    }
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        MediaLibraryRepository.formatBytes(overview.usedBytes),
+                        color = CiyatoWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 19.sp,
+                        letterSpacing = (-0.4).sp,
+                    )
+                    Text("of ${MediaLibraryRepository.formatBytes(overview.totalBytes)}", color = CiyatoMuted, fontSize = 11.sp)
+                }
             }
-        } else if (!overview.access.canSeeAnything) {
+            Spacer(Modifier.width(18.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                visible.forEach { slice ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(9.dp).clip(CircleShape).background(sliceColor(slice.label)))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            slice.label.replace("Other / app data", "Apps & system"),
+                            color = CiyatoSec,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(MediaLibraryRepository.formatBytes(slice.bytes), color = CiyatoWhite, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(9.dp).clip(CircleShape).border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Free", color = CiyatoSec, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Text(MediaLibraryRepository.formatBytes(overview.freeBytes), color = CiyatoWhite, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+        if (visible.isNotEmpty() && !overview.access.totalsAreComplete) {
+            Spacer(Modifier.height(14.dp))
+            // Said beside the chart: under a partial grant the media slices are real
+            // but incomplete, and a chart that does not say so misleads (F-115).
             Text(
-                "Grant media access below to see the breakdown by category.",
+                "Ciyato can only see the photos and videos you selected, so these sizes are partial. " +
+                    "Allow access to all photos for a complete breakdown.",
                 color = CiyatoMuted,
-                style = bodyS,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
             )
+        } else if (!overview.access.canSeeAnything) {
+            Spacer(Modifier.height(14.dp))
+            Text("Grant media access below to see what's using the space.", color = CiyatoMuted, fontSize = 12.sp)
         }
     }
 }
 
-@Composable
-private fun StorageBreakdownBar(slices: List<StorageBreakdownSlice>) {
-    val visible = slices.filter { it.bytes > 0L }
-    if (visible.isEmpty()) return
-    Row(
-        Modifier.fillMaxWidth().height(10.dp).clip(CiyatoShapes.small).background(CiyatoBgEl3),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        visible.forEach { slice ->
-            Box(
-                Modifier
-                    .weight(slice.bytes.toFloat())
-                    .fillMaxHeight()
-                    .background(slice.color),
-            )
-        }
-    }
-}
 
-@Composable
-private fun StorageBreakdownLegend(slices: List<StorageBreakdownSlice>) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        slices.forEach { slice ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Box(Modifier.size(10.dp).clip(CircleShape).background(slice.color))
-                Text(slice.label, color = CiyatoSec, style = bodyM, modifier = Modifier.weight(1f))
-                Text(MediaLibraryRepository.formatBytes(slice.bytes), color = CiyatoWhite, style = labelL)
-            }
-        }
-    }
+
+
+
+/** Each category's chip colours - the Organizer's palette, so the screens agree. */
+private fun glyphFor(category: CleanupCategory): Triple<ImageVector, Color, Color> = when (category) {
+    CleanupCategory.CACHE -> Triple(Icons.Rounded.Memory, Color(0xFF94A3B8), Color(0xFF1E293B))
+    CleanupCategory.APP_CACHES -> Triple(Icons.Rounded.Apps, Color(0xFF5EEAD4), Color(0xFF134E4A))
+    CleanupCategory.TRASH -> Triple(Icons.Rounded.Delete, Color(0xFFFB7185), Color(0xFF881337))
+    CleanupCategory.OLD_SCREENSHOTS -> Triple(Icons.Rounded.Screenshot, Color(0xFF60A5FA), Color(0xFF1E3A8A))
+    CleanupCategory.EMPTY_FILES -> Triple(Icons.AutoMirrored.Rounded.InsertDriveFile, Color(0xFFCBD5E1), Color(0xFF334155))
+    CleanupCategory.LARGE_FILES -> Triple(Icons.Rounded.Inventory2, Color(0xFFFBBF24), Color(0xFF92400E))
+    CleanupCategory.DOWNLOADS -> Triple(Icons.Rounded.Download, Color(0xFF818CF8), Color(0xFF312E81))
 }
 
 @Composable
 private fun CleanupCategoryCard(result: CategoryResult, onClick: () -> Unit) {
-    CiyatoListCard(
-        title = result.category.label,
-        subtitle = if (result.totalCount == 0) "${result.category.description} — none found"
-            else pluralStringResource(R.plurals.count_items, result.totalCount, result.totalCount) +
-                " · ${result.category.description}",
-        icon = result.category.icon,
-        iconColor = result.category.accent,
-        trailing = { Text(MediaLibraryRepository.formatBytes(result.totalBytes), color = CiyatoWhite, style = headingS) },
-        onClick = if (result.totalCount > 0) onClick else null,
-    )
+    val (icon, light, deep) = glyphFor(result.category)
+    val empty = result.totalCount == 0
+    // Zero-byte files report their COUNT. "0 B" beside them read as "nothing here",
+    // which was the truth about the bytes and a falsehood about the files.
+    val trailing = when {
+        empty -> null
+        result.category == CleanupCategory.EMPTY_FILES -> "${result.totalCount}"
+        else -> MediaLibraryRepository.formatBytes(result.totalBytes)
+    }
+    val subtitle = when {
+        result.note != null && empty -> result.note
+        empty -> "None found"
+        result.category == CleanupCategory.APP_CACHES ->
+            "${result.totalCount} ${if (result.totalCount == 1) "app" else "apps"} \u00B7 ${result.category.description}"
+        else -> pluralStringResource(R.plurals.count_items, result.totalCount, result.totalCount) +
+            " \u00B7 ${result.category.description}"
+    }
+    // A few of the files themselves, so a category reads as what it contains.
+    val previews = remember(result.items) {
+        if (result.category in setOf(CleanupCategory.OLD_SCREENSHOTS, CleanupCategory.LARGE_FILES, CleanupCategory.DOWNLOADS, CleanupCategory.TRASH)) {
+            result.items.filter { it.uri != null || it.file != null }.take(4)
+        } else emptyList()
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(CleanupCardShape)
+            .background(Brush.verticalGradient(listOf(Color(0xFF15181D), Color(0xFF0E1013))))
+            .border(1.dp, CleanupEdge, CleanupCardShape)
+            .clickable(enabled = !empty, onClickLabel = "Review ${result.category.label}", role = Role.Button, onClick = onClick)
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GlyphChip(icon, light, deep, side = 42.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(result.category.label, color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Spacer(Modifier.height(2.dp))
+                Text(subtitle, color = CiyatoMuted, fontSize = 12.sp, lineHeight = 16.sp)
+            }
+            if (trailing != null) {
+                Spacer(Modifier.width(10.dp))
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(trailing, color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                    if (result.category == CleanupCategory.EMPTY_FILES) {
+                        Text(if (result.totalCount == 1) "file" else "files", color = CiyatoMuted, fontSize = 11.sp)
+                    }
+                }
+                Icon(
+                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.3f),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        if (previews.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                previews.forEach { item ->
+                    Box(Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(10.dp))) {
+                        FilePreview(
+                            name = item.name,
+                            mimeType = FileAccess.mimeTypeOf(item.name),
+                            uri = item.uri ?: Uri.fromFile(item.file),
+                            file = item.file,
+                            compact = true,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+                repeat(4 - previews.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
 }
+
+/**
+ * Other apps' caches, largest first, each opening that app's own settings.
+ *
+ * Android does not let one app clear another's cache - that permission is reserved for
+ * the system - so the honest version of this list routes the person to the one place
+ * that can, rather than offering a button that cannot work.
+ */
+@Composable
+private fun AppCacheDetail(result: CategoryResult, onBack: () -> Unit) {
+    val context = LocalContext.current
+    BackHandler(onBack = onBack)
+    Column(Modifier.fillMaxSize().background(CiyatoBg)) {
+        CleanupHeader(scanning = false, onBack = onBack, title = "Apps' cache")
+        LazyColumn(
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            item(key = "intro") {
+                Text(
+                    "${MediaLibraryRepository.formatBytes(result.totalBytes)} across ${result.totalCount} apps. " +
+                        "Android only lets an app's own settings clear its cache - tap one to open it, then Storage \u2192 Clear cache.",
+                    color = CiyatoMuted,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+            }
+            items(result.items, key = { it.id }) { item ->
+                val icon = remember(item.packageName) {
+                    runCatching { context.packageManager.getApplicationIcon(item.packageName!!).toBitmap(96, 96).asImageBitmap() }.getOrNull()
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(CiyatoShapes.medium)
+                        .clickable(onClickLabel = "Open ${item.name} settings", role = Role.Button) {
+                            openSystemScreen(
+                                context,
+                                android.content.Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(Uri.fromParts("package", item.packageName, null)),
+                                "find ${item.name} in Settings > Apps",
+                            )
+                        }
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (icon != null) {
+                        Image(icon, contentDescription = null, modifier = Modifier.size(40.dp))
+                    } else {
+                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(CiyatoBgEl))
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Text(item.name, color = CiyatoWhite, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Text(MediaLibraryRepository.formatBytes(item.sizeBytes), color = CiyatoSec, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(22.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CleanupHeader(scanning: Boolean, onBack: () -> Unit, title: String = "Cleanup") {
+    Row(
+        Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = CiyatoWhite)
+        }
+        Column(Modifier.weight(1f).padding(start = 2.dp)) {
+            Text(title, color = CiyatoWhite, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (scanning) "Scanning\\u2026" else "Scanned just now", color = CiyatoMuted, fontSize = 12.sp)
+        }
+    }
+}
+
+private val CleanupCardShape = RoundedCornerShape(22.dp)
+private val CleanupEdge = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.11f), Color.White.copy(alpha = 0.03f)))
 
 @Composable
 private fun CleanupPermissionCard(onGrant: () -> Unit) {
@@ -485,23 +701,36 @@ private fun CleanupItemRow(item: CleanupItem, selected: Boolean, onToggle: () ->
         modifier = Modifier
             .fillMaxWidth()
             .clip(CiyatoShapes.medium)
-            .background(CiyatoBgEl)
-            .border(1.dp, if (selected) CiyatoGold else CiyatoSubtleBorder, CiyatoShapes.medium)
+            .background(if (selected) Color(0xFF1C2027) else CiyatoBgEl)
+            .border(1.dp, if (selected) CiyatoWhite.copy(alpha = 0.6f) else CiyatoSubtleBorder, CiyatoShapes.medium)
             .clickable(onClick = onToggle)
-            .padding(12.dp),
+            .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // The file itself, not just its name.
+        if (item.uri != null || item.file != null) {
+            Box(Modifier.size(46.dp).clip(RoundedCornerShape(10.dp))) {
+                FilePreview(
+                    name = item.name,
+                    mimeType = FileAccess.mimeTypeOf(item.name),
+                    uri = item.uri ?: Uri.fromFile(item.file),
+                    file = item.file,
+                    compact = true,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        Text(item.name, color = CiyatoWhite, style = bodyM, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(MediaLibraryRepository.formatBytes(item.sizeBytes), color = CiyatoMuted, style = labelL)
         Box(
             Modifier.size(22.dp).clip(CircleShape)
-                .background(if (selected) CiyatoGold else Color.Transparent)
-                .border(1.dp, if (selected) CiyatoGold else CiyatoMuted, CircleShape),
+                .background(if (selected) CiyatoWhite else Color.Transparent)
+                .border(1.5.dp, if (selected) CiyatoWhite else CiyatoMuted, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             if (selected) Icon(Icons.Default.Check, null, tint = CiyatoBg, modifier = Modifier.size(14.dp))
         }
-        Text(item.name, color = CiyatoWhite, style = bodyM, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        Text(MediaLibraryRepository.formatBytes(item.sizeBytes), color = CiyatoMuted, style = labelL)
     }
 }
 
@@ -543,14 +772,24 @@ internal enum class CleanupCategory(
 ) {
     // Ciyato's own scratch data, regenerated on demand.
     CACHE("App Cache", "Ciyato's own temporary data, rebuilt as needed", Icons.Default.Memory, CiyatoAmber, CleanupTier.SAFE),
-    // Zero bytes: there is nothing inside one to lose.
-    EMPTY_FILES("Empty Files", "Zero-byte entries", Icons.Default.DeleteSweep, CiyatoAmber, CleanupTier.SAFE),
+    // Every other app's cache, measured through Usage access. Ciyato cannot clear
+    // another app's cache - only that app's own settings can - so this reports and
+    // routes rather than deletes.
+    APP_CACHES("Apps' cache", "Temporary data other apps keep", Icons.Default.Apps, CiyatoAmber, CleanupTier.SAFE),
     // Already deleted by the person; Android is holding it for the trash window.
     TRASH("Trash", "Already deleted, still holding space", Icons.Default.DeleteForever, CiyatoAmber, CleanupTier.SAFE),
 
     // Age is decent evidence, and screenshots are usually disposable - but they
     // are still the person's own pictures.
-    OLD_SCREENSHOTS("Old Screenshots", "Older than 30 days", Icons.Default.Screenshot, CiyatoPurple, CleanupTier.REVIEW),
+    OLD_SCREENSHOTS("Old Screenshots", "Taken more than 30 days ago", Icons.Default.Screenshot, CiyatoPurple, CleanupTier.REVIEW),
+
+    // Zero bytes holds no data, but that does not make a file disposable. This sat
+    // in "Safe to clear" beside a promise that nothing there could matter, and
+    // selected every zero-byte file - including .nomedia markers, which are empty BY
+    // DESIGN and exist to keep a folder out of galleries. Deleting one makes hidden
+    // media appear in every photo app on the phone. Dot-files are now excluded
+    // entirely, and the rest are something to review, not a guaranteed win.
+    EMPTY_FILES("Empty Files", "Free no space, only clutter", Icons.Default.DeleteSweep, CiyatoAmber, CleanupTier.REVIEW),
 
     // Size is not evidence of being unwanted, and Downloads holds real documents.
     LARGE_FILES("Large Files", "Over 50 MB each", Icons.Default.Storage, CiyatoBlue, CleanupTier.SUGGESTION),
@@ -563,6 +802,8 @@ private data class CleanupItem(
     val sizeBytes: Long,
     val uri: Uri? = null,
     val file: java.io.File? = null,
+    /** Set for an app's cache, which is opened in that app's settings, not deleted. */
+    val packageName: String? = null,
 )
 
 private data class CategoryResult(
@@ -570,6 +811,8 @@ private data class CategoryResult(
     val totalBytes: Long,
     val totalCount: Int,
     val items: List<CleanupItem>,
+    /** Why the category is empty or partial, when "none found" would mislead. */
+    val note: String? = null,
 )
 
 /** One real, measured slice of used storage for the breakdown bar/legend. */
@@ -656,6 +899,13 @@ private suspend fun scanTrash(context: Context): CategoryResult {
     // never fire here, because totalCount was set from items.size.
     val (totalCount, totalBytes) = PhotoDeviceLibrary.trashedTotals(context)
     return CategoryResult(
+        // Samsung Gallery and several other gallery apps keep their own recycle bin,
+        // which other apps cannot read. An empty system Trash on such a phone is the
+        // truth about Android's Trash and says nothing about the gallery's, so the
+        // card explains instead of implying there is nothing anywhere.
+        note = if (maxOf(totalCount, items.size) == 0) {
+            "Android's Trash is empty. Your gallery app's own recycle bin isn't visible to other apps."
+        } else null,
         category = CleanupCategory.TRASH,
         // A totals query that returns nothing while the list has content means
         // the query failed rather than the trash being empty; fall back to the
@@ -677,9 +927,19 @@ private fun scanLargeFiles(context: Context): CategoryResult {
 private fun scanOldScreenshots(context: Context): CategoryResult {
     val cutoffSeconds = (System.currentTimeMillis() - OLD_SCREENSHOT_DAYS * 24 * 60 * 60 * 1000L) / 1000L
     val media = MediaStore.Files.FileColumns.MEDIA_TYPE
+    // When it was TAKEN, not when the file was last modified. Copying, restoring
+    // from a backup or moving between folders resets the modified date, so a
+    // two-year-old screenshot restored last week counted as new and never appeared
+    // here. DATE_TAKEN is in milliseconds; the modified date (seconds) remains the
+    // fallback for the rows that have no taken date at all.
+    val dated = if (Build.VERSION.SDK_INT >= 29) {
+        "COALESCE(${MediaStore.MediaColumns.DATE_TAKEN}, ${MediaStore.Files.FileColumns.DATE_MODIFIED} * 1000)"
+    } else {
+        "${MediaStore.Files.FileColumns.DATE_MODIFIED} * 1000"
+    }
     val selection = "$media = ${MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE} AND $pathColumn LIKE ? AND " +
-        "${MediaStore.Files.FileColumns.DATE_MODIFIED} < ?"
-    val args = arrayOf("%Screenshot%", cutoffSeconds.toString())
+        "$dated < ?"
+    val args = arrayOf("%Screenshot%", (cutoffSeconds * 1000L).toString())
     val (count, bytes) = summarize(context, selection, args)
     val items = queryCleanupItems(context, selection, args, "${MediaStore.Files.FileColumns.DATE_MODIFIED} ASC")
     return CategoryResult(CleanupCategory.OLD_SCREENSHOTS, bytes, count, items)
@@ -694,7 +954,11 @@ private fun scanDownloads(context: Context): CategoryResult {
 }
 
 private fun scanEmptyFiles(context: Context): CategoryResult {
-    val selection = "${MediaStore.Files.FileColumns.SIZE} = 0"
+    // Dot-files are markers (.nomedia hides a folder from galleries) and Android/ is
+    // other apps' own storage - neither is the person's clutter.
+    val selection = "${MediaStore.Files.FileColumns.SIZE} = 0 AND " +
+        "${MediaStore.Files.FileColumns.DISPLAY_NAME} NOT LIKE '.%' AND " +
+        "$pathColumn NOT LIKE '%Android/%'"
     val (count, bytes) = summarize(context, selection, null)
     val items = queryCleanupItems(context, selection, null, "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC")
     return CategoryResult(CleanupCategory.EMPTY_FILES, bytes, count, items)
@@ -710,6 +974,53 @@ private fun scanCache(context: Context): CategoryResult {
         CleanupItem(id = "cache_${entry.absolutePath}", name = entry.name, sizeBytes = folderSize(entry), file = entry)
     }.sortedByDescending { it.sizeBytes }
     return CategoryResult(CleanupCategory.CACHE, items.sumOf { it.sizeBytes }, items.size, items)
+}
+
+/**
+ * Every installed app's cache, measured with StorageStatsManager.
+ *
+ * The old App Cache card measured only Ciyato's own, so on a phone with a few
+ * gigabytes of app caches it said "1 item, 0 B" - a real number about the wrong thing.
+ * This needs Usage access, which Ciyato already uses for Insights; without it Android
+ * throws SecurityException for other packages, and the card says so instead of
+ * reporting an empty phone.
+ */
+private fun scanAppCaches(context: Context): CategoryResult {
+    val stats = context.getSystemService(android.app.usage.StorageStatsManager::class.java)
+        ?: return CategoryResult(CleanupCategory.APP_CACHES, 0L, 0, emptyList(), note = "This phone does not report app storage.")
+    val pm = context.packageManager
+    val user = android.os.Process.myUserHandle()
+    var denied = false
+    val items = runCatching { pm.getInstalledApplications(0) }.getOrDefault(emptyList())
+        .filter { it.packageName != context.packageName }
+        .mapNotNull { app ->
+            val cache = try {
+                stats.queryStatsForPackage(app.storageUuid, app.packageName, user).cacheBytes
+            } catch (_: SecurityException) {
+                denied = true
+                0L
+            } catch (_: Exception) {
+                0L
+            }
+            if (cache <= 0L) {
+                null
+            } else {
+                CleanupItem(
+                    id = "appcache:${app.packageName}",
+                    name = runCatching { pm.getApplicationLabel(app).toString() }.getOrDefault(app.packageName),
+                    sizeBytes = cache,
+                    packageName = app.packageName,
+                )
+            }
+        }
+        .sortedByDescending { it.sizeBytes }
+    return CategoryResult(
+        category = CleanupCategory.APP_CACHES,
+        totalBytes = items.sumOf { it.sizeBytes },
+        totalCount = items.size,
+        items = items,
+        note = if (denied && items.isEmpty()) "Turn on Usage access to measure other apps' caches." else null,
+    )
 }
 
 private fun folderSize(file: java.io.File): Long = when {

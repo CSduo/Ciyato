@@ -304,7 +304,13 @@ class MainActivity : FragmentActivity() {
                         )
                     }
 
-                    composable("files")   { FilesScreen(viewModel = viewModel, onBack = { navController.popBackStack() }) }
+                    composable("files")   {
+                        FilesScreen(
+                            viewModel = viewModel,
+                            onBack = { navController.popBackStack() },
+                            onOpenCleanup = { navController.navigate("storage_cleanup") { launchSingleTop = true } },
+                        )
+                    }
                     composable("photos")  {
                         PhotosLibraryScreen(
                             viewModel = viewModel,

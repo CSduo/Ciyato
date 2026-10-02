@@ -54,7 +54,7 @@ worse than one that admits a gap, so an em dash means genuinely untested.
 | Feature | Route / destination | Permissions | Tests | Source |
 |---|---|---|---|---|
 | Files | `files` | `MANAGE_EXTERNAL_STORAGE` (SAF fallback) | `FileCleanupModelsTest`, `CleanupTierTest` | `ui/screens/FilesScreen.kt`, `data/FileAccess.kt` |
-| File category browse | `photo_duplicates` group, in-Files | as above | — | `ui/screens/FileCategoryScreen.kt`, `FileCollectionDetailScreen.kt` |
+| File category browse | `file_category/{key}`, from Overview | as above | — | `ui/screens/FileCategoryScreen.kt`, `ui/components/FilePreview.kt` |
 | File search | `search_history` entry + in-Files | as above | `NlFileSearchExamplesTest`, `FileSearchIndexStoreTest`, `FileSearchDateRangeTest` | `ui/screens/NlFileSearchScreen.kt` |
 | Recent files | `recent_files`, `LauncherDest.RecentFiles` | as above | — | `ui/screens/RecentFilesScreen.kt` |
 | Storage cleanup | `storage_cleanup`, `LauncherDest.StorageCleanup` | as above | `CleanupCheckpointTest`, `CleanupTierTest` | `ui/screens/StorageCleanupScreen.kt` |

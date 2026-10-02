@@ -574,12 +574,10 @@ private fun CategoryGrid(
     // space reads as missing content, a deliberate full-width tile reads as hierarchy.
     val columns = categoryColumns()
     val spacing = 12.dp
-    // Each tile's bar is its size against the LARGEST category, not a share of a
-    // total. The categories overlap - a WhatsApp image is also a Photo, an APK in
-    // Downloads is in both - so a stacked bar or a percentage of the sum would claim a
-    // partition that does not exist. "Relative to the biggest" is true and still
-    // answers the question people bring to this screen: what is taking the space.
-    val largest = summaries.values.filterNot { it.unavailable }.maxOfOrNull { it.totalBytes } ?: 0L
+    // No size bar. An earlier pass drew one under every tile - each category's size
+    // against the largest - and with no label even the app's owner could not tell
+    // what the lines meant. A graphic that needs explaining is decoration; the size is
+    // already written on the tile in plain words.
     Column(verticalArrangement = Arrangement.spacedBy(spacing)) {
         CATEGORY_TILES.chunked(columns).forEach { row ->
             val wide = row.size == 1 && columns > 1
@@ -589,13 +587,9 @@ private fun CategoryGrid(
             ) {
                 row.forEach { tile ->
                     val summary = summaries[tile.key]
-                    val share = summary?.takeUnless { it.unavailable }?.let {
-                        if (largest > 0L) it.totalBytes.toFloat() / largest else 0f
-                    }
                     CategoryTile(
                         spec = tile,
                         summary = summary,
-                        share = share,
                         wide = wide,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         onClick = { onOpenCategory(tile.key.name) },
@@ -618,8 +612,6 @@ private fun CategoryTile(
      * (F-083).
      */
     summary: MediaLibraryRepository.CategorySummary?,
-    /** Size relative to the largest category, or null when it is not known. */
-    share: Float?,
     wide: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
@@ -638,8 +630,7 @@ private fun CategoryTile(
 
     // No colour on the surface itself. An earlier pass lit every tile with a glow in
     // its category colour, and seven glows on one screen is decoration doing the work
-    // hierarchy should do. Colour now lives only in the glyph and the size bar, where
-    // it carries meaning.
+    // hierarchy should do. Colour now lives only in the glyph, where it carries meaning.
     val surface = modifier
         .clip(TileShape)
         .background(Brush.verticalGradient(listOf(TileTop, TileBottom)))
@@ -671,8 +662,6 @@ private fun CategoryTile(
                     )
                 }
                 Text(detail, color = CiyatoMuted, fontSize = 12.sp, maxLines = 1)
-                Spacer(Modifier.height(10.dp))
-                ShareBar(share, spec)
             }
             Spacer(Modifier.width(8.dp))
             Icon(
@@ -715,40 +704,10 @@ private fun CategoryTile(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(detail, color = CiyatoMuted, fontSize = 12.sp, maxLines = 1)
-            Spacer(Modifier.height(12.dp))
-            ShareBar(share, spec)
         }
     }
 }
 
-/**
- * This category's size against the largest one, as a thin bar.
- *
- * Decoration that is also data: the eye finds the biggest consumer of space before
- * reading a single number. Kept to 4dp so it reads as an annotation of the tile rather
- * than a chart competing with it. A known-but-tiny category still shows a sliver, since
- * an empty track would read as "nothing" when the truth is "very little".
- */
-@Composable
-private fun ShareBar(share: Float?, spec: CategoryTileSpec) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(4.dp)
-            .clip(CiyatoShapes.full)
-            .background(Color.White.copy(alpha = 0.07f)),
-    ) {
-        if (share != null && share > 0f) {
-            Box(
-                Modifier
-                    .fillMaxWidth(share.coerceIn(0.04f, 1f))
-                    .fillMaxHeight()
-                    .clip(CiyatoShapes.full)
-                    .background(Brush.horizontalGradient(listOf(spec.deep, spec.glow))),
-            )
-        }
-    }
-}
 
 /**
  * The category's icon as a lit object rather than a printed swatch.
@@ -820,7 +779,7 @@ private fun CleanupCard(onClick: () -> Unit) {
         // A pill rather than a chevron: this is the one action on the screen, and it
         // should look like one.
         Text(
-            "Review",
+            "Clean up",
             color = CiyatoBg,
             fontWeight = FontWeight.SemiBold,
             fontSize = 13.sp,

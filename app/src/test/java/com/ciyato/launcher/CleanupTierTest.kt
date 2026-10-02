@@ -18,11 +18,35 @@ import org.junit.Test
 class CleanupTierTest {
 
     @Test
-    fun `only regenerable or provably empty things are marked safe`() {
+    fun `only regenerable or already-deleted things are marked safe`() {
         val safe = CleanupCategory.entries.filter { it.tier == CleanupTier.SAFE }.toSet()
         assertEquals(
-            setOf(CleanupCategory.CACHE, CleanupCategory.EMPTY_FILES, CleanupCategory.TRASH),
+            setOf(CleanupCategory.CACHE, CleanupCategory.APP_CACHES, CleanupCategory.TRASH),
             safe,
+        )
+    }
+
+    /**
+     * Zero bytes is not the same as disposable, and this test used to say it was.
+     *
+     * Empty Files sat in "Safe to clear" under the promise that nothing there could
+     * hold your only copy of anything, and its scan took every zero-byte file -
+     * including `.nomedia` markers, which are empty by design and exist to keep a
+     * folder out of every gallery on the phone. Delete one and hidden media appears.
+     * This was found the hard way, on a real phone, when 37 empty files were removed.
+     */
+    @Test
+    fun `empty files are reviewed, not presumed safe, and markers are never offered`() {
+        assertEquals(CleanupTier.REVIEW, CleanupCategory.EMPTY_FILES.tier)
+        val scan = java.io.File("src/main/java/com/ciyato/launcher/ui/screens/StorageCleanupScreen.kt").readText()
+        assertTrue(
+            "the empty-files scan no longer excludes dot-files, so it would offer .nomedia " +
+                "markers for deletion again",
+            scan.contains("DISPLAY_NAME} NOT LIKE '.%'"),
+        )
+        assertTrue(
+            "the empty-files scan no longer excludes other apps' own storage under Android/",
+            scan.contains("NOT LIKE '%Android/%'"),
         )
     }
 
