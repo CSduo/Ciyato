@@ -78,6 +78,29 @@ import com.ciyato.launcher.ui.theme.CiyatoWidth
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.foundation.layout.BoxWithConstraints
+import kotlin.math.roundToInt
+import java.text.NumberFormat
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.material.icons.automirrored.rounded.*
+import androidx.compose.material.icons.rounded.*
+import com.ciyato.launcher.ui.components.openWithApp
+import androidx.compose.ui.layout.ContentScale
+import coil.request.ImageRequest
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.layout
 
 /**
  * Organizer home — a real file/storage dashboard.
@@ -135,13 +158,53 @@ fun DashboardScreen(
     LaunchedEffect(access) {
         if (access.canSeeAnything) {
             summaries = mediaRepo.categorySummaries()
-            recents = mediaRepo.recentFiles(limit = 10)
+            recents = mediaRepo.recentImages(limit = 12)
         }
     }
 
+    // The status bar inset. The activity draws edge to edge and nothing above this
+    // screen applies the inset, so a flat 24dp top padding put the title INSIDE the
+    // status bar - "Ciyato Organizer" sat almost touching the clock.
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     LazyColumn(
-        modifier = Modifier.background(CiyatoBg),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 28.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CiyatoBg)
+            // A faint indigo light behind the top of the screen. Drawn on the list's
+            // own bounds, so it stays put while content scrolls over it - depth
+            // without a single extra pixel of colour on any surface.
+            .drawBehind {
+                drawRect(
+                    Brush.radialGradient(
+                        colors = listOf(StorageGlow.copy(alpha = 0.12f), Color.Transparent),
+                        center = Offset(size.width * 0.18f, statusBarTop.toPx() + 60.dp.toPx()),
+                        radius = size.width * 1.05f,
+                    ),
+                )
+            }
+            // A scrim under the status bar, drawn OVER the list. Without it, scrolled
+            // content ran straight beneath the clock - a tile's "428" sat on top of
+            // "20:45". This fades it out instead, the way a native screen does.
+            .drawWithContent {
+                drawContent()
+                // Solid through the status bar, fading only BELOW it. A plain two-stop
+                // gradient across the whole height started fading at the top of the
+                // screen, so by the clock's own row it was already three-quarters
+                // transparent and a tile's size bar showed straight through.
+                val bar = statusBarTop.toPx()
+                val h = bar + 18.dp.toPx()
+                drawRect(
+                    Brush.verticalGradient(
+                        0f to CiyatoBg.copy(alpha = 0.97f),
+                        (bar / h) to CiyatoBg.copy(alpha = 0.90f),
+                        1f to CiyatoBg.copy(alpha = 0f),
+                        startY = 0f,
+                        endY = h,
+                    ),
+                    size = Size(size.width, h),
+                )
+            },
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = statusBarTop + 18.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -150,14 +213,28 @@ fun DashboardScreen(
                 // bar, on a tab that was itself called Home. The screen is the
                 // organizer's overview — storage, categories, quick actions —
                 // so it says that (F-071, F-073).
-                Text("Ciyato Organizer", color = CiyatoWhite, fontWeight = FontWeight.Bold, fontSize = 26.sp)
-                Spacer(Modifier.height(2.dp))
-                Text("Storage, categories and cleanup.", color = CiyatoGold, fontSize = 13.sp)
+                Text(
+                    "Ciyato Organizer",
+                    color = CiyatoWhite,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 30.sp,
+                    letterSpacing = (-0.6).sp,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text("Storage, categories and cleanup.", color = CiyatoMuted, fontSize = 14.sp)
             }
         }
 
         item {
             StorageOverviewCard(storage = storage, access = access, onReview = onOpenFiles)
+        }
+
+        // Directly under storage, because it is the action that number prompts. It
+        // used to be one of three equal "quick actions" at the bottom of the screen -
+        // beside Search and Photos, both already in the bottom bar - so the one thing
+        // a storage screen exists to help with was the last thing on it.
+        item {
+            CleanupCard(onClick = onOpenCleanup)
         }
 
         if (!hasPermission) {
@@ -178,7 +255,7 @@ fun DashboardScreen(
             }
         } else {
             item {
-                Text("Categories", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                Text("Categories", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, letterSpacing = (-0.2).sp, modifier = Modifier.padding(top = 6.dp))
             }
             item {
                 CategoryGrid(summaries = summaries, onOpenCategory = onOpenCategory)
@@ -190,35 +267,56 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("Recent files", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                        Text(
+                            "Recent images",
+                            color = CiyatoWhite,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 19.sp,
+                            letterSpacing = (-0.2).sp,
+                        )
                         Text(
                             "View all",
-                            color = CiyatoGold,
+                            color = CiyatoSec,
                             fontSize = 13.sp,
-                            modifier = Modifier.clickable(onClick = onOpenFiles),
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clip(CiyatoShapes.full)
+                                .clickable(onClickLabel = "View all images", role = Role.Button, onClick = onOpenPhotos)
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                         )
                     }
                 }
                 item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Edge to edge. Inside the list's 20dp margins the strip was sliced
+                    // at the margin, so the last visible thumbnail ended in a hard
+                    // vertical cut mid-picture. Widening the row by both margins and
+                    // padding its content back in keeps the first image aligned with
+                    // everything above it, and lets the rest run off the screen edge -
+                    // which is what says "there is more this way".
+                    LazyRow(
+                        modifier = Modifier.layout { measurable, constraints ->
+                            val bleed = 20.dp.roundToPx()
+                            val placeable = measurable.measure(
+                                constraints.copy(
+                                    minWidth = constraints.minWidth + bleed * 2,
+                                    maxWidth = constraints.maxWidth + bleed * 2,
+                                ),
+                            )
+                            layout(placeable.width - bleed * 2, placeable.height) {
+                                placeable.place(-bleed, 0)
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
                         items(recents, key = { it.uri.toString() }) { file ->
-                            RecentFileChip(file)
+                            RecentImageTile(file)
                         }
                     }
                 }
             }
         }
 
-        item {
-            Text("Quick actions", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickAction(Icons.Default.DeleteSweep, "Clean up", CiyatoGold, Modifier.weight(1f), onOpenCleanup)
-                QuickAction(Icons.Default.Search, "Search", CiyatoBlue, Modifier.weight(1f), onOpenSearch)
-                QuickAction(Icons.Default.Image, "Photos", CiyatoPurple, Modifier.weight(1f), onOpenPhotos)
-            }
-        }
     }
 }
 
@@ -239,29 +337,51 @@ private fun StorageOverviewCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(CiyatoShapes.medium)
-            .background(CiyatoBgEl)
-            .border(1.dp, CiyatoBorder, CiyatoShapes.medium)
-            .clickable(onClick = onReview)
-            .padding(18.dp),
+            .clip(CardShape)
+            .background(Brush.linearGradient(listOf(Color(0xFF171B22), Color(0xFF0F1115))))
+            .drawBehind {
+                drawRect(
+                    Brush.radialGradient(
+                        colors = listOf(StorageGlow.copy(alpha = 0.18f), Color.Transparent),
+                        center = Offset(size.width * 0.14f, size.height * 0.5f),
+                        radius = size.height * 1.4f,
+                    ),
+                )
+            }
+            .border(1.dp, TileEdge, CardShape)
+            .clickable(onClickLabel = "Review storage", role = Role.Button, onClick = onReview)
+            .padding(horizontal = 20.dp, vertical = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StorageRing(fraction = storage.usedFraction, modifier = Modifier.size(84.dp))
-        Spacer(Modifier.width(18.dp))
+        StorageRing(fraction = storage.usedFraction, modifier = Modifier.size(96.dp))
+        Spacer(Modifier.width(20.dp))
         Column(Modifier.weight(1f)) {
-            Text("Storage overview", color = CiyatoSec, fontSize = 12.sp)
-            Spacer(Modifier.height(4.dp))
             Text(
-                "${MediaLibraryRepository.formatBytes(storage.usedBytes)} used",
-                color = CiyatoWhite,
+                "STORAGE",
+                color = CiyatoMuted,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp,
+                fontSize = 11.sp,
+                letterSpacing = 1.4.sp,
             )
+            Spacer(Modifier.height(6.dp))
+            Row {
+                Text(
+                    MediaLibraryRepository.formatBytes(storage.usedBytes),
+                    color = CiyatoWhite,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 26.sp,
+                    letterSpacing = (-0.5).sp,
+                    modifier = Modifier.alignByBaseline(),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("used", color = CiyatoSec, fontSize = 14.sp, modifier = Modifier.alignByBaseline())
+            }
             Text(
-                "of ${MediaLibraryRepository.formatBytes(storage.totalBytes)} total",
+                "of ${MediaLibraryRepository.formatBytes(storage.totalBytes)}",
                 color = CiyatoMuted,
                 fontSize = 13.sp,
             )
+            Spacer(Modifier.height(10.dp))
             // These two numbers are not commensurable and sat side by side as if
             // they were. The ring is whole-partition usage from StatFs, which
             // needs no permission and includes the OS and every app. The category
@@ -284,38 +404,50 @@ private fun StorageOverviewCard(
 
 @Composable
 private fun StorageRing(fraction: Float, modifier: Modifier = Modifier) {
+    val clamped = fraction.coerceIn(0f, 1f)
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(84.dp)) {
-            val stroke = Stroke(width = 9.dp.toPx(), cap = StrokeCap.Round)
-            val inset = stroke.width / 2
-            val arcSize = Size(size.width - stroke.width, size.height - stroke.width)
+        Canvas(Modifier.matchParentSize()) {
+            val strokePx = 10.dp.toPx()
+            val inset = strokePx / 2
+            val arcSize = Size(size.width - strokePx, size.height - strokePx)
             drawArc(
-                color = Color.White.copy(alpha = 0.08f),
+                color = Color.White.copy(alpha = 0.07f),
                 startAngle = -90f,
                 sweepAngle = 360f,
                 useCenter = false,
                 topLeft = Offset(inset, inset),
                 size = arcSize,
-                style = stroke,
+                style = Stroke(width = strokePx),
             )
-            drawArc(
-                color = CiyatoGold,
-                startAngle = -90f,
-                sweepAngle = 360f * fraction,
-                useCenter = false,
-                topLeft = Offset(inset, inset),
-                size = arcSize,
-                style = stroke,
-            )
+            // A linear rather than sweep gradient: a sweep starts at three o'clock,
+            // so the round start cap of an arc beginning at twelve picks up the
+            // gradient's END colour and shows a seam. Linear has no seam to show.
+            if (clamped > 0f) {
+                drawArc(
+                    brush = Brush.linearGradient(
+                        colors = listOf(RingStart, RingEnd),
+                        start = Offset.Zero,
+                        end = Offset(size.width, size.height),
+                    ),
+                    startAngle = -90f,
+                    sweepAngle = 360f * clamped,
+                    useCenter = false,
+                    topLeft = Offset(inset, inset),
+                    size = arcSize,
+                    style = Stroke(width = strokePx, cap = StrokeCap.Round),
+                )
+            }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // roundToInt, not toInt: 20.9% used is "21%", and truncation said 20.
             Text(
-                "${(fraction * 100).toInt()}%",
+                "${(clamped * 100).roundToInt()}%",
                 color = CiyatoWhite,
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
+                fontSize = 21.sp,
+                letterSpacing = (-0.5).sp,
             )
-            Text("Used", color = CiyatoMuted, fontSize = 11.sp)
+            Text("used", color = CiyatoMuted, fontSize = 11.sp)
         }
     }
 }
@@ -376,21 +508,37 @@ private fun PermissionCard(onGrant: () -> Unit) {
     }
 }
 
+/**
+ * One category on the Organizer, and how it is drawn.
+ *
+ * [glow] is the light stop and [deep] the dark stop of the glyph's gradient, and
+ * every category has its own pair. Three of these used to share CiyatoGreen, so
+ * Documents, APKs and WhatsApp were the same flat green square and could only be
+ * told apart by reading the label - which defeats the point of an icon.
+ *
+ * Colour lives only in the glyph and a faint glow from its corner. The surfaces stay
+ * graphite, which keeps the near-black/silver direction the audit asked to preserve:
+ * the chips carry each category's identity, the way a well-made settings screen does,
+ * instead of the whole screen turning into a rainbow.
+ */
 private data class CategoryTileSpec(
     val key: CategoryKey,
     val label: String,
     val icon: ImageVector,
-    val color: Color,
+    val glow: Color,
+    val deep: Color,
 )
 
 private val CATEGORY_TILES = listOf(
-    CategoryTileSpec(CategoryKey.SCREENSHOTS, "Screenshots", Icons.Default.Screenshot, CiyatoBlue),
-    CategoryTileSpec(CategoryKey.DOCUMENTS, "Documents", Icons.AutoMirrored.Filled.Article, CiyatoGreen),
-    CategoryTileSpec(CategoryKey.DOWNLOADS, "Downloads", Icons.Default.Download, CiyatoGold),
-    CategoryTileSpec(CategoryKey.PHOTOS, "Photos", Icons.Default.Image, CiyatoPurple),
-    CategoryTileSpec(CategoryKey.VIDEOS, "Videos", Icons.Default.Movie, CiyatoRed),
-    CategoryTileSpec(CategoryKey.APKS, "APKs", Icons.Default.Android, CiyatoGreen),
-    CategoryTileSpec(CategoryKey.WHATSAPP, "WhatsApp", Icons.Default.Whatsapp, CiyatoGreen),
+    CategoryTileSpec(CategoryKey.SCREENSHOTS, "Screenshots", Icons.Rounded.Screenshot, Color(0xFF60A5FA), Color(0xFF1E3A8A)),
+    CategoryTileSpec(CategoryKey.DOCUMENTS, "Documents", Icons.Rounded.Description, Color(0xFFFBBF24), Color(0xFF92400E)),
+    CategoryTileSpec(CategoryKey.DOWNLOADS, "Downloads", Icons.Rounded.Download, Color(0xFF818CF8), Color(0xFF312E81)),
+    CategoryTileSpec(CategoryKey.PHOTOS, "Photos", Icons.Rounded.Image, Color(0xFFC084FC), Color(0xFF581C87)),
+    CategoryTileSpec(CategoryKey.VIDEOS, "Videos", Icons.Rounded.Movie, Color(0xFFFB7185), Color(0xFF881337)),
+    // Graphite rather than another colour: APKs are system-adjacent files, and one
+    // neutral member stops the set from reading as a rainbow.
+    CategoryTileSpec(CategoryKey.APKS, "APKs", Icons.Rounded.Android, Color(0xFF94A3B8), Color(0xFF1E293B)),
+    CategoryTileSpec(CategoryKey.WHATSAPP, "WhatsApp", Icons.Rounded.Whatsapp, Color(0xFF4ADE80), Color(0xFF14532D)),
 )
 
 /**
@@ -407,47 +555,53 @@ private fun categoryColumns(): Int = when (currentWidth()) {
     CiyatoWidth.EXPANDED -> 4
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CategoryGrid(
     summaries: Map<CategoryKey, MediaLibraryRepository.CategorySummary>,
     onOpenCategory: (String) -> Unit,
 ) {
-    // A real grid, not rows padded out with invisible spacers.
+    // Rows of `columns`, not a FlowRow.
     //
-    // Seven tiles in fixed three-column rows left a final row holding one card
-    // and two empty weights, which reads as missing content rather than as
-    // hierarchy - on a minimal surface that is the whole impression (F-085). The
-    // spacers existed only to make the last row align, which is faking a layout
-    // rather than having one.
+    // FlowRow decides for itself where to break a line, and that made both earlier
+    // versions fragile. `weight(1f, fill = false).fillMaxWidth(1f / columns)` shrank
+    // every tile twice and left half the section empty. Measuring the width instead
+    // was exact on paper, and then a sub-pixel rounding overflow made the second tile
+    // of every row wrap, so the phone showed a single column. Both read as correct in
+    // code and were wrong on the device. A Row cannot wrap.
     //
-    // Adaptive also fixes the other half: three columns compressed these labels
-    // badly at 320dp, and gives four or five columns the room on a tablet.
-    // FlowRow rather than LazyVerticalGrid because there are seven items inside a
-    // scrolling parent, and nesting a lazy grid in a scrollable would need a
-    // fixed height - which is how the fixed row count got here in the first
-    // place.
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        maxItemsInEachRow = categoryColumns(),
-    ) {
-        val columns = categoryColumns()
-        CATEGORY_TILES.forEach { tile ->
-            val summary = summaries[tile.key]
-            CategoryTile(
-                spec = tile,
-                count = summary?.count ?: 0,
-                // No summary yet (still loading) is also "unknown", not zero.
-                unavailable = summary == null || summary.unavailable,
-                // Each tile takes one column's share of the row, so a short final
-                // row leaves its tiles at the same size as every other rather
-                // than stretching them across the gap.
-                modifier = Modifier.weight(1f, fill = false)
-                    .fillMaxWidth(1f / columns),
-                onClick = { onOpenCategory(tile.key.name) },
-            )
+    // A single leftover tile is drawn wide rather than as a half-width orphan beside a
+    // blank cell, which is what F-085 actually objected to: a lone card next to empty
+    // space reads as missing content, a deliberate full-width tile reads as hierarchy.
+    val columns = categoryColumns()
+    val spacing = 12.dp
+    // Each tile's bar is its size against the LARGEST category, not a share of a
+    // total. The categories overlap - a WhatsApp image is also a Photo, an APK in
+    // Downloads is in both - so a stacked bar or a percentage of the sum would claim a
+    // partition that does not exist. "Relative to the biggest" is true and still
+    // answers the question people bring to this screen: what is taking the space.
+    val largest = summaries.values.filterNot { it.unavailable }.maxOfOrNull { it.totalBytes } ?: 0L
+    Column(verticalArrangement = Arrangement.spacedBy(spacing)) {
+        CATEGORY_TILES.chunked(columns).forEach { row ->
+            val wide = row.size == 1 && columns > 1
+            Row(
+                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(spacing),
+            ) {
+                row.forEach { tile ->
+                    val summary = summaries[tile.key]
+                    val share = summary?.takeUnless { it.unavailable }?.let {
+                        if (largest > 0L) it.totalBytes.toFloat() / largest else 0f
+                    }
+                    CategoryTile(
+                        spec = tile,
+                        summary = summary,
+                        share = share,
+                        wide = wide,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        onClick = { onOpenCategory(tile.key.name) },
+                    )
+                }
+            }
         }
     }
 }
@@ -455,112 +609,283 @@ private fun CategoryGrid(
 @Composable
 private fun CategoryTile(
     spec: CategoryTileSpec,
-    count: Int,
     /**
-     * True when the count could not be read at all.
+     * Null while the counts are still loading.
      *
-     * Rendering 0 for a failed query is how a denied permission ends up looking
-     * like an empty phone — a confident wall of zeroes that reads as fact
-     * (F-083). "—" says the number is unknown, which is the truth.
+     * Loading, unavailable and empty are three different sentences and the tile says
+     * each one. Rendering 0 for a failed query is how a denied permission ends up
+     * looking like an empty phone - a confident wall of zeroes that reads as fact
+     * (F-083).
      */
-    unavailable: Boolean,
+    summary: MediaLibraryRepository.CategorySummary?,
+    /** Size relative to the largest category, or null when it is not known. */
+    share: Float?,
+    wide: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .clip(CiyatoShapes.medium)
-            .background(CiyatoBgEl)
-            .border(1.dp, CiyatoBorder, CiyatoShapes.medium)
-            .clickable(onClick = onClick)
-            .padding(14.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CiyatoShapes.small)
-                .background(spec.color.copy(alpha = 0.18f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(spec.icon, contentDescription = spec.label, tint = spec.color, modifier = Modifier.size(19.dp))
-        }
-        Spacer(Modifier.height(10.dp))
-        Text(spec.label, color = CiyatoWhite, fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1)
-        Text(if (unavailable) "—" else "$count", color = CiyatoMuted, fontSize = 12.sp)
+    val known = summary?.takeUnless { it.unavailable }
+    val countText = known?.let { NumberFormat.getIntegerInstance().format(it.count) } ?: "\u2014"
+    // The size was always in CategorySummary and never shown. On a storage organizer
+    // it is the number people came for: 428 screenshots is trivia, 227 MB of them is
+    // a decision.
+    val detail = when {
+        summary == null -> "Counting\u2026"
+        known == null -> "Unavailable"
+        known.count == 0 -> "Empty"
+        else -> MediaLibraryRepository.formatBytes(known.totalBytes)
     }
-}
 
-@Composable
-private fun RecentFileChip(file: MediaLibraryRepository.LibraryFile) {
-    val context = LocalContext.current
-    Column(
-        modifier = Modifier
-            .width(128.dp)
-            .clip(CiyatoShapes.medium)
-            .background(CiyatoBgEl)
-            .border(1.dp, CiyatoBorder, CiyatoShapes.medium)
-            .clickable {
-                runCatching {
-                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                        setDataAndType(file.uri, file.mimeType.ifBlank { "*/*" })
-                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(intent)
-                }.onFailure {
-                    android.widget.Toast.makeText(context, "No app found to open ${file.name}", android.widget.Toast.LENGTH_SHORT).show()
+    // No colour on the surface itself. An earlier pass lit every tile with a glow in
+    // its category colour, and seven glows on one screen is decoration doing the work
+    // hierarchy should do. Colour now lives only in the glyph and the size bar, where
+    // it carries meaning.
+    val surface = modifier
+        .clip(TileShape)
+        .background(Brush.verticalGradient(listOf(TileTop, TileBottom)))
+        .border(1.dp, TileEdge, TileShape)
+        .clickable(onClickLabel = "Open ${spec.label}", role = Role.Button, onClick = onClick)
+        .padding(16.dp)
+
+    if (wide) {
+        Row(surface, verticalAlignment = Alignment.CenterVertically) {
+            CategoryGlyph(spec)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        spec.label,
+                        color = CiyatoWhite,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        countText,
+                        color = CiyatoWhite,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 20.sp,
+                        letterSpacing = (-0.4).sp,
+                    )
                 }
+                Text(detail, color = CiyatoMuted, fontSize = 12.sp, maxLines = 1)
+                Spacer(Modifier.height(10.dp))
+                ShareBar(share, spec)
             }
-            .padding(12.dp),
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.30f),
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    } else {
+        Column(surface) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                CategoryGlyph(spec)
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.30f),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.weight(1f))
+            Text(
+                countText,
+                color = CiyatoWhite,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 26.sp,
+                letterSpacing = (-0.6).sp,
+            )
+            // maxLines = 1 with the default Clip overflow is what cut "Screenshots" to
+            // "Screensh" with no ellipsis. Ellipsis stays correct now the tiles are the
+            // right width, because a large system font scale can still overrun.
+            Text(
+                spec.label,
+                color = CiyatoSec,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(detail, color = CiyatoMuted, fontSize = 12.sp, maxLines = 1)
+            Spacer(Modifier.height(12.dp))
+            ShareBar(share, spec)
+        }
+    }
+}
+
+/**
+ * This category's size against the largest one, as a thin bar.
+ *
+ * Decoration that is also data: the eye finds the biggest consumer of space before
+ * reading a single number. Kept to 4dp so it reads as an annotation of the tile rather
+ * than a chart competing with it. A known-but-tiny category still shows a sliver, since
+ * an empty track would read as "nothing" when the truth is "very little".
+ */
+@Composable
+private fun ShareBar(share: Float?, spec: CategoryTileSpec) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(4.dp)
+            .clip(CiyatoShapes.full)
+            .background(Color.White.copy(alpha = 0.07f)),
     ) {
-        Icon(
-            Icons.AutoMirrored.Filled.InsertDriveFile,
-            contentDescription = null,
-            tint = CiyatoSec,
-            modifier = Modifier.size(20.dp),
-        )
-        Spacer(Modifier.height(8.dp))
+        if (share != null && share > 0f) {
+            Box(
+                Modifier
+                    .fillMaxWidth(share.coerceIn(0.04f, 1f))
+                    .fillMaxHeight()
+                    .clip(CiyatoShapes.full)
+                    .background(Brush.horizontalGradient(listOf(spec.deep, spec.glow))),
+            )
+        }
+    }
+}
+
+/**
+ * The category's icon as a lit object rather than a printed swatch.
+ *
+ * Gradient fill, a highlight across the top half, and a shadow in the category's own
+ * colour so the chip sits ON the tile. Shadow colour is honoured from API 28; on 26
+ * and 27 it falls back to a neutral shadow, which still reads correctly.
+ */
+@Composable
+private fun CategoryGlyph(spec: CategoryTileSpec, side: Dp = 44.dp) {
+    Glyph(spec.icon, spec.glow, spec.deep, side)
+}
+
+@Composable
+private fun Glyph(icon: ImageVector, glow: Color, deep: Color, side: Dp = 44.dp) {
+    Box(
+        modifier = Modifier
+            .size(side)
+            .shadow(elevation = 8.dp, shape = GlyphShape, ambientColor = deep, spotColor = deep)
+            .clip(GlyphShape)
+            .background(Brush.linearGradient(listOf(glow, deep)))
+            .drawWithContent {
+                drawRect(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
+                        endY = size.height * 0.55f,
+                    ),
+                )
+                drawContent()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(side * 0.5f))
+    }
+}
+
+/**
+ * The screen's one action, under the number that prompts it.
+ *
+ * The subtitle names exactly what the cleanup scan reviews - large files, screenshots
+ * older than 30 days, and Downloads - and nothing it does not. A cleanup card promising
+ * "junk" or "duplicates" here would be selling a scan this screen never runs.
+ */
+@Composable
+private fun CleanupCard(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(TileShape)
+            .background(Brush.verticalGradient(listOf(TileTop, TileBottom)))
+            .border(1.dp, TileEdge, TileShape)
+            .clickable(onClickLabel = "Open storage cleanup", role = Role.Button, onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Glyph(Icons.Rounded.CleaningServices, Color(0xFF5EEAD4), Color(0xFF134E4A))
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Free up space", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Large files, old screenshots and downloads to review",
+                color = CiyatoMuted,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        // A pill rather than a chevron: this is the one action on the screen, and it
+        // should look like one.
         Text(
-            file.name,
-            color = CiyatoWhite,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            MediaLibraryRepository.formatBytes(file.sizeBytes),
-            color = CiyatoMuted,
-            fontSize = 11.sp,
+            "Review",
+            color = CiyatoBg,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp,
+            modifier = Modifier
+                .clip(CiyatoShapes.full)
+                .background(CiyatoWhite)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
         )
     }
 }
 
+/**
+ * A recent image, as the image.
+ *
+ * Name and size were the whole of the old chip: a grey document icon, then
+ * "Screenshot_20..." truncated to the point of telling nobody anything. The picture is
+ * the information. The filename is still read out by TalkBack through the content
+ * description, so nothing is lost for someone who cannot see the thumbnail.
+ */
 @Composable
-private fun QuickAction(
-    icon: ImageVector,
-    label: String,
-    color: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    Column(
-        modifier = modifier
-            .clip(CiyatoShapes.medium)
-            .background(CiyatoBgEl)
-            .border(1.dp, CiyatoBorder, CiyatoShapes.medium)
-            .clickable(onClick = onClick)
-            .padding(vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(CiyatoShapes.full)
-                .background(color.copy(alpha = 0.18f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(label, color = CiyatoSec, fontSize = 12.sp)
-    }
+private fun RecentImageTile(file: MediaLibraryRepository.LibraryFile) {
+    val context = LocalContext.current
+    AsyncImage(
+        model = ImageRequest.Builder(context)
+            .data(file.uri)
+            // Decoded at thumbnail size. A full-resolution photo per tile is tens of
+            // megabytes for a 112dp square.
+            .size(320)
+            .crossfade(true)
+            .build(),
+        contentDescription = file.name,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .size(112.dp)
+            .clip(ThumbShape)
+            .background(CiyatoBgEl2)
+            .border(1.dp, CiyatoBorder, ThumbShape)
+            .clickable(onClickLabel = "Open image", role = Role.Button) {
+                openWithApp(
+                    context,
+                    android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                        setDataAndType(file.uri, file.mimeType.ifBlank { "image/*" })
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    },
+                    "No app on this phone can open this image.",
+                )
+            },
+    )
 }
+
+private val TileShape = RoundedCornerShape(22.dp)
+private val GlyphShape = RoundedCornerShape(13.dp)
+private val ThumbShape = RoundedCornerShape(16.dp)
+private val CardShape = RoundedCornerShape(24.dp)
+private val TileTop = Color(0xFF15181D)
+private val TileBottom = Color(0xFF0E1013)
+
+/** A glass edge: brighter where light would catch the top, fading toward the bottom. */
+private val TileEdge = Brush.verticalGradient(
+    listOf(Color.White.copy(alpha = 0.11f), Color.White.copy(alpha = 0.03f)),
+)
+private val RingStart = Color(0xFF7DD3FC)
+private val RingEnd = Color(0xFFA78BFA)
+private val StorageGlow = Color(0xFF6366F1)
+
+
+
+

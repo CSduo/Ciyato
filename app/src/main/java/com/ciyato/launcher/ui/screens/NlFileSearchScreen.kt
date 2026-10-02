@@ -286,7 +286,13 @@ fun NlFileSearchScreen(
                             }
                         }
                     }
-                    items(fileSearchHistory, key = { it }) { savedQuery ->
+                    // Namespaced, because this list and the examples below share one
+                    // LazyColumn. Both were keyed by the bare query text, and tapping an
+                    // example runs it AND saves it to this history - so the most natural
+                    // first action on the screen, tapping "large files", put the same key
+                    // in both lists. Compose throws on a duplicate key, and since the
+                    // history persists, the Search tab then crashed on every open.
+                    items(fileSearchHistory, key = { "history:$it" }) { savedQuery ->
                         Row(
                             modifier = Modifier.fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
@@ -307,7 +313,7 @@ fun NlFileSearchScreen(
                 item {
                     Text("Try these", color = CiyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 }
-                items(quickQueries, key = { it }) { q ->
+                items(quickQueries, key = { "example:$it" }) { q ->
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))

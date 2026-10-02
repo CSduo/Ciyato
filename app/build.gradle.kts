@@ -378,7 +378,21 @@ tasks.whenTaskAdded {
     if (name == "assembleDebug") {
         doLast {
             val apkSrc = file("${layout.buildDirectory.get().asFile}/outputs/apk/debug/app-debug.apk")
-            val apkDst = file("${rootDir}/Ciyato.apk")
+            // A sideload-safe build must NOT land on Ciyato.apk. This copied every
+            // debug build to the same filename regardless of flags, so building with
+            // -PsideloadSafe silently replaced the file everyone treats as "the APK"
+            // with one that has MANAGE_EXTERNAL_STORAGE and REQUEST_DELETE_PACKAGES
+            // stripped out. The two are byte-different and indistinguishable by name,
+            // and I shipped the wrong one to a device because of it. The sideload
+            // manifest's own comment claimed the output was named to prevent exactly
+            // this; it was not, until now.
+            val apkDst = file(
+                if (providers.gradleProperty("sideloadSafe").isPresent) {
+                    "${rootDir}/Ciyato-sideload.apk"
+                } else {
+                    "${rootDir}/Ciyato.apk"
+                }
+            )
             if (apkSrc.exists()) { apkSrc.copyTo(apkDst, overwrite = true); println("✅ APK ready: ${apkDst.absolutePath}") }
         }
     }

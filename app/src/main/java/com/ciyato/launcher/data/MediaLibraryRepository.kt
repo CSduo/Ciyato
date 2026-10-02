@@ -107,6 +107,32 @@ class MediaLibraryRepository(private val context: Context) {
         )
     }
 
+    /**
+     * The newest images, for the Organizer's Recent strip.
+     *
+     * Images only, and addressed through the Images collection rather than the generic
+     * Files table. The strip shows pictures, not filenames, so a document among the
+     * newest ten would render as an empty square; and a gallery app resolves an Images
+     * URI more reliably than a Files one when the person taps it.
+     */
+    suspend fun recentImages(limit: Int = 12): List<LibraryFile> = withContext(Dispatchers.IO) {
+        queryFiles(
+            selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = " +
+                "${MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE} AND " +
+                "${MediaStore.Files.FileColumns.SIZE} > 0",
+            selectionArgs = null,
+            sortOrder = "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC",
+            limit = limit,
+        ).map { file ->
+            file.copy(
+                uri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    ContentUris.parseId(file.uri),
+                ),
+            )
+        }
+    }
+
     suspend fun filesForCategory(key: CategoryKey, limit: Int = 500): List<LibraryFile> =
         withContext(Dispatchers.IO) {
             val (selection, args) = selectionFor(key)
